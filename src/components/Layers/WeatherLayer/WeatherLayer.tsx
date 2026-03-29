@@ -13,6 +13,7 @@ import {
 import { useViewer } from '@/context/ViewerContext';
 import { useLayers } from '@/context/LayerContext';
 import { usePopupRegistry } from '@/context/PopupRegistry';
+import { useTooltipRegistry } from '@/context/TooltipRegistry';
 import { usePollingData } from '@/hooks/usePollingData';
 import { fetchWeather, weatherSymbolToEmoji } from '@/services/metno';
 import { type WeatherPoint } from '@/types/weather';
@@ -24,6 +25,7 @@ export function WeatherLayer() {
     const viewer = useViewer();
     const { isVisible, setLayerLoading, setLayerCount, setLayerError, setLayerLastUpdated } = useLayers();
     const { register, unregister } = usePopupRegistry();
+    const { register: tooltipRegister, unregister: tooltipUnregister } = useTooltipRegistry();
     const visible = isVisible('weather');
     const dataSourceRef = useRef<CustomDataSource | null>(null);
     const weatherRef = useRef<WeatherPoint[]>([]);
@@ -55,6 +57,22 @@ export function WeatherLayer() {
         });
         return () => unregister('weather');
     }, [register, unregister]);
+
+    // Register tooltip builder
+    useEffect(() => {
+        tooltipRegister('weather', (entity: Entity) => {
+            if (!dataSourceRef.current?.entities.contains(entity)) return null;
+            const wp = weatherRef.current.find((w) => `weather-${w.name}` === entity.id);
+            if (!wp) return null;
+            return {
+                title: wp.name,
+                subtitle: `${wp.temperature.toFixed(1)}°C · ${wp.windSpeed.toFixed(1)} m/s`,
+                icon: weatherSymbolToEmoji(wp.symbol),
+                color: '#b0d4ff',
+            };
+        });
+        return () => tooltipUnregister('weather');
+    }, [tooltipRegister, tooltipUnregister]);
 
     useEffect(() => { setLayerLoading('weather', loading); }, [loading, setLayerLoading]);
 

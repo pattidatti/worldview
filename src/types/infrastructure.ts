@@ -43,3 +43,34 @@ export interface InfrastructureData {
     pipelines: Pipeline[];
     fields: Field[];
 }
+
+// Overpass (OSM) types — global data
+export interface OverpassPipeline {
+    id: string;
+    name: string;
+    substance: string;
+    operator: string;
+    positions: [number, number][];  // [lon, lat][]
+}
+
+export interface OverpassPlatform {
+    id: string;
+    name: string;
+    operator: string;
+    lat: number;
+    lon: number;
+}
+
+export interface OverpassWell {
+    id: string;
+    name: string;
+    operator: string;
+    lat: number;
+    lon: number;
+}
+
+export interface OverpassInfrastructureData {
+    pipelines: OverpassPipeline[];
+    platforms: OverpassPlatform[];
+    wells: OverpassWell[];
+}

@@ -10,7 +10,9 @@ import {
 import { useViewer } from '@/context/ViewerContext';
 import { useLayers } from '@/context/LayerContext';
 import { usePopupRegistry } from '@/context/PopupRegistry';
+import { useTooltipRegistry } from '@/context/TooltipRegistry';
 import { usePollingData } from '@/hooks/usePollingData';
+import { configureCluster } from '@/utils/cluster';
 import { fetchTLEData } from '@/services/celestrak';
 import { computePositions } from '@/utils/satellite';
 import { type SatelliteRecord } from '@/types/satellite';
@@ -23,6 +25,7 @@ export function SatelliteLayer() {
     const viewer = useViewer();
     const { isVisible, setLayerLoading, setLayerCount, setLayerError, setLayerLastUpdated } = useLayers();
     const { register, unregister } = usePopupRegistry();
+    const { register: tooltipRegister, unregister: tooltipUnregister } = useTooltipRegistry();
     const visible = isVisible('satellites');
     const dataSourceRef = useRef<CustomDataSource | null>(null);
     const [tleData, setTleData] = useState<SatelliteRecord[]>([]);
@@ -54,6 +57,25 @@ export function SatelliteLayer() {
         return () => unregister('satellites');
     }, [register, unregister]);
 
+    // Register tooltip builder
+    useEffect(() => {
+        tooltipRegister('satellites', (entity: Entity) => {
+            if (!dataSourceRef.current?.entities.contains(entity)) return null;
+            const positions = computePositions(
+                tleRef.current.filter((t) => t.tle1.substring(2, 7).trim() === entity.id)
+            );
+            const sat = positions[0];
+            if (!sat) return null;
+            return {
+                title: sat.name,
+                subtitle: `${sat.alt.toFixed(0)} km · ${sat.velocity.toFixed(1)} km/s`,
+                icon: '🛰',
+                color: '#00ff88',
+            };
+        });
+        return () => tooltipUnregister('satellites');
+    }, [tooltipRegister, tooltipUnregister]);
+
     const { data: freshTle, loading, error, lastUpdated } = usePollingData(
         () => fetchTLEData('stations'),
         TLE_REFRESH_MS,
@@ -71,6 +93,7 @@ export function SatelliteLayer() {
     useEffect(() => {
         if (!viewer || viewer.isDestroyed()) return;
         const ds = new CustomDataSource('satellites');
+        configureCluster(ds, { pixelRange: 50, minimumClusterSize: 5, color: '#00ff88' });
         viewer.dataSources.add(ds);
         dataSourceRef.current = ds;
         return () => {

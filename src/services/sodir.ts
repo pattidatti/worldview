@@ -120,11 +120,50 @@ async function fetchFields(): Promise<Field[]> {
     }
 }
 
+const CACHE_KEY = 'worldview_infrastructure';
+const CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 dager
+
+interface CachedData {
+    timestamp: number;
+    data: InfrastructureData;
+}
+
+function loadCache(): InfrastructureData | null {
+    try {
+        const raw = localStorage.getItem(CACHE_KEY);
+        if (!raw) return null;
+        const cached: CachedData = JSON.parse(raw);
+        if (Date.now() - cached.timestamp > CACHE_MAX_AGE_MS) {
+            localStorage.removeItem(CACHE_KEY);
+            return null;
+        }
+        if (!cached.data.facilities?.length && !cached.data.pipelines?.length && !cached.data.fields?.length) return null;
+        return cached.data;
+    } catch {
+        localStorage.removeItem(CACHE_KEY);
+        return null;
+    }
+}
+
+function saveCache(data: InfrastructureData): void {
+    try {
+        localStorage.setItem(CACHE_KEY, JSON.stringify({ timestamp: Date.now(), data }));
+    } catch { /* localStorage full — ignorerer */ }
+}
+
 export async function fetchInfrastructure(): Promise<InfrastructureData> {
+    const cached = loadCache();
+    if (cached) return cached;
+
     const [facilities, pipelines, fields] = await Promise.all([
         fetchFacilities(),
         fetchPipelines(),
         fetchFields(),
     ]);
-    return { facilities, pipelines, fields };
+    const result = { facilities, pipelines, fields };
+
+    if (facilities.length || pipelines.length || fields.length) {
+        saveCache(result);
+    }
+    return result;
 }

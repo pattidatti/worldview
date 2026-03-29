@@ -12,7 +12,9 @@ import {
 import { useViewer } from '@/context/ViewerContext';
 import { useLayers } from '@/context/LayerContext';
 import { usePopupRegistry } from '@/context/PopupRegistry';
+import { useTooltipRegistry } from '@/context/TooltipRegistry';
 import { useViewport } from '@/hooks/useViewport';
+import { configureCluster } from '@/utils/cluster';
 import { fetchWebcams } from '@/services/webcams';
 import { type Webcam } from '@/types/webcam';
 
@@ -41,6 +43,7 @@ export function WebcamLayer() {
     const viewer = useViewer();
     const { isVisible, setLayerLoading, setLayerCount, setLayerError, setLayerLastUpdated } = useLayers();
     const { register, unregister } = usePopupRegistry();
+    const { register: tooltipRegister, unregister: tooltipUnregister } = useTooltipRegistry();
     const visible = isVisible('webcams');
     const viewport = useViewport(viewer);
     const dataSourceRef = useRef<CustomDataSource | null>(null);
@@ -109,11 +112,28 @@ export function WebcamLayer() {
         return () => unregister('webcams');
     }, [register, unregister]);
 
+    // Register tooltip builder
+    useEffect(() => {
+        tooltipRegister('webcams', (entity: Entity) => {
+            if (!dataSourceRef.current?.entities.contains(entity)) return null;
+            const cam = webcamsRef.current.find((c) => c.id === entity.id);
+            if (!cam) return null;
+            return {
+                title: cam.name,
+                subtitle: [cam.city, cam.country].filter(Boolean).join(', '),
+                icon: '📷',
+                color: '#ff4444',
+            };
+        });
+        return () => tooltipUnregister('webcams');
+    }, [tooltipRegister, tooltipUnregister]);
+
     useEffect(() => { setLayerLoading('webcams', loading); }, [loading, setLayerLoading]);
 
     useEffect(() => {
         if (!viewer || viewer.isDestroyed()) return;
         const ds = new CustomDataSource('webcams');
+        configureCluster(ds, { pixelRange: 35, minimumClusterSize: 2, color: '#ff4444' });
         viewer.dataSources.add(ds);
         dataSourceRef.current = ds;
         return () => {

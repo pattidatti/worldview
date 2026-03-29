@@ -2,9 +2,11 @@ import { useState, useCallback, useRef, useMemo } from 'react';
 import { GlobeViewer } from './components/Globe/GlobeViewer';
 import { LayerProvider, useLayers } from './context/LayerContext';
 import { PopupRegistryProvider } from './context/PopupRegistry';
+import { TooltipRegistryProvider, useTooltipRegistry } from './context/TooltipRegistry';
 import { TopBar } from './components/UI/TopBar';
 import { LayerPanel } from './components/UI/LayerPanel';
 import { InfoPopup } from './components/UI/InfoPopup';
+import { EntityTooltip } from './components/UI/EntityTooltip';
 import { ToastContainer } from './components/UI/Toast';
 import { LayerErrorWatcher } from './components/UI/LayerErrorWatcher';
 import { SatelliteLayer } from './components/Layers/SatelliteLayer/SatelliteLayer';
@@ -15,11 +17,20 @@ import { WebcamLayer } from './components/Layers/WebcamLayer/WebcamLayer';
 import { TrafficLayer } from './components/Layers/TrafficLayer/TrafficLayer';
 import { InfrastructureLayer } from './components/Layers/InfrastructureLayer/InfrastructureLayer';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { useHoverTooltip } from './hooks/useHoverTooltip';
+import { useViewer } from './context/ViewerContext';
 import { LAYER_DEFAULTS } from './types/layers';
 import { type PopupContent } from './types/popup';
 import { type SearchBarHandle } from './components/UI/SearchBar';
 
 const LAYER_IDS = LAYER_DEFAULTS.map((l) => l.id);
+
+function TooltipHandler() {
+    const viewer = useViewer();
+    const { resolve } = useTooltipRegistry();
+    const hover = useHoverTooltip(viewer, resolve);
+    return hover ? <EntityTooltip hover={hover} /> : null;
+}
 
 function AppContent({
     popup,
@@ -59,6 +70,7 @@ function AppContent({
                 <LayerPanel />
                 <LayerErrorWatcher />
                 {popup && <InfoPopup content={popup} onClose={closePopup} />}
+                <TooltipHandler />
             </GlobeViewer>
             <ToastContainer />
         </div>
@@ -73,12 +85,14 @@ export default function App() {
     return (
         <LayerProvider>
             <PopupRegistryProvider>
+            <TooltipRegistryProvider>
                 <AppContent
                     popup={popup}
                     setPopup={setPopup}
                     onSelect={onSelect}
                     searchRef={searchRef}
                 />
+            </TooltipRegistryProvider>
             </PopupRegistryProvider>
         </LayerProvider>
     );

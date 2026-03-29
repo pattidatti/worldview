@@ -12,7 +12,9 @@ import {
 import { useViewer } from '@/context/ViewerContext';
 import { useLayers } from '@/context/LayerContext';
 import { usePopupRegistry } from '@/context/PopupRegistry';
+import { useTooltipRegistry } from '@/context/TooltipRegistry';
 import { useViewport } from '@/hooks/useViewport';
+import { configureCluster } from '@/utils/cluster';
 import { fetchFlights, fetchFlightRoute, getCachedRoute, RateLimitError } from '@/services/opensky';
 import { type Flight } from '@/types/flight';
 
@@ -35,6 +37,7 @@ export function FlightLayer() {
     const viewer = useViewer();
     const { isVisible, setLayerLoading, setLayerCount, setLayerError, setLayerLastUpdated } = useLayers();
     const { register, unregister } = usePopupRegistry();
+    const { register: tooltipRegister, unregister: tooltipUnregister } = useTooltipRegistry();
     const visible = isVisible('flights');
     const viewport = useViewport(viewer);
     const dataSourceRef = useRef<CustomDataSource | null>(null);
@@ -91,6 +94,22 @@ export function FlightLayer() {
         return () => unregister('flights');
     }, [register, unregister, viewer]);
 
+    // Register tooltip builder
+    useEffect(() => {
+        tooltipRegister('flights', (entity: Entity) => {
+            if (!dataSourceRef.current?.entities.contains(entity)) return null;
+            const flight = flightsRef.current.find((f) => f.icao24 === entity.id);
+            if (!flight) return null;
+            return {
+                title: flight.callsign || flight.icao24,
+                subtitle: `${Math.round(flight.altitude * 3.28084).toLocaleString('nb-NO')} ft · ${Math.round(flight.velocity * 1.94384)} kts`,
+                icon: '✈',
+                color: '#ffa500',
+            };
+        });
+        return () => tooltipUnregister('flights');
+    }, [tooltipRegister, tooltipUnregister]);
+
     // Polling with exponential backoff on rate limit
     useEffect(() => {
         if (!visible) return;
@@ -131,6 +150,7 @@ export function FlightLayer() {
     useEffect(() => {
         if (!viewer || viewer.isDestroyed()) return;
         const ds = new CustomDataSource('flights');
+        configureCluster(ds, { pixelRange: 40, minimumClusterSize: 3, color: '#ffa500' });
         viewer.dataSources.add(ds);
         dataSourceRef.current = ds;
         return () => {

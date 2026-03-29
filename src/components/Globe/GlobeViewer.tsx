@@ -1,5 +1,8 @@
 import { useRef, useEffect, useState, type ReactNode } from 'react';
-import { Viewer, Color, Ion, Entity, CameraEventType, Cartesian2, Cartesian3 } from 'cesium';
+import {
+    Viewer, Color, Ion, Entity, CameraEventType, Cartesian2, Cartesian3,
+    ScreenSpaceEventHandler, ScreenSpaceEventType, defined,
+} from 'cesium';
 import { ViewerProvider } from '@/context/ViewerContext';
 import { usePopupRegistry } from '@/context/PopupRegistry';
 import { type PopupContent } from '@/types/popup';
@@ -118,6 +121,27 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
             }
         );
 
+        // Cluster click → zoom in
+        const clickHandler = new ScreenSpaceEventHandler(v.canvas);
+        clickHandler.setInputAction((click: { position: Cartesian2 }) => {
+            const picked = v.scene.pick(click.position);
+            if (!defined(picked)) return;
+            // Regular entity → handled by selectedEntityChanged, skip
+            if (picked.id instanceof Entity) return;
+            // Cluster billboard → zoom toward it
+            const worldPos = v.camera.pickEllipsoid(click.position, scene.globe.ellipsoid);
+            if (!worldPos) return;
+            const carto = scene.globe.ellipsoid.cartesianToCartographic(worldPos);
+            v.camera.flyTo({
+                destination: Cartesian3.fromRadians(
+                    carto.longitude,
+                    carto.latitude,
+                    v.camera.positionCartographic.height * 0.35,
+                ),
+                duration: 0.8,
+            });
+        }, ScreenSpaceEventType.LEFT_CLICK);
+
         // Fly til brukerens posisjon, fallback til Norge
         navigator.geolocation.getCurrentPosition(
             (pos) => {
@@ -143,6 +167,7 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
 
         return () => {
             removeClickHandler();
+            if (!clickHandler.isDestroyed()) clickHandler.destroy();
             if (!v.isDestroyed()) {
                 v.destroy();
             }

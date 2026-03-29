@@ -40,6 +40,7 @@ export class AISStreamConnection {
         }, 10_000);
 
         this.ws.onopen = () => {
+            console.log('[AIS] Connected via', wsUrl);
             if (this.connectTimeout) clearTimeout(this.connectTimeout);
             this.ws?.send(
                 JSON.stringify({
@@ -62,17 +63,27 @@ export class AISStreamConnection {
         this.ws.onmessage = (event) => {
             try {
                 const msg = JSON.parse(event.data);
-                if (msg.MessageType === 'PositionReport') {
-                    const pos = msg.Message?.PositionReport;
-                    const meta = msg.MetaData;
-                    if (!pos || !meta) return;
+                const meta = msg.MetaData;
+                if (!meta) return;
+                const mmsi: number = meta.MMSI;
 
-                    const mmsi = meta.MMSI;
+                if (msg.MessageType === 'PositionReport' || msg.MessageType === 'StandardClassBPositionReport') {
+                    const pos = msg.Message?.[msg.MessageType];
+                    if (!pos) return;
+
+                    const existing = this.ships.get(mmsi);
                     this.ships.set(mmsi, {
+                        // Preserve static data if we already have it
+                        callSign: existing?.callSign ?? '',
+                        imo: existing?.imo ?? 0,
+                        shipType: existing?.shipType ?? 0,
+                        length: existing?.length ?? 0,
+                        width: existing?.width ?? 0,
+                        draught: existing?.draught ?? 0,
+                        destination: existing?.destination ?? '',
+                        // Dynamic data from position report
                         mmsi,
                         name: (meta.ShipName ?? '').trim(),
-                        callSign: (meta.CallSign ?? '').trim(),
-                        imo: meta.IMO ?? 0,
                         lat: pos.Latitude,
                         lon: pos.Longitude,
                         speed: pos.Sog ?? 0,
@@ -80,12 +91,40 @@ export class AISStreamConnection {
                         heading: pos.TrueHeading ?? pos.Cog ?? 0,
                         rateOfTurn: pos.RateOfTurn ?? 0,
                         navStatus: pos.NavigationalStatus ?? 15,
-                        shipType: meta.ShipType ?? 0,
-                        length: meta.Length ?? 0,
-                        width: meta.Width ?? 0,
-                        draught: meta.Draught ?? 0,
-                        destination: (pos.Destination ?? '').trim(),
                     });
+                } else if (msg.MessageType === 'ShipStaticData') {
+                    const sd = msg.Message?.ShipStaticData;
+                    if (!sd) return;
+
+                    const dim = sd.Dimension;
+                    const existing = this.ships.get(mmsi);
+                    if (existing) {
+                        // Merge static data into existing ship
+                        existing.shipType = sd.Type ?? existing.shipType;
+                        existing.callSign = (sd.CallSign ?? '').trim();
+                        existing.imo = sd.ImoNumber ?? 0;
+                        existing.length = dim ? dim.A + dim.B : 0;
+                        existing.width = dim ? dim.C + dim.D : 0;
+                        existing.draught = sd.MaximumStaticDraught ?? 0;
+                        existing.destination = (sd.Destination ?? '').trim();
+                    } else {
+                        // Cache static data for when position report arrives
+                        this.ships.set(mmsi, {
+                            mmsi,
+                            name: (sd.Name ?? meta.ShipName ?? '').trim(),
+                            callSign: (sd.CallSign ?? '').trim(),
+                            imo: sd.ImoNumber ?? 0,
+                            lat: meta.latitude ?? 0,
+                            lon: meta.longitude ?? 0,
+                            speed: 0, course: 0, heading: 0,
+                            rateOfTurn: 0, navStatus: 15,
+                            shipType: sd.Type ?? 0,
+                            length: dim ? dim.A + dim.B : 0,
+                            width: dim ? dim.C + dim.D : 0,
+                            draught: sd.MaximumStaticDraught ?? 0,
+                            destination: (sd.Destination ?? '').trim(),
+                        });
+                    }
                 }
             } catch {
                 // Skip malformed messages

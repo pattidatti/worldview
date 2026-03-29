@@ -9,6 +9,7 @@ import {
 import { useViewer } from '@/context/ViewerContext';
 import { useLayers } from '@/context/LayerContext';
 import { usePopupRegistry } from '@/context/PopupRegistry';
+import { useTooltipRegistry } from '@/context/TooltipRegistry';
 import { useViewport } from '@/hooks/useViewport';
 import { fetchTrafficEvents } from '@/services/tomtom-traffic';
 import { type TrafficEvent } from '@/types/traffic';
@@ -24,6 +25,7 @@ export function TrafficLayer() {
     const viewer = useViewer();
     const { isVisible, setLayerLoading, setLayerCount, setLayerError, setLayerLastUpdated } = useLayers();
     const { register, unregister } = usePopupRegistry();
+    const { register: tooltipRegister, unregister: tooltipUnregister } = useTooltipRegistry();
     const visible = isVisible('traffic');
     const viewport = useViewport(viewer);
     const dataSourceRef = useRef<CustomDataSource | null>(null);
@@ -95,6 +97,23 @@ export function TrafficLayer() {
         });
         return () => unregister('traffic');
     }, [register, unregister]);
+
+    // Register tooltip builder
+    useEffect(() => {
+        tooltipRegister('traffic', (entity: Entity) => {
+            if (!dataSourceRef.current?.entities.contains(entity)) return null;
+            const event = eventsRef.current.find((e) => e.id === entity.id);
+            if (!event) return null;
+            const severityLabel = { low: 'Lav', medium: 'Middels', high: 'Høy' };
+            return {
+                title: event.type,
+                subtitle: `${severityLabel[event.severity]}${event.roadNumber ? ` · ${event.roadNumber}` : ''}`,
+                icon: event.severity === 'high' ? '🚨' : event.severity === 'medium' ? '⚠️' : '🚗',
+                color: event.severity === 'high' ? '#ff3333' : event.severity === 'medium' ? '#ffcc00' : '#00cc44',
+            };
+        });
+        return () => tooltipUnregister('traffic');
+    }, [tooltipRegister, tooltipUnregister]);
 
     useEffect(() => { setLayerLoading('traffic', loading); }, [loading, setLayerLoading]);
 

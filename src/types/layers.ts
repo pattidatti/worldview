@@ -28,5 +28,5 @@ export const LAYER_DEFAULTS: LayerConfig[] = [
     { id: 'weather', name: 'Vær', color: 'var(--color-weather)', visible: true, loading: false, count: 0, error: null, lastUpdated: null },
     { id: 'webcams', name: 'Webkameraer', color: 'var(--color-webcams)', visible: true, loading: false, count: 0, error: null, lastUpdated: null },
     { id: 'traffic', name: 'Veitrafikk', color: 'var(--color-traffic-green)', visible: true, loading: false, count: 0, error: null, lastUpdated: null },
-    { id: 'infrastructure', name: 'Infrastruktur', color: 'var(--color-infrastructure)', visible: false, loading: false, count: 0, error: null, lastUpdated: null },
+    { id: 'infrastructure', name: 'Infrastruktur', color: 'var(--color-infrastructure)', visible: true, loading: false, count: 0, error: null, lastUpdated: null },
 ];

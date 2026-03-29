@@ -11,7 +11,9 @@ import {
 import { useViewer } from '@/context/ViewerContext';
 import { useLayers } from '@/context/LayerContext';
 import { usePopupRegistry } from '@/context/PopupRegistry';
+import { useTooltipRegistry } from '@/context/TooltipRegistry';
 import { useViewport } from '@/hooks/useViewport';
+import { configureCluster } from '@/utils/cluster';
 import { AISStreamConnection } from '@/services/aisstream';
 import { type Ship } from '@/types/ship';
 import { getShipTypeName, getNavStatusText, getFlagState, createShipIcon } from '@/utils/ship-utils';
@@ -23,6 +25,7 @@ export function ShipLayer() {
     const viewer = useViewer();
     const { isVisible, setLayerLoading, setLayerCount, setLayerError, setLayerLastUpdated } = useLayers();
     const { register, unregister } = usePopupRegistry();
+    const { register: tooltipRegister, unregister: tooltipUnregister } = useTooltipRegistry();
     const visible = isVisible('ships');
     const viewport = useViewport(viewer);
     const viewportRef = useRef(viewport);
@@ -68,10 +71,27 @@ export function ShipLayer() {
         return () => unregister('ships');
     }, [register, unregister]);
 
+    // Register tooltip builder
+    useEffect(() => {
+        tooltipRegister('ships', (entity: Entity) => {
+            if (!dataSourceRef.current?.entities.contains(entity)) return null;
+            const ship = shipsRef.current.get(Number(entity.id));
+            if (!ship) return null;
+            return {
+                title: ship.name || `MMSI ${ship.mmsi}`,
+                subtitle: `${getShipTypeName(ship.shipType)} · ${ship.speed.toFixed(1)} kn`,
+                icon: '⚓',
+                color: '#00d4ff',
+            };
+        });
+        return () => tooltipUnregister('ships');
+    }, [tooltipRegister, tooltipUnregister]);
+
     // Create data source
     useEffect(() => {
         if (!viewer || viewer.isDestroyed()) return;
         const ds = new CustomDataSource('ships');
+        configureCluster(ds, { pixelRange: 45, minimumClusterSize: 3, color: '#00d4ff' });
         viewer.dataSources.add(ds);
         dataSourceRef.current = ds;
         return () => {

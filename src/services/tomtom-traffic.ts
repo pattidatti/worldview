@@ -3,6 +3,8 @@ import { type Viewport } from '@/hooks/useViewport';
 
 const API_KEY = import.meta.env.VITE_TOMTOM_API_KEY || '';
 const BASE_URL = 'https://api.tomtom.com/traffic/services/5/incidentDetails';
+const FIELDS = '{incidents{type,geometry{type,coordinates},properties{id,iconCategory,magnitudeOfDelay,events{description},startTime,endTime,from,to,roadNumbers,delay,length}}}';
+const MAX_AREA_KM2 = 10_000;
 
 const CATEGORY_LABELS: Record<number, string> = {
     0: 'Ukjent',
@@ -20,36 +22,53 @@ const CATEGORY_LABELS: Record<number, string> = {
     14: 'Havarert kjøretøy',
 };
 
-interface TomTomPoi {
-    id: string;
-    p: { x: number; y: number };
-    ic: number;    // iconCategory
-    ty: number;    // 0=cluster, 1=incident
-    d?: string;    // description
-    c?: string;    // cause
-    f?: string;    // from
-    t?: string;    // to
-    dl?: number;   // delay seconds
-    l?: number;    // length meters
-    r?: string;    // road number
-    sd?: string;   // start date
-    ed?: string;   // end date
+interface TomTomIncident {
+    type: string;
+    geometry: {
+        type: 'Point' | 'LineString';
+        coordinates: number[] | number[][];
+    };
+    properties: {
+        id: string;
+        iconCategory: number;
+        magnitudeOfDelay: number;
+        events?: { description: string }[];
+        startTime?: string;
+        endTime?: string | null;
+        from?: string;
+        to?: string;
+        roadNumbers?: string[];
+        delay?: number | null;
+        length?: number;
+    };
 }
 
-function mapSeverity(iconCategory: number, delay?: number): 'low' | 'medium' | 'high' {
-    // Road closures and accidents are high severity
+function mapSeverity(iconCategory: number, delay?: number | null): 'low' | 'medium' | 'high' {
     if (iconCategory === 8 || iconCategory === 1) return 'high';
-    // Significant delay (> 10 min) or dangerous categories
     if ((delay && delay > 600) || iconCategory === 3 || iconCategory === 5) return 'high';
-    // Moderate delay (> 2 min) or road works / lane closures
     if ((delay && delay > 120) || iconCategory === 9 || iconCategory === 7 || iconCategory === 6) return 'medium';
     return 'low';
 }
 
-function estimateZoom(viewport: Viewport): number {
-    const latSpan = Math.abs(viewport.north - viewport.south);
-    const zoom = Math.round(Math.log2(360 / latSpan));
-    return Math.max(5, Math.min(zoom, 18));
+function viewportAreaKm2(vp: Viewport): number {
+    const midLat = (vp.north + vp.south) / 2;
+    const kmPerDegLat = 111.0;
+    const kmPerDegLon = 111.0 * Math.cos((midLat * Math.PI) / 180);
+    const height = Math.abs(vp.north - vp.south) * kmPerDegLat;
+    const width = Math.abs(vp.east - vp.west) * kmPerDegLon;
+    return width * height;
+}
+
+function extractCoord(geometry: TomTomIncident['geometry']): [number, number] | null {
+    if (geometry.type === 'Point') {
+        const c = geometry.coordinates as number[];
+        return c.length >= 2 ? [c[0], c[1]] : null;
+    }
+    // LineString — use midpoint for better placement
+    const coords = geometry.coordinates as number[][];
+    if (!coords.length) return null;
+    const mid = coords[Math.floor(coords.length / 2)];
+    return mid.length >= 2 ? [mid[0], mid[1]] : null;
 }
 
 export async function fetchTrafficEvents(
@@ -58,19 +77,14 @@ export async function fetchTrafficEvents(
 ): Promise<TrafficEvent[]> {
     if (!API_KEY || !viewport) return [];
 
-    // Skip fetch when zoomed out too far — incidents aren't useful at that scale
-    const latSpan = Math.abs(viewport.north - viewport.south);
-    if (latSpan > 30) return [];
+    if (viewportAreaKm2(viewport) > MAX_AREA_KM2) return [];
 
-    const zoom = estimateZoom(viewport);
-    const bbox = `${viewport.south},${viewport.west},${viewport.north},${viewport.east}`;
-
-    const url = `${BASE_URL}/s3/${bbox}/${zoom}/-1?key=${API_KEY}&language=nb-NO&categoryFilter=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14&timeValidityFilter=present&originalPosition=true`;
+    const bbox = `${viewport.west},${viewport.south},${viewport.east},${viewport.north}`;
+    const url = `${BASE_URL}?key=${API_KEY}&bbox=${bbox}&fields=${encodeURIComponent(FIELDS)}&language=nb-NO&timeValidityFilter=present`;
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 8000);
 
-    // Chain caller signal to our timeout controller
     if (signal) {
         signal.addEventListener('abort', () => controller.abort(), { once: true });
     }
@@ -87,28 +101,34 @@ export async function fetchTrafficEvents(
         }
 
         const data = await res.json();
-        const pois: TomTomPoi[] = data?.tm?.poi ?? [];
+        const incidents: TomTomIncident[] = data?.incidents ?? [];
         const events: TrafficEvent[] = [];
 
-        for (const poi of pois) {
-            // Skip clusters, only show individual incidents
-            if (poi.ty === 0) continue;
-            if (!poi.p?.x || !poi.p?.y) continue;
+        for (const inc of incidents) {
+            const coord = extractCoord(inc.geometry);
+            if (!coord) continue;
 
-            const description = poi.d || poi.c || CATEGORY_LABELS[poi.ic] || 'Ukjent hendelse';
-            const type = CATEGORY_LABELS[poi.ic] ?? 'Ukjent';
+            const props = inc.properties;
+            const description = props.events?.[0]?.description
+                || (props.from && props.to ? `${props.from} → ${props.to}` : '')
+                || CATEGORY_LABELS[props.iconCategory]
+                || 'Ukjent hendelse';
+
+            const roadNumber = props.roadNumbers?.length
+                ? props.roadNumbers.join(', ')
+                : undefined;
 
             events.push({
-                id: poi.id,
-                type,
+                id: props.id,
+                type: CATEGORY_LABELS[props.iconCategory] ?? 'Ukjent',
                 description,
-                lat: poi.p.y,
-                lon: poi.p.x,
-                severity: mapSeverity(poi.ic, poi.dl),
-                startTime: poi.sd ?? '',
-                endTime: poi.ed,
-                roadNumber: poi.r,
-                category: poi.ic,
+                lat: coord[1],
+                lon: coord[0],
+                severity: mapSeverity(props.iconCategory, props.delay),
+                startTime: props.startTime ?? '',
+                endTime: props.endTime ?? undefined,
+                roadNumber,
+                category: props.iconCategory,
             });
         }
 
