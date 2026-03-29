@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { GlobeViewer } from './components/Globe/GlobeViewer';
 import { LayerProvider } from './context/LayerContext';
+import { PopupRegistryProvider } from './context/PopupRegistry';
 import { TopBar } from './components/UI/TopBar';
 import { LayerPanel } from './components/UI/LayerPanel';
 import { InfoPopup } from './components/UI/InfoPopup';
@@ -18,19 +19,21 @@ export default function App() {
 
     return (
         <LayerProvider>
-            <div className="h-full w-full relative">
-                <GlobeViewer>
-                    <SatelliteLayer onSelect={onSelect} />
-                    <FlightLayer onSelect={onSelect} />
-                    <ShipLayer onSelect={onSelect} />
-                    <WeatherLayer onSelect={onSelect} />
-                    <WebcamLayer onSelect={onSelect} />
-                    <TrafficLayer onSelect={onSelect} />
-                </GlobeViewer>
-                <TopBar />
-                <LayerPanel />
-                {popup && <InfoPopup content={popup} onClose={() => setPopup(null)} />}
-            </div>
+            <PopupRegistryProvider>
+                <div className="h-full w-full relative">
+                    <GlobeViewer onSelect={onSelect}>
+                        <SatelliteLayer />
+                        <FlightLayer />
+                        <ShipLayer />
+                        <WeatherLayer />
+                        <WebcamLayer />
+                        <TrafficLayer />
+                    </GlobeViewer>
+                    <TopBar />
+                    <LayerPanel />
+                    {popup && <InfoPopup content={popup} onClose={() => setPopup(null)} />}
+                </div>
+            </PopupRegistryProvider>
         </LayerProvider>
     );
 }

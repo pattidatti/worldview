@@ -8,94 +8,32 @@ import {
 } from 'cesium';
 import { useViewer } from '@/context/ViewerContext';
 import { useLayers } from '@/context/LayerContext';
+import { usePopupRegistry } from '@/context/PopupRegistry';
 import { usePollingData } from '@/hooks/usePollingData';
 import { fetchWebcams } from '@/services/vegvesen-webcam';
-import { type PopupContent } from '@/types/popup';
+import { type Webcam } from '@/types/webcam';
 
 const WEBCAM_COLOR = Color.fromCssColorString('#ff4444');
-const POLL_MS = 5 * 60 * 1000; // 5 min
+const POLL_MS = 5 * 60 * 1000;
 
-interface WebcamLayerProps {
-    onSelect: (popup: PopupContent | null) => void;
-}
-
-export function WebcamLayer({ onSelect }: WebcamLayerProps) {
+export function WebcamLayer() {
     const viewer = useViewer();
     const { isVisible, setLayerLoading, setLayerCount } = useLayers();
+    const { register, unregister } = usePopupRegistry();
     const visible = isVisible('webcams');
     const dataSourceRef = useRef<CustomDataSource | null>(null);
+    const webcamsRef = useRef<Webcam[]>([]);
 
     const { data: webcams, loading } = usePollingData(fetchWebcams, POLL_MS, visible);
+    if (webcams) webcamsRef.current = webcams;
 
+    // Register popup builder
     useEffect(() => {
-        setLayerLoading('webcams', loading);
-    }, [loading, setLayerLoading]);
-
-    // Create/remove data source
-    useEffect(() => {
-        if (!viewer || viewer.isDestroyed()) return;
-
-        const ds = new CustomDataSource('webcams');
-        viewer.dataSources.add(ds);
-        dataSourceRef.current = ds;
-
-        return () => {
-            if (!viewer.isDestroyed()) {
-                viewer.dataSources.remove(ds, true);
-            }
-            dataSourceRef.current = null;
-        };
-    }, [viewer]);
-
-    // Toggle visibility
-    useEffect(() => {
-        if (dataSourceRef.current) {
-            dataSourceRef.current.show = visible;
-        }
-    }, [visible]);
-
-    // Update entities
-    const updateEntities = useCallback(() => {
-        const ds = dataSourceRef.current;
-        if (!ds || !webcams) return;
-
-        setLayerCount('webcams', webcams.length);
-        ds.entities.removeAll();
-
-        for (const cam of webcams) {
-            ds.entities.add(
-                new Entity({
-                    id: cam.id,
-                    name: cam.name,
-                    position: Cartesian3.fromDegrees(cam.lon, cam.lat, 0),
-                    point: new PointGraphics({
-                        pixelSize: 6,
-                        color: WEBCAM_COLOR,
-                        outlineColor: Color.fromCssColorString('#ff444466'),
-                        outlineWidth: 2,
-                    }),
-                })
-            );
-        }
-    }, [webcams, setLayerCount]);
-
-    useEffect(() => {
-        updateEntities();
-    }, [updateEntities]);
-
-    // Handle clicks
-    useEffect(() => {
-        if (!viewer || viewer.isDestroyed() || !webcams) return;
-
-        const handler = viewer.selectedEntityChanged.addEventListener((entity: Entity | undefined) => {
-            if (!entity || !dataSourceRef.current?.entities.contains(entity)) {
-                return;
-            }
-
-            const cam = webcams.find((c) => c.id === entity.id);
-            if (!cam) return;
-
-            onSelect({
+        register('webcams', (entity: Entity) => {
+            if (!dataSourceRef.current?.entities.contains(entity)) return null;
+            const cam = webcamsRef.current.find((c) => c.id === entity.id);
+            if (!cam) return null;
+            return {
                 title: cam.name,
                 icon: '📷',
                 color: '#ff4444',
@@ -105,13 +43,46 @@ export function WebcamLayer({ onSelect }: WebcamLayerProps) {
                     { label: 'Lengdegrad', value: cam.lon.toFixed(4), unit: '°' },
                     { label: 'Bilde', value: '📸 Se kamera' },
                 ],
-            });
+            };
         });
+        return () => unregister('webcams');
+    }, [register, unregister]);
 
+    useEffect(() => { setLayerLoading('webcams', loading); }, [loading, setLayerLoading]);
+
+    useEffect(() => {
+        if (!viewer || viewer.isDestroyed()) return;
+        const ds = new CustomDataSource('webcams');
+        viewer.dataSources.add(ds);
+        dataSourceRef.current = ds;
         return () => {
-            handler();
+            if (!viewer.isDestroyed()) viewer.dataSources.remove(ds, true);
+            dataSourceRef.current = null;
         };
-    }, [viewer, webcams, onSelect]);
+    }, [viewer]);
+
+    useEffect(() => {
+        if (dataSourceRef.current) dataSourceRef.current.show = visible;
+    }, [visible]);
+
+    const updateEntities = useCallback(() => {
+        const ds = dataSourceRef.current;
+        if (!ds || !webcams) return;
+        setLayerCount('webcams', webcams.length);
+        ds.entities.removeAll();
+        for (const cam of webcams) {
+            ds.entities.add(new Entity({
+                id: cam.id, name: cam.name,
+                position: Cartesian3.fromDegrees(cam.lon, cam.lat, 0),
+                point: new PointGraphics({
+                    pixelSize: 6, color: WEBCAM_COLOR,
+                    outlineColor: Color.fromCssColorString('#ff444466'), outlineWidth: 2,
+                }),
+            }));
+        }
+    }, [webcams, setLayerCount]);
+
+    useEffect(() => { updateEntities(); }, [updateEntities]);
 
     return null;
 }
