@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, type ReactNode } from 'react';
-import { Viewer, Color, Ion, Entity } from 'cesium';
+import { Viewer, Color, Ion, Entity, CameraEventType, Cartesian2, Cartesian3 } from 'cesium';
 import { ViewerProvider } from '@/context/ViewerContext';
 import { usePopupRegistry } from '@/context/PopupRegistry';
 import { type PopupContent } from '@/types/popup';
@@ -36,6 +36,8 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
             navigationHelpButton: false,
             fullscreenButton: false,
             infoBox: false,
+            requestRenderMode: true,
+            maximumRenderTimeChange: 10,
         });
 
         const { scene } = v;
@@ -52,16 +54,60 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
         if (scene.sun) scene.sun.show = false;
         if (scene.moon) scene.moon.show = false;
 
-        // Zoom controls
+        // Zoom — egen handler med zoom-mot-markør og momentum
         const controller = scene.screenSpaceCameraController;
         controller.enableZoom = true;
-        controller.minimumZoomDistance = 100;
+        controller.minimumZoomDistance = 50;
         controller.maximumZoomDistance = 50_000_000;
+        controller.zoomEventTypes = [
+            CameraEventType.RIGHT_DRAG,
+            CameraEventType.PINCH,
+        ];
 
-        const canvas = v.canvas;
-        canvas.addEventListener('wheel', (e) => {
+        let pendingDelta = 0;
+        let zoomVelocity = 0;
+        let cursorWorldPos: Cartesian3 | undefined;
+        const pickScratch = new Cartesian2();
+        const dirScratch = new Cartesian3();
+
+        v.canvas.addEventListener('wheel', (e) => {
             e.preventDefault();
+            pendingDelta += -e.deltaY;
+
+            pickScratch.x = e.offsetX;
+            pickScratch.y = e.offsetY;
+            const picked = v.camera.pickEllipsoid(pickScratch, scene.globe.ellipsoid);
+            if (picked) cursorWorldPos = Cartesian3.clone(picked);
+
+            scene.requestRender();
         }, { passive: false });
+
+        scene.preRender.addEventListener(() => {
+            if (pendingDelta !== 0) {
+                zoomVelocity += pendingDelta * 0.001;
+                zoomVelocity = Math.max(-0.4, Math.min(0.4, zoomVelocity));
+                pendingDelta = 0;
+            }
+            if (Math.abs(zoomVelocity) < 0.0002) { zoomVelocity = 0; return; }
+
+            const height = v.camera.positionCartographic.height;
+            if ((height <= 60 && zoomVelocity > 0) || (height >= 48_000_000 && zoomVelocity < 0)) {
+                zoomVelocity = 0;
+                return;
+            }
+
+            const amount = height * zoomVelocity;
+            if (cursorWorldPos) {
+                Cartesian3.subtract(cursorWorldPos, v.camera.position, dirScratch);
+                Cartesian3.normalize(dirScratch, dirScratch);
+                v.camera.move(dirScratch, amount);
+            } else {
+                v.camera.move(v.camera.direction, amount);
+            }
+
+            zoomVelocity *= 0.85;
+            scene.requestRender();
+        });
 
         // Single centralized click handler
         const removeClickHandler = v.selectedEntityChanged.addEventListener(

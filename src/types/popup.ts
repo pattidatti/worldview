@@ -9,4 +9,7 @@ export interface PopupContent {
     icon?: string;
     color?: string;
     fields: PopupField[];
+    imageUrl?: string;
+    linkUrl?: string;
+    linkLabel?: string;
 }

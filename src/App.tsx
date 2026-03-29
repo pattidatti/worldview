@@ -28,10 +28,10 @@ export default function App() {
                         <WeatherLayer />
                         <WebcamLayer />
                         <TrafficLayer />
+                        <TopBar />
+                        <LayerPanel />
+                        {popup && <InfoPopup content={popup} onClose={() => setPopup(null)} />}
                     </GlobeViewer>
-                    <TopBar />
-                    <LayerPanel />
-                    {popup && <InfoPopup content={popup} onClose={() => setPopup(null)} />}
                 </div>
             </PopupRegistryProvider>
         </LayerProvider>

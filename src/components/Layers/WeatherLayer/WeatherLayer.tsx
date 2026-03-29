@@ -101,7 +101,8 @@ export function WeatherLayer() {
             }
         }
         for (const [id] of existing) { if (!seen.has(id)) ds.entities.removeById(id); }
-    }, [weather, setLayerCount]);
+        if (viewer && !viewer.isDestroyed()) viewer.scene.requestRender();
+    }, [weather, viewer, setLayerCount]);
 
     useEffect(() => { updateEntities(); }, [updateEntities]);
 

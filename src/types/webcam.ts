@@ -4,5 +4,7 @@ export interface Webcam {
     lat: number;
     lon: number;
     imageUrl: string;
-    county: string;
+    thumbnailUrl: string;
+    country: string;
+    city: string;
 }

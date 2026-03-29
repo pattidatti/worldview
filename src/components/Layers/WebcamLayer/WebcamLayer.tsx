@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import {
     CustomDataSource,
     Entity,
@@ -9,22 +9,55 @@ import {
 import { useViewer } from '@/context/ViewerContext';
 import { useLayers } from '@/context/LayerContext';
 import { usePopupRegistry } from '@/context/PopupRegistry';
-import { usePollingData } from '@/hooks/usePollingData';
-import { fetchWebcams } from '@/services/vegvesen-webcam';
+import { useViewport } from '@/hooks/useViewport';
+import { fetchWebcams } from '@/services/webcams';
 import { type Webcam } from '@/types/webcam';
 
 const WEBCAM_COLOR = Color.fromCssColorString('#ff4444');
-const POLL_MS = 5 * 60 * 1000;
+const POLL_MS = 10 * 60 * 1000; // 10 min (bilde-URLer utløper etter 10 min i free tier)
 
 export function WebcamLayer() {
     const viewer = useViewer();
     const { isVisible, setLayerLoading, setLayerCount } = useLayers();
     const { register, unregister } = usePopupRegistry();
     const visible = isVisible('webcams');
+    const viewport = useViewport(viewer);
     const dataSourceRef = useRef<CustomDataSource | null>(null);
     const webcamsRef = useRef<Webcam[]>([]);
 
-    const { data: webcams, loading } = usePollingData(fetchWebcams, POLL_MS, visible);
+    const [webcams, setWebcams] = useState<Webcam[] | null>(null);
+    const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+        if (!visible || !viewport) return;
+
+        const controller = new AbortController();
+        let cancelled = false;
+
+        const doFetch = async () => {
+            setLoading(true);
+            try {
+                const result = await fetchWebcams(viewport, controller.signal);
+                if (!cancelled) setWebcams(result);
+            } catch (err) {
+                if (!cancelled && !(err instanceof DOMException && err.name === 'AbortError')) {
+                    console.error('[WebcamLayer] fetch error:', err);
+                }
+            } finally {
+                if (!cancelled) setLoading(false);
+            }
+        };
+
+        doFetch();
+        const intervalId = setInterval(doFetch, POLL_MS);
+
+        return () => {
+            cancelled = true;
+            controller.abort();
+            clearInterval(intervalId);
+        };
+    }, [visible, viewport]);
+
     if (webcams) webcamsRef.current = webcams;
 
     // Register popup builder
@@ -37,11 +70,11 @@ export function WebcamLayer() {
                 title: cam.name,
                 icon: '📷',
                 color: '#ff4444',
+                imageUrl: cam.imageUrl,
                 fields: [
-                    ...(cam.county ? [{ label: 'Fylke', value: cam.county }] : []),
-                    { label: 'Breddegrad', value: cam.lat.toFixed(4), unit: '°' },
-                    { label: 'Lengdegrad', value: cam.lon.toFixed(4), unit: '°' },
-                    { label: 'Bilde', value: '📸 Se kamera' },
+                    ...(cam.city ? [{ label: 'Sted', value: cam.city }] : []),
+                    ...(cam.country ? [{ label: 'Land', value: cam.country }] : []),
+                    { label: 'Posisjon', value: `${cam.lat.toFixed(2)}°N, ${cam.lon.toFixed(2)}°E` },
                 ],
             };
         });
@@ -80,7 +113,8 @@ export function WebcamLayer() {
                 }),
             }));
         }
-    }, [webcams, setLayerCount]);
+        if (viewer && !viewer.isDestroyed()) viewer.scene.requestRender();
+    }, [webcams, viewer, setLayerCount]);
 
     useEffect(() => { updateEntities(); }, [updateEntities]);
 

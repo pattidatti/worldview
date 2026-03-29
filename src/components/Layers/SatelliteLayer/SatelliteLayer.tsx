@@ -110,7 +110,8 @@ export function SatelliteLayer() {
         for (const [id] of existing) {
             if (!seen.has(id)) ds.entities.removeById(id);
         }
-    }, [tleData, setLayerCount]);
+        if (viewer && !viewer.isDestroyed()) viewer.scene.requestRender();
+    }, [tleData, viewer, setLayerCount]);
 
     useEffect(() => {
         if (!visible || !tleData.length) return;

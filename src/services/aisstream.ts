@@ -23,6 +23,7 @@ export class AISStreamConnection {
         this.ws = new WebSocket('wss://stream.aisstream.io/v0/stream');
 
         this.ws.onopen = () => {
+            console.log('[AIS] WebSocket connected, sending bounding box');
             this.ws?.send(
                 JSON.stringify({
                     APIKey: this.apiKey,
@@ -39,6 +40,7 @@ export class AISStreamConnection {
         this.ws.onmessage = (event) => {
             try {
                 const msg = JSON.parse(event.data);
+                console.log('[AIS] message:', msg.MessageType, msg.Message ? 'has data' : 'no data');
                 if (msg.MessageType === 'PositionReport') {
                     const pos = msg.Message?.PositionReport;
                     const meta = msg.MetaData;
@@ -62,11 +64,12 @@ export class AISStreamConnection {
             }
         };
 
-        this.ws.onerror = () => {
-            // Will reconnect via onclose
+        this.ws.onerror = (e) => {
+            console.error('[AIS] WebSocket error:', e);
         };
 
-        this.ws.onclose = () => {
+        this.ws.onclose = (e) => {
+            console.log('[AIS] WebSocket closed:', e.code, e.reason);
             this.ws = null;
         };
 

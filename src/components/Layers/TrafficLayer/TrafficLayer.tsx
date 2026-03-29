@@ -87,7 +87,8 @@ export function TrafficLayer() {
                 }),
             }));
         }
-    }, [events, setLayerCount]);
+        if (viewer && !viewer.isDestroyed()) viewer.scene.requestRender();
+    }, [events, viewer, setLayerCount]);
 
     useEffect(() => { updateEntities(); }, [updateEntities]);
 

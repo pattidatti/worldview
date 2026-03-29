@@ -75,8 +75,9 @@ export function FlightLayer() {
             setLayerLoading('flights', true);
             try {
                 const data = await fetchFlights(viewportRef.current);
+                console.log('[FlightLayer] fetched', data.length, 'flights');
                 if (!cancelled) setFlights(data.slice(0, MAX_FLIGHTS));
-            } catch { /* retry next poll */ }
+            } catch (err) { console.error('[FlightLayer] fetch error:', err); }
             finally { if (!cancelled) setLayerLoading('flights', false); }
         };
         doFetch();
@@ -131,7 +132,8 @@ export function FlightLayer() {
             }
         }
         for (const [id] of existing) { if (!seen.has(id)) ds.entities.removeById(id); }
-    }, [flights, setLayerCount]);
+        if (viewer && !viewer.isDestroyed()) viewer.scene.requestRender();
+    }, [flights, viewer, setLayerCount]);
 
     useEffect(() => { updateEntities(); }, [updateEntities]);
 

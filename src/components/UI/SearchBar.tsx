@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Cartesian3 } from 'cesium';
+import { Rectangle } from 'cesium';
 import { useViewer } from '@/context/ViewerContext';
 import { geocode, type GeoResult } from '@/services/geocoding';
 
@@ -33,8 +33,11 @@ export function SearchBar() {
     const flyTo = (result: GeoResult) => {
         if (!viewer || viewer.isDestroyed()) return;
 
+        const [south, north, west, east] = result.boundingbox;
+        const rect = Rectangle.fromDegrees(west, south, east, north);
+
         viewer.camera.flyTo({
-            destination: Cartesian3.fromDegrees(result.lon, result.lat, 50000),
+            destination: rect,
             duration: 2,
         });
 

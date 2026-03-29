@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { type PopupContent } from '@/types/popup';
 
 interface InfoPopupProps {
@@ -6,6 +7,9 @@ interface InfoPopupProps {
 }
 
 export function InfoPopup({ content, onClose }: InfoPopupProps) {
+    const [imgError, setImgError] = useState(false);
+    const [imgLoaded, setImgLoaded] = useState(false);
+
     return (
         <div className="absolute top-6 right-6 z-20 w-80">
             <div
@@ -31,6 +35,27 @@ export function InfoPopup({ content, onClose }: InfoPopupProps) {
                     </button>
                 </div>
 
+                {/* Image */}
+                {content.imageUrl && !imgError && (
+                    <div className="relative bg-black/30">
+                        {!imgLoaded && (
+                            <div className="flex items-center justify-center h-40 text-[var(--text-muted)] text-sm animate-pulse">
+                                Laster bilde...
+                            </div>
+                        )}
+                        <a href={content.linkUrl ?? content.imageUrl} target="_blank" rel="noopener noreferrer">
+                            <img
+                                src={content.imageUrl}
+                                alt={content.title}
+                                className={`w-full object-cover cursor-pointer hover:opacity-90 transition-opacity ${imgLoaded ? '' : 'h-0'}`}
+                                style={{ maxHeight: '200px' }}
+                                onLoad={() => setImgLoaded(true)}
+                                onError={() => setImgError(true)}
+                            />
+                        </a>
+                    </div>
+                )}
+
                 {/* Fields */}
                 <div className="px-4 py-3 flex flex-col gap-2">
                     {content.fields.map((field) => (
@@ -49,6 +74,24 @@ export function InfoPopup({ content, onClose }: InfoPopupProps) {
                         </div>
                     ))}
                 </div>
+
+                {/* Link button */}
+                {content.linkUrl && (
+                    <div className="px-4 pb-3">
+                        <a
+                            href={content.linkUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="block w-full text-center py-2 rounded-lg text-sm font-mono transition-colors"
+                            style={{
+                                backgroundColor: `${content.color ?? 'var(--accent-blue)'}20`,
+                                color: content.color ?? 'var(--accent-blue)',
+                            }}
+                        >
+                            {content.linkLabel ?? 'Åpne'}
+                        </a>
+                    </div>
+                )}
             </div>
         </div>
     );

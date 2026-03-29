@@ -21,12 +21,21 @@ No test framework is configured.
 
 ## Environment Variables
 
-Copy `.env.example` to `.env.local`. Required:
+Copy `.env.example` to `.env`. Required:
 - `VITE_CESIUM_ION_TOKEN` — Cesium Ion access token (globe won't render without it)
 - `VITE_AISSTREAM_API_KEY` — AISStream WebSocket key (ship layer)
+- `VITE_WINDY_WEBCAMS_API_KEY` — Windy Webcams API key (webcam layer)
 - `VITE_API_BASE_URL` — Base URL for Firebase Functions proxy (unused in current layers)
 
 All env vars use Vite's `import.meta.env.VITE_*` convention.
+
+## Critical Gotchas
+
+- **IKKE bruk resium** — har CJS `require("react")` bug med Vite. Vi bruker CesiumJS direkte.
+- **satellite.js: bruk v5** — v7 har WASM/top-level-await som krasjer Vite build.
+- **Vegvesenet DATEX APIer er lukket** — datex.vegvesen.no krever registrering. Trafikk-laget returnerer tom liste gracefully.
+- **StrictMode er fjernet** — dobbeltmonterer Cesium Viewer og forårsaker krasj.
+- **ALDRI legg til `selectedEntityChanged` listeners i lag** — bruk PopupRegistry-mønsteret (se under). Listener-stacking var hovedårsak til krasj.
 
 ## Architecture
 
@@ -41,7 +50,8 @@ Each data layer (`src/components/Layers/*/`) is a React component that **returns
 1. Fetches data via a **service** (`src/services/`) using `usePollingData` hook
 2. Reports loading/count state to **LayerContext** (`src/context/LayerContext.tsx`)
 3. Creates a Cesium `CustomDataSource`, syncs entities by ID (add/update/remove)
-4. Handles entity clicks via `onSelect(PopupContent)` callback prop
+4. Registers a popup builder via **PopupRegistry** (NOT via `selectedEntityChanged` listener)
+5. Calls `viewer.scene.requestRender()` after entity updates (requestRenderMode is on)
 
 To add a new layer: create a type in `src/types/`, a service in `src/services/`, a layer component following the existing pattern, register the layer ID in `src/types/layers.ts`, add default config in `LayerContext`, and mount in `App.tsx`.
 
@@ -52,10 +62,11 @@ All layers use the same pattern for updating Cesium entities without recreating 
 - Iterate new data: update position via `ConstantPositionProperty.setValue()` for existing, `ds.entities.add()` for new
 - Remove entities not seen in current data batch
 
-### Two React contexts
+### Three React contexts
 
 - **ViewerContext** (`src/context/ViewerContext.tsx`) — provides the Cesium `Viewer` instance after initialization
 - **LayerContext** (`src/context/LayerContext.tsx`) — manages layer visibility, loading, and count state; provides `toggleLayer()`, `isVisible()`, `setLayerLoading()`, `setLayerCount()`
+- **PopupRegistry** (`src/context/PopupRegistry.tsx`) — centralized entity click handling. Each layer calls `register(dataSourceName, builderFn)` with a function that takes an Entity and returns PopupContent or null. GlobeViewer has ONE `selectedEntityChanged` listener that calls `resolve(entity)`. Builders use refs for data to avoid re-render dependencies.
 
 ### Key hooks
 
@@ -69,6 +80,7 @@ Services are pure async functions (except `AISStreamConnection` which is a state
 - `opensky.ts` — viewport-aware REST polling (15s)
 - `aisstream.ts` — WebSocket connection class, batches updates every 5s
 - `metno.ts` — fixed set of 18 Norwegian cities (no viewport filtering)
+- `webcams.ts` — Windy Webcams API, paginated (4x50=200 per viewport), returns direct JPEG URLs
 - `geocoding.ts` — OSM Nominatim search for SearchBar fly-to
 
 ### UI layering (z-index)

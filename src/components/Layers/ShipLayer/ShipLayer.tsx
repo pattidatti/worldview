@@ -68,9 +68,14 @@ export function ShipLayer() {
     }, [visible]);
 
     useEffect(() => {
-        if (!visible || !API_KEY || !viewport) return;
+        if (!visible || !API_KEY || !viewport) {
+            console.log('[ShipLayer] skipping:', { visible, hasKey: !!API_KEY, hasViewport: !!viewport });
+            return;
+        }
+        console.log('[ShipLayer] connecting WebSocket with viewport:', viewport);
         setLayerLoading('ships', true);
         const conn = new AISStreamConnection(API_KEY, viewport, (updatedShips) => {
+            console.log('[ShipLayer] received', updatedShips.size, 'ships');
             // Cap at MAX_SHIPS
             if (updatedShips.size > MAX_SHIPS) {
                 const entries = [...updatedShips.entries()];
@@ -82,8 +87,7 @@ export function ShipLayer() {
         });
         conn.connect();
         return () => conn.disconnect();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [visible, setLayerLoading]);
+    }, [visible, viewport, setLayerLoading]);
 
     const updateEntities = useCallback(() => {
         const ds = dataSourceRef.current;
@@ -110,7 +114,8 @@ export function ShipLayer() {
             }
         }
         for (const [id] of existing) { if (!seen.has(id)) ds.entities.removeById(id); }
-    }, [ships, setLayerCount]);
+        if (viewer && !viewer.isDestroyed()) viewer.scene.requestRender();
+    }, [ships, viewer, setLayerCount]);
 
     useEffect(() => { updateEntities(); }, [updateEntities]);
 

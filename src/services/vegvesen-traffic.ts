@@ -50,38 +50,48 @@ function mapType(type: string): string {
 }
 
 export async function fetchTrafficEvents(): Promise<TrafficEvent[]> {
-    const res = await fetch(DATEX_SITUATIONS_URL, {
-        headers: { Accept: 'application/json' },
-    });
+    try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
 
-    if (!res.ok) throw new Error(`Vegvesenet trafikk feil: ${res.status}`);
+        const res = await fetch(DATEX_SITUATIONS_URL, {
+            headers: { Accept: 'application/json' },
+            signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
 
-    const data = await res.json();
-    const situations: DatexSituation[] = data?.situations ?? data ?? [];
-    const events: TrafficEvent[] = [];
+        if (!res.ok) return [];
 
-    for (const sit of situations) {
-        if (!sit.situationRecords?.length) continue;
+        const data = await res.json();
+        const situations: DatexSituation[] = data?.situations ?? data ?? [];
+        const events: TrafficEvent[] = [];
 
-        for (const rec of sit.situationRecords) {
-            const coords = rec.locationReference?.pointByCoordinates?.pointCoordinates;
-            if (!coords?.latitude || !coords?.longitude) continue;
+        for (const sit of situations) {
+            if (!sit.situationRecords?.length) continue;
 
-            const description =
-                rec.generalPublicComment?.[0]?.value ?? mapType(rec.situationRecordType);
+            for (const rec of sit.situationRecords) {
+                const coords = rec.locationReference?.pointByCoordinates?.pointCoordinates;
+                if (!coords?.latitude || !coords?.longitude) continue;
 
-            events.push({
-                id: `${sit.situationId}-${events.length}`,
-                type: mapType(rec.situationRecordType),
-                description,
-                lat: coords.latitude,
-                lon: coords.longitude,
-                severity: mapSeverity(rec.severity),
-                startTime: rec.validity?.validityTimeSpecification?.overallStartTime ?? '',
-                roadNumber: rec.roadNumber,
-            });
+                const description =
+                    rec.generalPublicComment?.[0]?.value ?? mapType(rec.situationRecordType);
+
+                events.push({
+                    id: `${sit.situationId}-${events.length}`,
+                    type: mapType(rec.situationRecordType),
+                    description,
+                    lat: coords.latitude,
+                    lon: coords.longitude,
+                    severity: mapSeverity(rec.severity),
+                    startTime: rec.validity?.validityTimeSpecification?.overallStartTime ?? '',
+                    roadNumber: rec.roadNumber,
+                });
+            }
         }
-    }
 
-    return events;
+        return events;
+    } catch {
+        // API utilgjengelig — returnér tom liste
+        return [];
+    }
 }
