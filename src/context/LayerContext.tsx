@@ -6,6 +6,8 @@ interface LayerContextValue {
     toggleLayer: (id: LayerId) => void;
     setLayerLoading: (id: LayerId, loading: boolean) => void;
     setLayerCount: (id: LayerId, count: number) => void;
+    setLayerError: (id: LayerId, error: string | null) => void;
+    setLayerLastUpdated: (id: LayerId, timestamp: number | null) => void;
     isVisible: (id: LayerId) => boolean;
 }
 
@@ -32,6 +34,18 @@ export function LayerProvider({ children }: { children: ReactNode }) {
         );
     }, []);
 
+    const setLayerError = useCallback((id: LayerId, error: string | null) => {
+        setLayers((prev) =>
+            prev.map((l) => (l.id === id ? { ...l, error } : l))
+        );
+    }, []);
+
+    const setLayerLastUpdated = useCallback((id: LayerId, timestamp: number | null) => {
+        setLayers((prev) =>
+            prev.map((l) => (l.id === id ? { ...l, lastUpdated: timestamp } : l))
+        );
+    }, []);
+
     const isVisible = useCallback(
         (id: LayerId) => layers.find((l) => l.id === id)?.visible ?? false,
         [layers]
@@ -39,7 +53,7 @@ export function LayerProvider({ children }: { children: ReactNode }) {
 
     return (
         <LayerContext.Provider
-            value={{ layers, toggleLayer, setLayerLoading, setLayerCount, isVisible }}
+            value={{ layers, toggleLayer, setLayerLoading, setLayerCount, setLayerError, setLayerLastUpdated, isVisible }}
         >
             {children}
         </LayerContext.Provider>

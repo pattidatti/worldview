@@ -7,4 +7,5 @@ export interface Webcam {
     thumbnailUrl: string;
     country: string;
     city: string;
+    lastUpdated?: string;
 }

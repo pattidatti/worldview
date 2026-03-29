@@ -11,4 +11,14 @@ export default defineConfig({
             '@': path.resolve(__dirname, 'src'),
         },
     },
+    server: {
+        proxy: {
+            '/ais-ws': {
+                target: 'wss://stream.aisstream.io',
+                ws: true,
+                changeOrigin: true,
+                rewrite: (p) => p.replace(/^\/ais-ws/, '/v0/stream'),
+            },
+        },
+    },
 });

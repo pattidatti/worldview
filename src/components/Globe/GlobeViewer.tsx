@@ -118,6 +118,27 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
             }
         );
 
+        // Fly til brukerens posisjon, fallback til Norge
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                v.camera.flyTo({
+                    destination: Cartesian3.fromDegrees(
+                        pos.coords.longitude,
+                        pos.coords.latitude,
+                        500_000
+                    ),
+                    duration: 1.5,
+                });
+            },
+            () => {
+                v.camera.flyTo({
+                    destination: Cartesian3.fromDegrees(10.75, 59.91, 2_000_000),
+                    duration: 1.5,
+                });
+            },
+            { timeout: 5000 }
+        );
+
         setViewer(v);
 
         return () => {

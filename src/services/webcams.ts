@@ -10,6 +10,7 @@ interface WindyWebcam {
     webcamId: string;
     title: string;
     status: string;
+    lastUpdatedOn?: string;
     images?: {
         current?: { preview?: string; thumbnail?: string };
         daylight?: { preview?: string; thumbnail?: string };
@@ -24,7 +25,7 @@ interface WindyWebcam {
 
 function parseWebcam(w: WindyWebcam): Webcam | null {
     if (!w.location || !w.images) return null;
-    const imgs = w.images.daylight ?? w.images.current;
+    const imgs = w.images.current ?? w.images.daylight;
     const imageUrl = imgs?.preview ?? imgs?.thumbnail ?? '';
     if (!imageUrl) return null;
     return {
@@ -36,6 +37,7 @@ function parseWebcam(w: WindyWebcam): Webcam | null {
         thumbnailUrl: imgs?.thumbnail ?? imageUrl,
         country: w.location.country ?? '',
         city: w.location.city ?? '',
+        lastUpdated: w.lastUpdatedOn,
     };
 }
 
@@ -44,12 +46,15 @@ export async function fetchWebcams(viewport?: Viewport | null, signal?: AbortSig
 
     let baseUrl = `${WINDY_API}?include=images,location&limit=${PER_PAGE}`;
 
-    if (viewport) {
+    // Bare bruk nearby-filter når brukeren har zoomet inn (< 90° breddegrad-spenn).
+    // Global visning (hele kloden) gir sentrum midt i Atlanterhavet → 0 treff.
+    const latSpan = viewport ? Math.abs(viewport.north - viewport.south) : 180;
+    if (viewport && latSpan < 90) {
         const centerLat = (viewport.north + viewport.south) / 2;
         const centerLon = (viewport.east + viewport.west) / 2;
         const radiusKm = Math.min(
-            Math.max(Math.abs(viewport.north - viewport.south) * 111 / 2, 50),
-            500
+            Math.max(latSpan * 111 / 2, 50),
+            250
         );
         baseUrl += `&nearby=${centerLat},${centerLon},${Math.round(radiusKm)}`;
     }

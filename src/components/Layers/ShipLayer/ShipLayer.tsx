@@ -20,10 +20,13 @@ const MAX_SHIPS = 1000;
 
 export function ShipLayer() {
     const viewer = useViewer();
-    const { isVisible, setLayerLoading, setLayerCount } = useLayers();
+    const { isVisible, setLayerLoading, setLayerCount, setLayerError, setLayerLastUpdated } = useLayers();
     const { register, unregister } = usePopupRegistry();
     const visible = isVisible('ships');
     const viewport = useViewport(viewer);
+    const viewportRef = useRef(viewport);
+    viewportRef.current = viewport;
+    const hasViewport = viewport !== null;
     const dataSourceRef = useRef<CustomDataSource | null>(null);
     const [ships, setShips] = useState<Map<number, Ship>>(new Map());
     const shipsRef = useRef<Map<number, Ship>>(new Map());
@@ -68,15 +71,9 @@ export function ShipLayer() {
     }, [visible]);
 
     useEffect(() => {
-        if (!visible || !API_KEY || !viewport) {
-            console.log('[ShipLayer] skipping:', { visible, hasKey: !!API_KEY, hasViewport: !!viewport });
-            return;
-        }
-        console.log('[ShipLayer] connecting WebSocket with viewport:', viewport);
+        if (!visible || !API_KEY || !hasViewport) return;
         setLayerLoading('ships', true);
-        const conn = new AISStreamConnection(API_KEY, viewport, (updatedShips) => {
-            console.log('[ShipLayer] received', updatedShips.size, 'ships');
-            // Cap at MAX_SHIPS
+        const conn = new AISStreamConnection(API_KEY, viewportRef.current!, (updatedShips) => {
             if (updatedShips.size > MAX_SHIPS) {
                 const entries = [...updatedShips.entries()];
                 setShips(new Map(entries.slice(-MAX_SHIPS)));
@@ -84,10 +81,15 @@ export function ShipLayer() {
                 setShips(updatedShips);
             }
             setLayerLoading('ships', false);
+            setLayerError('ships', null);
+            setLayerLastUpdated('ships', Date.now());
+        }, (errorMsg) => {
+            setLayerError('ships', errorMsg);
         });
         conn.connect();
         return () => conn.disconnect();
-    }, [visible, viewport, setLayerLoading]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [visible, hasViewport]);
 
     const updateEntities = useCallback(() => {
         const ds = dataSourceRef.current;

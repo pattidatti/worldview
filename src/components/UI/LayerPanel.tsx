@@ -1,15 +1,14 @@
 import { useState } from 'react';
 import { useLayers } from '@/context/LayerContext';
-import { type LayerConfig } from '@/types/layers';
+import { type LayerConfig, LAYER_ICONS } from '@/types/layers';
 
-const LAYER_ICONS: Record<string, string> = {
-    flights: '✈',
-    ships: '⚓',
-    satellites: '🛰',
-    weather: '☁',
-    webcams: '📷',
-    traffic: '🚗',
-};
+function formatTimeAgo(ts: number): string {
+    const sec = Math.floor((Date.now() - ts) / 1000);
+    if (sec < 60) return 'Nå';
+    const min = Math.floor(sec / 60);
+    if (min < 60) return `${min}m siden`;
+    return `${Math.floor(min / 60)}t siden`;
+}
 
 function LayerToggle({ layer }: { layer: LayerConfig }) {
     const { toggleLayer } = useLayers();
@@ -31,8 +30,17 @@ function LayerToggle({ layer }: { layer: LayerConfig }) {
             </span>
             {layer.loading ? (
                 <span className="text-xs text-[var(--text-muted)] animate-pulse">...</span>
+            ) : layer.error ? (
+                <span className="text-xs text-orange-400" title={layer.error}>⚠</span>
             ) : layer.count > 0 ? (
-                <span className="font-mono text-xs text-[var(--text-muted)]">{layer.count.toLocaleString('nb-NO')}</span>
+                <span
+                    className="font-mono text-xs text-[var(--text-muted)]"
+                    title={layer.lastUpdated ? `Sist oppdatert: ${formatTimeAgo(layer.lastUpdated)}` : undefined}
+                >
+                    {layer.count.toLocaleString('nb-NO')}
+                </span>
+            ) : layer.visible ? (
+                <span className="text-xs text-[var(--text-muted)] italic">Ingen</span>
             ) : null}
         </button>
     );

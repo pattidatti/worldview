@@ -22,14 +22,17 @@ const POLL_MS = 10 * 60 * 1000;
 
 export function WeatherLayer() {
     const viewer = useViewer();
-    const { isVisible, setLayerLoading, setLayerCount } = useLayers();
+    const { isVisible, setLayerLoading, setLayerCount, setLayerError, setLayerLastUpdated } = useLayers();
     const { register, unregister } = usePopupRegistry();
     const visible = isVisible('weather');
     const dataSourceRef = useRef<CustomDataSource | null>(null);
     const weatherRef = useRef<WeatherPoint[]>([]);
 
-    const { data: weather, loading } = usePollingData(fetchWeather, POLL_MS, visible);
+    const { data: weather, loading, error, lastUpdated } = usePollingData(fetchWeather, POLL_MS, visible);
     if (weather) weatherRef.current = weather;
+
+    useEffect(() => { setLayerError('weather', error); }, [error, setLayerError]);
+    useEffect(() => { setLayerLastUpdated('weather', lastUpdated); }, [lastUpdated, setLayerLastUpdated]);
 
     // Register popup builder
     useEffect(() => {

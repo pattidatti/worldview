@@ -22,14 +22,17 @@ const POLL_MS = 2 * 60 * 1000;
 
 export function TrafficLayer() {
     const viewer = useViewer();
-    const { isVisible, setLayerLoading, setLayerCount } = useLayers();
+    const { isVisible, setLayerLoading, setLayerCount, setLayerError, setLayerLastUpdated } = useLayers();
     const { register, unregister } = usePopupRegistry();
     const visible = isVisible('traffic');
     const dataSourceRef = useRef<CustomDataSource | null>(null);
     const eventsRef = useRef<TrafficEvent[]>([]);
 
-    const { data: events, loading } = usePollingData(fetchTrafficEvents, POLL_MS, visible);
+    const { data: events, loading, error, lastUpdated } = usePollingData(fetchTrafficEvents, POLL_MS, visible);
     if (events) eventsRef.current = events;
+
+    useEffect(() => { setLayerError('traffic', error); }, [error, setLayerError]);
+    useEffect(() => { setLayerLastUpdated('traffic', lastUpdated); }, [lastUpdated, setLayerLastUpdated]);
 
     // Register popup builder
     useEffect(() => {

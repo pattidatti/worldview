@@ -1,7 +1,11 @@
 import { useLayers } from '@/context/LayerContext';
-import { SearchBar } from './SearchBar';
+import { SearchBar, type SearchBarHandle } from './SearchBar';
 
-export function TopBar() {
+interface TopBarProps {
+    searchRef?: React.RefObject<SearchBarHandle | null>;
+}
+
+export function TopBar({ searchRef }: TopBarProps) {
     const { layers } = useLayers();
 
     const activeLayers = layers.filter((l) => l.visible);
@@ -31,7 +35,7 @@ export function TopBar() {
                 </div>
 
                 {/* Search */}
-                <SearchBar />
+                <SearchBar ref={searchRef} />
 
                 {/* Status */}
                 <div className="hidden md:flex items-center gap-4 font-mono text-xs text-[var(--text-muted)]">

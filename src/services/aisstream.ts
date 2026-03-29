@@ -7,23 +7,40 @@ export class AISStreamConnection {
     private ws: WebSocket | null = null;
     private ships = new Map<number, Ship>();
     private onUpdate: ShipCallback;
+    private onError?: (msg: string) => void;
     private apiKey: string;
     private viewport: Viewport;
     private updateTimer: ReturnType<typeof setInterval> | null = null;
+    private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    private connectTimeout: ReturnType<typeof setTimeout> | null = null;
+    private stopped = false;
 
-    constructor(apiKey: string, viewport: Viewport, onUpdate: ShipCallback) {
+    constructor(apiKey: string, viewport: Viewport, onUpdate: ShipCallback, onError?: (msg: string) => void) {
         this.apiKey = apiKey;
         this.viewport = viewport;
         this.onUpdate = onUpdate;
+        this.onError = onError;
     }
 
     connect() {
+        if (this.stopped) return;
         if (this.ws) this.disconnect();
 
-        this.ws = new WebSocket('wss://stream.aisstream.io/v0/stream');
+        const wsUrl = import.meta.env.DEV
+            ? `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ais-ws`
+            : 'wss://stream.aisstream.io/v0/stream';
+        this.ws = new WebSocket(wsUrl);
+
+        // Timeout: if not connected within 10s, close and let onclose retry
+        this.connectTimeout = setTimeout(() => {
+            if (this.ws?.readyState === WebSocket.CONNECTING) {
+                console.warn('[AIS] Connection timeout, retrying...');
+                this.ws.close();
+            }
+        }, 10_000);
 
         this.ws.onopen = () => {
-            console.log('[AIS] WebSocket connected, sending bounding box');
+            if (this.connectTimeout) clearTimeout(this.connectTimeout);
             this.ws?.send(
                 JSON.stringify({
                     APIKey: this.apiKey,
@@ -35,12 +52,16 @@ export class AISStreamConnection {
                     ],
                 })
             );
+
+            // Start batch timer AFTER connection is established
+            this.updateTimer = setInterval(() => {
+                this.onUpdate(new Map(this.ships));
+            }, 5000);
         };
 
         this.ws.onmessage = (event) => {
             try {
                 const msg = JSON.parse(event.data);
-                console.log('[AIS] message:', msg.MessageType, msg.Message ? 'has data' : 'no data');
                 if (msg.MessageType === 'PositionReport') {
                     const pos = msg.Message?.PositionReport;
                     const meta = msg.MetaData;
@@ -64,32 +85,53 @@ export class AISStreamConnection {
             }
         };
 
-        this.ws.onerror = (e) => {
-            console.error('[AIS] WebSocket error:', e);
+        this.ws.onerror = () => {
+            this.onError?.('WebSocket-feil');
         };
 
-        this.ws.onclose = (e) => {
-            console.log('[AIS] WebSocket closed:', e.code, e.reason);
+        this.ws.onclose = () => {
+            if (this.connectTimeout) clearTimeout(this.connectTimeout);
+            if (this.updateTimer) {
+                clearInterval(this.updateTimer);
+                this.updateTimer = null;
+            }
             this.ws = null;
-        };
 
-        // Batch updates every 5 seconds
-        this.updateTimer = setInterval(() => {
-            this.onUpdate(new Map(this.ships));
-        }, 5000);
+            // Auto-reconnect after 3s unless stopped
+            if (!this.stopped) {
+                this.reconnectTimer = setTimeout(() => this.connect(), 3000);
+            }
+        };
     }
 
     updateViewport(viewport: Viewport) {
         this.viewport = viewport;
-        // Reconnect with new bounding box
         if (this.ws?.readyState === WebSocket.OPEN) {
-            this.disconnect();
             this.ships.clear();
+            // Disconnect and reconnect with new bounding box
+            if (this.ws) {
+                this.ws.onclose = null;
+                this.ws.close();
+                this.ws = null;
+            }
+            if (this.updateTimer) {
+                clearInterval(this.updateTimer);
+                this.updateTimer = null;
+            }
             this.connect();
         }
     }
 
     disconnect() {
+        this.stopped = true;
+        if (this.reconnectTimer) {
+            clearTimeout(this.reconnectTimer);
+            this.reconnectTimer = null;
+        }
+        if (this.connectTimeout) {
+            clearTimeout(this.connectTimeout);
+            this.connectTimeout = null;
+        }
         if (this.updateTimer) {
             clearInterval(this.updateTimer);
             this.updateTimer = null;

@@ -19,7 +19,7 @@ export async function fetchFlights(viewport?: Viewport | null): Promise<Flight[]
     const response = await fetch(url);
 
     if (response.status === 429) {
-        throw new Error('OpenSky rate limit — venter...');
+        throw new RateLimitError();
     }
 
     if (!response.ok) {
@@ -43,4 +43,51 @@ export async function fetchFlights(viewport?: Viewport | null): Promise<Flight[]
             verticalRate: (s[11] as number) ?? 0,
             onGround: s[8] as boolean,
         }));
+}
+
+export class RateLimitError extends Error {
+    constructor() {
+        super('OpenSky rate limit');
+        this.name = 'RateLimitError';
+    }
+}
+
+// --- Route lookup with cache ---
+
+export interface FlightRoute {
+    origin: string;
+    destination: string;
+}
+
+const routeCache = new Map<string, FlightRoute | null>();
+
+export function getCachedRoute(callsign: string): FlightRoute | null | undefined {
+    return routeCache.get(callsign);
+}
+
+export async function fetchFlightRoute(callsign: string): Promise<FlightRoute | null> {
+    if (!callsign) return null;
+
+    const cached = routeCache.get(callsign);
+    if (cached !== undefined) return cached;
+
+    try {
+        const response = await fetch(`${OPENSKY_BASE}/routes?callsign=${encodeURIComponent(callsign)}`);
+        if (!response.ok) {
+            routeCache.set(callsign, null);
+            return null;
+        }
+        const data = await response.json();
+        const route = data.route;
+        if (!route || route.length < 2) {
+            routeCache.set(callsign, null);
+            return null;
+        }
+        const result: FlightRoute = { origin: route[0], destination: route[1] };
+        routeCache.set(callsign, result);
+        return result;
+    } catch {
+        routeCache.set(callsign, null);
+        return null;
+    }
 }

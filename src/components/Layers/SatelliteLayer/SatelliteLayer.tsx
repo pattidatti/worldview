@@ -21,7 +21,7 @@ const POSITION_REFRESH_MS = 10_000;
 
 export function SatelliteLayer() {
     const viewer = useViewer();
-    const { isVisible, setLayerLoading, setLayerCount } = useLayers();
+    const { isVisible, setLayerLoading, setLayerCount, setLayerError, setLayerLastUpdated } = useLayers();
     const { register, unregister } = usePopupRegistry();
     const visible = isVisible('satellites');
     const dataSourceRef = useRef<CustomDataSource | null>(null);
@@ -54,15 +54,15 @@ export function SatelliteLayer() {
         return () => unregister('satellites');
     }, [register, unregister]);
 
-    const { data: freshTle, loading } = usePollingData(
+    const { data: freshTle, loading, error, lastUpdated } = usePollingData(
         () => fetchTLEData('stations'),
         TLE_REFRESH_MS,
         visible
     );
 
-    useEffect(() => {
-        setLayerLoading('satellites', loading);
-    }, [loading, setLayerLoading]);
+    useEffect(() => { setLayerLoading('satellites', loading); }, [loading, setLayerLoading]);
+    useEffect(() => { setLayerError('satellites', error); }, [error, setLayerError]);
+    useEffect(() => { setLayerLastUpdated('satellites', lastUpdated); }, [lastUpdated, setLayerLastUpdated]);
 
     useEffect(() => {
         if (freshTle) setTleData(freshTle);

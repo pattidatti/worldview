@@ -13,11 +13,12 @@ import { useViewer } from '@/context/ViewerContext';
 import { useLayers } from '@/context/LayerContext';
 import { usePopupRegistry } from '@/context/PopupRegistry';
 import { useViewport } from '@/hooks/useViewport';
-import { fetchFlights } from '@/services/opensky';
+import { fetchFlights, fetchFlightRoute, getCachedRoute, RateLimitError } from '@/services/opensky';
 import { type Flight } from '@/types/flight';
 
 const FLIGHT_COLOR = Color.fromCssColorString('#ffa500');
-const POLL_MS = 15_000;
+const BASE_POLL_MS = 60_000;
+const MAX_POLL_MS = 5 * 60_000;
 const MAX_FLIGHTS = 500;
 
 function createPlaneIcon(heading: number): string {
@@ -32,7 +33,7 @@ function createPlaneIcon(heading: number): string {
 
 export function FlightLayer() {
     const viewer = useViewer();
-    const { isVisible, setLayerLoading, setLayerCount } = useLayers();
+    const { isVisible, setLayerLoading, setLayerCount, setLayerError, setLayerLastUpdated } = useLayers();
     const { register, unregister } = usePopupRegistry();
     const visible = isVisible('flights');
     const viewport = useViewport(viewer);
@@ -42,6 +43,7 @@ export function FlightLayer() {
     viewportRef.current = viewport;
     const flightsRef = useRef<Flight[]>([]);
     flightsRef.current = flights;
+    const routePendingRef = useRef(new Set<string>());
 
     // Register popup builder
     useEffect(() => {
@@ -51,11 +53,32 @@ export function FlightLayer() {
             if (!flight) return null;
             const altFt = Math.round(flight.altitude * 3.28084);
             const speedKts = Math.round(flight.velocity * 1.94384);
+
+            const callsign = flight.callsign;
+            const cachedRoute = callsign ? getCachedRoute(callsign) : undefined;
+
+            // Trigger async fetch if not yet cached
+            if (callsign && cachedRoute === undefined && !routePendingRef.current.has(callsign)) {
+                routePendingRef.current.add(callsign);
+                fetchFlightRoute(callsign).then(() => {
+                    // Re-trigger popup if this flight is still selected
+                    if (viewer?.selectedEntity?.id === flight.icao24) {
+                        const selected = viewer.selectedEntity;
+                        viewer.selectedEntity = undefined;
+                        setTimeout(() => { viewer.selectedEntity = selected; }, 0);
+                    }
+                });
+            }
+
             return {
                 title: flight.callsign || flight.icao24,
                 icon: '✈',
                 color: '#ffa500',
                 fields: [
+                    ...(cachedRoute ? [
+                        { label: 'Fra', value: cachedRoute.origin },
+                        { label: 'Til', value: cachedRoute.destination },
+                    ] : []),
                     { label: 'ICAO24', value: flight.icao24 },
                     { label: 'Land', value: flight.originCountry },
                     { label: 'Høyde', value: altFt.toLocaleString('nb-NO'), unit: 'ft' },
@@ -66,23 +89,43 @@ export function FlightLayer() {
             };
         });
         return () => unregister('flights');
-    }, [register, unregister]);
+    }, [register, unregister, viewer]);
 
+    // Polling with exponential backoff on rate limit
     useEffect(() => {
         if (!visible) return;
         let cancelled = false;
+        let pollMs = BASE_POLL_MS;
+        let timerId: ReturnType<typeof setTimeout>;
+
         const doFetch = async () => {
             setLayerLoading('flights', true);
             try {
                 const data = await fetchFlights(viewportRef.current);
-                console.log('[FlightLayer] fetched', data.length, 'flights');
-                if (!cancelled) setFlights(data.slice(0, MAX_FLIGHTS));
-            } catch (err) { console.error('[FlightLayer] fetch error:', err); }
-            finally { if (!cancelled) setLayerLoading('flights', false); }
+                if (!cancelled) {
+                    setFlights(data.slice(0, MAX_FLIGHTS));
+                    setLayerError('flights', null);
+                    setLayerLastUpdated('flights', Date.now());
+                    pollMs = BASE_POLL_MS; // Reset on success
+                }
+            } catch (err) {
+                if (!cancelled) {
+                    setLayerError('flights', err instanceof Error ? err.message : 'Ukjent feil');
+                }
+                if (err instanceof RateLimitError) {
+                    pollMs = Math.min(pollMs * 2, MAX_POLL_MS);
+                    console.warn(`[FlightLayer] rate limit, backing off to ${pollMs / 1000}s`);
+                }
+            } finally {
+                if (!cancelled) {
+                    setLayerLoading('flights', false);
+                    timerId = setTimeout(doFetch, pollMs);
+                }
+            }
         };
+
         doFetch();
-        const id = setInterval(doFetch, POLL_MS);
-        return () => { cancelled = true; clearInterval(id); };
+        return () => { cancelled = true; clearTimeout(timerId); };
     }, [visible, setLayerLoading]);
 
     useEffect(() => {
