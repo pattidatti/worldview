@@ -25,6 +25,7 @@ Copy `.env.example` to `.env`. Required:
 - `VITE_CESIUM_ION_TOKEN` — Cesium Ion access token (globe won't render without it)
 - `VITE_AISSTREAM_API_KEY` — AISStream WebSocket key (ship layer)
 - `VITE_WINDY_WEBCAMS_API_KEY` — Windy Webcams API key (webcam layer)
+- `VITE_TOMTOM_API_KEY` — TomTom Traffic API key (traffic incident layer)
 - `VITE_API_BASE_URL` — Base URL for Firebase Functions proxy (unused in current layers)
 
 All env vars use Vite's `import.meta.env.VITE_*` convention.
@@ -33,7 +34,7 @@ All env vars use Vite's `import.meta.env.VITE_*` convention.
 
 - **IKKE bruk resium** — har CJS `require("react")` bug med Vite. Vi bruker CesiumJS direkte.
 - **satellite.js: bruk v5** — v7 har WASM/top-level-await som krasjer Vite build.
-- **Vegvesenet DATEX APIer er lukket** — datex.vegvesen.no krever registrering. Trafikk-laget returnerer tom liste gracefully.
+- **TomTom Traffic API** — krever gratis API-nøkkel (2500 req/dag). Trafikk-laget er viewport-avhengig med ~30° breddegrad-grense.
 - **StrictMode er fjernet** — dobbeltmonterer Cesium Viewer og forårsaker krasj.
 - **ALDRI legg til `selectedEntityChanged` listeners i lag** — bruk PopupRegistry-mønsteret (se under). Listener-stacking var hovedårsak til krasj.
 
@@ -81,6 +82,7 @@ Services are pure async functions (except `AISStreamConnection` which is a state
 - `aisstream.ts` — WebSocket connection class, batches updates every 5s
 - `metno.ts` — fixed set of 18 Norwegian cities (no viewport filtering)
 - `webcams.ts` — Windy Webcams API, paginated (4x50=200 per viewport), returns direct JPEG URLs
+- `tomtom-traffic.ts` — TomTom Incident Details v5, viewport-aware bbox queries, returns localized Norwegian descriptions
 - `geocoding.ts` — OSM Nominatim search for SearchBar fly-to
 
 ### UI layering (z-index)

@@ -13,6 +13,7 @@ import { ShipLayer } from './components/Layers/ShipLayer/ShipLayer';
 import { WeatherLayer } from './components/Layers/WeatherLayer/WeatherLayer';
 import { WebcamLayer } from './components/Layers/WebcamLayer/WebcamLayer';
 import { TrafficLayer } from './components/Layers/TrafficLayer/TrafficLayer';
+import { InfrastructureLayer } from './components/Layers/InfrastructureLayer/InfrastructureLayer';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { LAYER_DEFAULTS } from './types/layers';
 import { type PopupContent } from './types/popup';
@@ -53,6 +54,7 @@ function AppContent({
                 <WeatherLayer />
                 <WebcamLayer />
                 <TrafficLayer />
+                <InfrastructureLayer />
                 <TopBar searchRef={searchRef} />
                 <LayerPanel />
                 <LayerErrorWatcher />

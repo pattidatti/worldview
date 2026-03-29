@@ -3,9 +3,10 @@ import {
     CustomDataSource,
     Entity,
     Cartesian3,
-    Color,
-    PointGraphics,
     ConstantPositionProperty,
+    VerticalOrigin,
+    HorizontalOrigin,
+    HeightReference,
 } from 'cesium';
 import { useViewer } from '@/context/ViewerContext';
 import { useLayers } from '@/context/LayerContext';
@@ -13,8 +14,8 @@ import { usePopupRegistry } from '@/context/PopupRegistry';
 import { useViewport } from '@/hooks/useViewport';
 import { AISStreamConnection } from '@/services/aisstream';
 import { type Ship } from '@/types/ship';
+import { getShipTypeName, getNavStatusText, getFlagState, createShipIcon } from '@/utils/ship-utils';
 
-const SHIP_COLOR = Color.fromCssColorString('#00d4ff');
 const API_KEY = import.meta.env.VITE_AISSTREAM_API_KEY || '';
 const MAX_SHIPS = 1000;
 
@@ -28,6 +29,7 @@ export function ShipLayer() {
     viewportRef.current = viewport;
     const hasViewport = viewport !== null;
     const dataSourceRef = useRef<CustomDataSource | null>(null);
+    const connRef = useRef<AISStreamConnection | null>(null);
     const [ships, setShips] = useState<Map<number, Ship>>(new Map());
     const shipsRef = useRef<Map<number, Ship>>(new Map());
     shipsRef.current = ships;
@@ -38,23 +40,35 @@ export function ShipLayer() {
             if (!dataSourceRef.current?.entities.contains(entity)) return null;
             const ship = shipsRef.current.get(Number(entity.id));
             if (!ship) return null;
+            const navText = getNavStatusText(ship.navStatus);
+            const dims = ship.length && ship.width
+                ? `${ship.length} × ${ship.width} m`
+                : '';
             return {
                 title: ship.name || `MMSI ${ship.mmsi}`,
                 icon: '⚓',
                 color: '#00d4ff',
                 fields: [
-                    { label: 'MMSI', value: ship.mmsi },
+                    { label: 'Type', value: getShipTypeName(ship.shipType) },
+                    { label: 'Flagg', value: getFlagState(ship.mmsi) },
+                    ...(navText ? [{ label: 'Status', value: navText }] : []),
                     { label: 'Hastighet', value: ship.speed.toFixed(1), unit: 'kn' },
                     { label: 'Kurs', value: `${Math.round(ship.course)}°` },
+                    ...(dims ? [{ label: 'Størrelse', value: dims }] : []),
+                    ...(ship.draught ? [{ label: 'Dypgang', value: ship.draught.toFixed(1), unit: 'm' }] : []),
+                    ...(ship.callSign ? [{ label: 'Kallesignal', value: ship.callSign }] : []),
+                    ...(ship.imo ? [{ label: 'IMO', value: ship.imo }] : []),
                     ...(ship.destination ? [{ label: 'Destinasjon', value: ship.destination }] : []),
-                    { label: 'Breddegrad', value: ship.lat.toFixed(4), unit: '°' },
-                    { label: 'Lengdegrad', value: ship.lon.toFixed(4), unit: '°' },
+                    { label: 'MMSI', value: ship.mmsi },
                 ],
+                linkUrl: `https://www.marinetraffic.com/en/ais/details/ships/mmsi:${ship.mmsi}`,
+                linkLabel: 'Se på MarineTraffic →',
             };
         });
         return () => unregister('ships');
     }, [register, unregister]);
 
+    // Create data source
     useEffect(() => {
         if (!viewer || viewer.isDestroyed()) return;
         const ds = new CustomDataSource('ships');
@@ -70,6 +84,7 @@ export function ShipLayer() {
         if (dataSourceRef.current) dataSourceRef.current.show = visible;
     }, [visible]);
 
+    // Connect to AIS stream
     useEffect(() => {
         if (!visible || !API_KEY || !hasViewport) return;
         setLayerLoading('ships', true);
@@ -87,10 +102,21 @@ export function ShipLayer() {
             setLayerError('ships', errorMsg);
         });
         conn.connect();
-        return () => conn.disconnect();
+        connRef.current = conn;
+        return () => {
+            conn.disconnect();
+            connRef.current = null;
+        };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [visible, hasViewport]);
 
+    // Update viewport on camera move (re-subscribe with new bounding box)
+    useEffect(() => {
+        if (!viewport || !connRef.current) return;
+        connRef.current.updateViewport(viewport);
+    }, [viewport]);
+
+    // Sync entities to Cesium
     const updateEntities = useCallback(() => {
         const ds = dataSourceRef.current;
         if (!ds) return;
@@ -105,13 +131,19 @@ export function ShipLayer() {
             const entity = existing.get(id);
             if (entity) {
                 (entity.position as ConstantPositionProperty).setValue(pos);
+                if (entity.billboard) {
+                    entity.billboard.image = createShipIcon(ship.heading, ship.shipType) as unknown as import('cesium').Property;
+                }
             } else {
                 ds.entities.add(new Entity({
                     id, name: ship.name || `MMSI ${mmsi}`, position: pos,
-                    point: new PointGraphics({
-                        pixelSize: 5, color: SHIP_COLOR,
-                        outlineColor: Color.fromCssColorString('#00d4ff66'), outlineWidth: 1,
-                    }),
+                    billboard: {
+                        image: createShipIcon(ship.heading, ship.shipType),
+                        width: 16, height: 16,
+                        verticalOrigin: VerticalOrigin.CENTER,
+                        horizontalOrigin: HorizontalOrigin.CENTER,
+                        heightReference: HeightReference.NONE, rotation: 0,
+                    },
                 }));
             }
         }

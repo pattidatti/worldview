@@ -7,4 +7,6 @@ export interface TrafficEvent {
     severity: 'low' | 'medium' | 'high';
     startTime: string;
     roadNumber?: string;
+    endTime?: string;
+    category?: number;
 }

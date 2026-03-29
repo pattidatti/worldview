@@ -71,12 +71,19 @@ export class AISStreamConnection {
                     this.ships.set(mmsi, {
                         mmsi,
                         name: (meta.ShipName ?? '').trim(),
+                        callSign: (meta.CallSign ?? '').trim(),
+                        imo: meta.IMO ?? 0,
                         lat: pos.Latitude,
                         lon: pos.Longitude,
                         speed: pos.Sog ?? 0,
                         course: pos.Cog ?? 0,
                         heading: pos.TrueHeading ?? pos.Cog ?? 0,
+                        rateOfTurn: pos.RateOfTurn ?? 0,
+                        navStatus: pos.NavigationalStatus ?? 15,
                         shipType: meta.ShipType ?? 0,
+                        length: meta.Length ?? 0,
+                        width: meta.Width ?? 0,
+                        draught: meta.Draught ?? 0,
                         destination: (pos.Destination ?? '').trim(),
                     });
                 }

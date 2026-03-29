@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import {
     CustomDataSource,
     Entity,
@@ -9,8 +9,8 @@ import {
 import { useViewer } from '@/context/ViewerContext';
 import { useLayers } from '@/context/LayerContext';
 import { usePopupRegistry } from '@/context/PopupRegistry';
-import { usePollingData } from '@/hooks/usePollingData';
-import { fetchTrafficEvents } from '@/services/vegvesen-traffic';
+import { useViewport } from '@/hooks/useViewport';
+import { fetchTrafficEvents } from '@/services/tomtom-traffic';
 import { type TrafficEvent } from '@/types/traffic';
 
 const SEVERITY_COLORS = {
@@ -25,14 +25,49 @@ export function TrafficLayer() {
     const { isVisible, setLayerLoading, setLayerCount, setLayerError, setLayerLastUpdated } = useLayers();
     const { register, unregister } = usePopupRegistry();
     const visible = isVisible('traffic');
+    const viewport = useViewport(viewer);
     const dataSourceRef = useRef<CustomDataSource | null>(null);
     const eventsRef = useRef<TrafficEvent[]>([]);
 
-    const { data: events, loading, error, lastUpdated } = usePollingData(fetchTrafficEvents, POLL_MS, visible);
-    if (events) eventsRef.current = events;
+    const [events, setEvents] = useState<TrafficEvent[] | null>(null);
+    const [loading, setLoading] = useState(false);
 
-    useEffect(() => { setLayerError('traffic', error); }, [error, setLayerError]);
-    useEffect(() => { setLayerLastUpdated('traffic', lastUpdated); }, [lastUpdated, setLayerLastUpdated]);
+    useEffect(() => {
+        if (!visible || !viewport) return;
+
+        const controller = new AbortController();
+        let cancelled = false;
+
+        const doFetch = async () => {
+            setLoading(true);
+            try {
+                const result = await fetchTrafficEvents(viewport, controller.signal);
+                if (!cancelled) {
+                    setEvents(result);
+                    setLayerError('traffic', null);
+                    setLayerLastUpdated('traffic', Date.now());
+                }
+            } catch (err) {
+                if (!cancelled && !(err instanceof DOMException && err.name === 'AbortError')) {
+                    console.error('[TrafficLayer] fetch error:', err);
+                    setLayerError('traffic', err instanceof Error ? err.message : 'Ukjent feil');
+                }
+            } finally {
+                if (!cancelled) setLoading(false);
+            }
+        };
+
+        doFetch();
+        const intervalId = setInterval(doFetch, POLL_MS);
+
+        return () => {
+            cancelled = true;
+            controller.abort();
+            clearInterval(intervalId);
+        };
+    }, [visible, viewport]);
+
+    if (events) eventsRef.current = events;
 
     // Register popup builder
     useEffect(() => {
@@ -51,6 +86,9 @@ export function TrafficLayer() {
                     ...(event.roadNumber ? [{ label: 'Veg', value: event.roadNumber }] : []),
                     ...(event.startTime
                         ? [{ label: 'Startet', value: new Date(event.startTime).toLocaleString('nb-NO') }]
+                        : []),
+                    ...(event.endTime
+                        ? [{ label: 'Forventet slutt', value: new Date(event.endTime).toLocaleString('nb-NO') }]
                         : []),
                 ],
             };

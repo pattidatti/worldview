@@ -31,7 +31,7 @@ WorldView er en interaktiv 3D-globus som viser sanntidsdata fra verden via åpne
 | Flytrafikk | OpenSky Network API | Ja | Nei (anonym) / Ja (bedre rater) | Ja (CORS) | Live flyposisjoner globalt |
 | Skipstrafikk | AISHub / MarineTraffic AIS | Ja (begrenset) | Ja | Ja | AIS-data for skip globalt |
 | Satellitter | CelesTrak (TLE-data) | Ja | Nei | Nei (CORS OK) | Two-Line Element data for satellittbaner |
-| Veitrafikk NO | Statens vegvesen / NVDB API | Ja | Nei | Nei | Norsk veitrafikk, hendelser, veiarbeid |
+| Veitrafikk | TomTom Traffic Incidents API v5 | Ja (gratis tier, 2500 req/dag) | Ja | Nei (CORS OK) | Trafikkhendelser globalt (ulykker, veiarbeid, stengninger) |
 | Webkamera NO | Vegvesenet webkamera-API | Ja | Nei | Nei | Live trafikkameraer i Norge |
 | Webkamera globalt | Windy Webcams API | Ja (gratis tier) | Ja | Ja | Webkameraer over hele verden |
 | Vær Norge | MET Norway (Yr) Locationforecast | Ja | Nei (krever User-Agent) | Nei | Detaljert vær for Norge/Norden |
