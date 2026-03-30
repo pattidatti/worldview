@@ -31,6 +31,12 @@
     --color-traffic-yellow: #ffcc00;
     --color-traffic-red: #ff3333;
     --color-infrastructure: #ff9800;
+    --color-power: #FFD700;
+    --color-wind: #4DB6AC;
+    --color-harbors: #1E88E5;
+    --color-lighthouses: #FF8F00;
+    --color-telecom: #AB47BC;
+    --color-mines: #8D6E63;
 }
 
 html,

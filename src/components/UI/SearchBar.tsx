@@ -31,6 +31,12 @@ const LAYER_COLORS: Record<LayerId, string> = {
     webcams: '#ff4444',
     traffic: '#00cc44',
     infrastructure: '#ff9800',
+    power: '#FFD700',
+    wind: '#4DB6AC',
+    harbors: '#1E88E5',
+    lighthouses: '#FF8F00',
+    telecom: '#AB47BC',
+    mines: '#8D6E63',
 };
 
 function searchEntities(viewer: import('cesium').Viewer | null, query: string, visibleLayerIds: Set<LayerId>): EntityResult[] {

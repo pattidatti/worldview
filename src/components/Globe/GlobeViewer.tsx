@@ -2,7 +2,9 @@ import { useRef, useEffect, useState, type ReactNode } from 'react';
 import {
     Viewer, Color, Ion, Entity, CameraEventType, Cartesian2, Cartesian3,
     ScreenSpaceEventHandler, ScreenSpaceEventType, defined,
+    UrlTemplateImageryProvider, Math as CesiumMath,
 } from 'cesium';
+import { reverseGeocode } from '@/services/geocoding';
 import { ViewerProvider } from '@/context/ViewerContext';
 import { usePopupRegistry } from '@/context/PopupRegistry';
 import { type PopupContent } from '@/types/popup';
@@ -49,6 +51,15 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
         scene.backgroundColor = Color.fromCssColorString('#0a0a0f');
         scene.globe.baseColor = Color.fromCssColorString('#12121a');
         scene.globe.enableLighting = true;
+
+        // Label overlay — CartoDB Dark Matter (labels only)
+        const labelProvider = new UrlTemplateImageryProvider({
+            url: 'https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png',
+            subdomains: 'abcd',
+            credit: 'CartoDB',
+        });
+        const labelLayer = v.imageryLayers.addImageryProvider(labelProvider);
+        labelLayer.alpha = 0.85;
 
         // Clean dark sky
         if (scene.skyAtmosphere) scene.skyAtmosphere.show = false;
@@ -121,24 +132,56 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
             }
         );
 
-        // Cluster click → zoom in
+        // Click handler — cluster zoom + globe surface reverse geocoding
         const clickHandler = new ScreenSpaceEventHandler(v.canvas);
         clickHandler.setInputAction((click: { position: Cartesian2 }) => {
             const picked = v.scene.pick(click.position);
-            if (!defined(picked)) return;
+
             // Regular entity → handled by selectedEntityChanged, skip
-            if (picked.id instanceof Entity) return;
+            if (defined(picked) && picked.id instanceof Entity) return;
+
             // Cluster billboard → zoom toward it
+            if (defined(picked)) {
+                const worldPos = v.camera.pickEllipsoid(click.position, scene.globe.ellipsoid);
+                if (!worldPos) return;
+                const carto = scene.globe.ellipsoid.cartesianToCartographic(worldPos);
+                v.camera.flyTo({
+                    destination: Cartesian3.fromRadians(
+                        carto.longitude,
+                        carto.latitude,
+                        v.camera.positionCartographic.height * 0.35,
+                    ),
+                    duration: 0.8,
+                });
+                return;
+            }
+
+            // Empty globe click → reverse geocode
             const worldPos = v.camera.pickEllipsoid(click.position, scene.globe.ellipsoid);
             if (!worldPos) return;
             const carto = scene.globe.ellipsoid.cartesianToCartographic(worldPos);
-            v.camera.flyTo({
-                destination: Cartesian3.fromRadians(
-                    carto.longitude,
-                    carto.latitude,
-                    v.camera.positionCartographic.height * 0.35,
-                ),
-                duration: 0.8,
+            const lat = CesiumMath.toDegrees(carto.latitude);
+            const lon = CesiumMath.toDegrees(carto.longitude);
+
+            reverseGeocode(lat, lon).then((result) => {
+                if (!result) return;
+                const title = result.city
+                    ? `${result.city}, ${result.country}`
+                    : result.country || result.name;
+                const fields: { label: string; value: string }[] = [];
+                if (result.country) fields.push({ label: 'Land', value: result.country });
+                if (result.state) fields.push({ label: 'Region', value: result.state });
+                if (result.county) fields.push({ label: 'Kommune', value: result.county });
+                if (result.city) fields.push({ label: 'By', value: result.city });
+                fields.push({ label: 'Koordinater', value: `${lat.toFixed(4)}°N, ${lon.toFixed(4)}°E` });
+                onSelectRef.current?.({
+                    title,
+                    icon: '\uD83D\uDCCD',
+                    color: '#8899aa',
+                    fields,
+                    linkUrl: `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=10/${lat}/${lon}`,
+                    linkLabel: 'Vis i OpenStreetMap',
+                });
             });
         }, ScreenSpaceEventType.LEFT_CLICK);
 

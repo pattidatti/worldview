@@ -78,6 +78,34 @@ function parseElements(elements: any[]): OverpassInfrastructureData {
     return { pipelines, platforms, wells };
 }
 
+// Generic Overpass fetcher — used by all OSM feature layers
+const _genericCache = new Map<string, any[]>();
+
+export function overpassViewportKey05(vp: Viewport): string {
+    // Round to 0.5 degrees — coarser cache for static features
+    const r = (n: number) => Math.round(n * 2) / 2;
+    return `${r(vp.south)},${r(vp.west)},${r(vp.north)},${r(vp.east)}`;
+}
+
+export async function fetchOverpassElements(query: string, cacheKey: string): Promise<any[]> {
+    if (_genericCache.has(cacheKey)) return _genericCache.get(cacheKey)!;
+    try {
+        const res = await fetch(ENDPOINT, {
+            method: 'POST',
+            body: `data=${encodeURIComponent(query)}`,
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            signal: AbortSignal.timeout(32_000),
+        });
+        if (!res.ok) return [];
+        const json = await res.json();
+        const elements = json.elements ?? [];
+        _genericCache.set(cacheKey, elements);
+        return elements;
+    } catch {
+        return [];
+    }
+}
+
 export async function fetchOverpassInfrastructure(viewport: Viewport): Promise<OverpassInfrastructureData> {
     const key = viewportKey(viewport);
     if (key === cachedKey && cachedData !== EMPTY) return cachedData;

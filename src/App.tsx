@@ -16,6 +16,12 @@ import { WeatherLayer } from './components/Layers/WeatherLayer/WeatherLayer';
 import { WebcamLayer } from './components/Layers/WebcamLayer/WebcamLayer';
 import { TrafficLayer } from './components/Layers/TrafficLayer/TrafficLayer';
 import { InfrastructureLayer } from './components/Layers/InfrastructureLayer/InfrastructureLayer';
+import { PowerLayer } from './components/Layers/PowerLayer/PowerLayer';
+import { WindLayer } from './components/Layers/WindLayer/WindLayer';
+import { HarborLayer } from './components/Layers/HarborLayer/HarborLayer';
+import { LighthouseLayer } from './components/Layers/LighthouseLayer/LighthouseLayer';
+import { TelecomLayer } from './components/Layers/TelecomLayer/TelecomLayer';
+import { MineLayer } from './components/Layers/MineLayer/MineLayer';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useHoverTooltip } from './hooks/useHoverTooltip';
 import { useViewer } from './context/ViewerContext';
@@ -66,6 +72,12 @@ function AppContent({
                 <WebcamLayer />
                 <TrafficLayer />
                 <InfrastructureLayer />
+                <PowerLayer />
+                <WindLayer />
+                <HarborLayer />
+                <LighthouseLayer />
+                <TelecomLayer />
+                <MineLayer />
                 <TopBar searchRef={searchRef} />
                 <LayerPanel />
                 <LayerErrorWatcher />
