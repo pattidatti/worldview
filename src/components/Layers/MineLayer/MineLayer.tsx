@@ -49,6 +49,11 @@ export function MineLayer() {
             if (mine) {
                 const typeMap: Record<string, string> = { mineshaft: 'Gruveskakt', adit: 'Gruvegang' };
                 const typeLabel = typeMap[mine.tags.man_made ?? ''] ?? (mine.tags.industrial === 'mine' ? 'Gruve' : 'Gruve');
+                const wikiTag = mine.tags.wikipedia;
+                const wikiParts = wikiTag ? wikiTag.split(':') : null;
+                const wikiUrl = wikiParts && wikiParts.length >= 2
+                    ? `https://${wikiParts[0]}.wikipedia.org/wiki/${wikiParts.slice(1).join(':')}`
+                    : undefined;
                 return {
                     title: mine.name || typeLabel,
                     icon: '⛏',
@@ -57,12 +62,27 @@ export function MineLayer() {
                         { label: 'Type', value: typeLabel },
                         ...(mine.tags.operator ? [{ label: 'Operatør', value: mine.tags.operator }] : []),
                         ...(mine.tags.resource ? [{ label: 'Ressurs', value: mine.tags.resource }] : []),
+                        ...(mine.tags.mineral ? [{ label: 'Mineral', value: mine.tags.mineral }] : []),
+                        ...(mine.tags.start_date || mine.tags.end_date
+                            ? [{ label: 'Periode', value: `${mine.tags.start_date ?? '?'} – ${mine.tags.end_date ?? 'nå'}` }]
+                            : []),
+                        ...(mine.tags.note
+                            ? [{ label: 'Notat', value: mine.tags.note }]
+                            : mine.tags.description
+                            ? [{ label: 'Beskrivelse', value: mine.tags.description }]
+                            : []),
                         { label: 'Kilde', value: 'OpenStreetMap' },
                     ],
+                    ...(wikiUrl ? { linkUrl: wikiUrl, linkLabel: 'Wikipedia' } : {}),
                 };
             }
             const quarry = dataRef.current.quarryCentroids.find((x) => x.id === id);
             if (quarry) {
+                const wikiTag = quarry.tags.wikipedia;
+                const wikiParts = wikiTag ? wikiTag.split(':') : null;
+                const wikiUrl = wikiParts && wikiParts.length >= 2
+                    ? `https://${wikiParts[0]}.wikipedia.org/wiki/${wikiParts.slice(1).join(':')}`
+                    : undefined;
                 return {
                     title: quarry.name || 'Steinbrudd',
                     icon: '⛏',
@@ -71,8 +91,18 @@ export function MineLayer() {
                         { label: 'Type', value: 'Steinbrudd' },
                         ...(quarry.tags.operator ? [{ label: 'Operatør', value: quarry.tags.operator }] : []),
                         ...(quarry.tags.resource ? [{ label: 'Ressurs', value: quarry.tags.resource }] : []),
+                        ...(quarry.tags.mineral ? [{ label: 'Mineral', value: quarry.tags.mineral }] : []),
+                        ...(quarry.tags.start_date || quarry.tags.end_date
+                            ? [{ label: 'Periode', value: `${quarry.tags.start_date ?? '?'} – ${quarry.tags.end_date ?? 'nå'}` }]
+                            : []),
+                        ...(quarry.tags.note
+                            ? [{ label: 'Notat', value: quarry.tags.note }]
+                            : quarry.tags.description
+                            ? [{ label: 'Beskrivelse', value: quarry.tags.description }]
+                            : []),
                         { label: 'Kilde', value: 'OpenStreetMap' },
                     ],
+                    ...(wikiUrl ? { linkUrl: wikiUrl, linkLabel: 'Wikipedia' } : {}),
                 };
             }
             return null;
@@ -131,6 +161,7 @@ export function MineLayer() {
                             width: new ConstantProperty(20),
                             height: new ConstantProperty(20),
                             heightReference: new ConstantProperty(HeightReference.CLAMP_TO_GROUND),
+                            disableDepthTestDistance: new ConstantProperty(Number.POSITIVE_INFINITY),
                         },
                     }));
                 } catch { /* skip */ }
@@ -148,6 +179,7 @@ export function MineLayer() {
                             width: new ConstantProperty(20),
                             height: new ConstantProperty(20),
                             heightReference: new ConstantProperty(HeightReference.CLAMP_TO_GROUND),
+                            disableDepthTestDistance: new ConstantProperty(Number.POSITIVE_INFINITY),
                         },
                     }));
                 } catch { /* skip */ }

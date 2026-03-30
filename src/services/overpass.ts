@@ -87,8 +87,74 @@ export function overpassViewportKey05(vp: Viewport): string {
     return `${r(vp.south)},${r(vp.west)},${r(vp.north)},${r(vp.east)}`;
 }
 
-export async function fetchOverpassElements(query: string, cacheKey: string): Promise<any[]> {
+// ── localStorage persistence ────────────────────────────────────────────────
+
+const LS_PREFIX = 'wv_ov:';
+const LS_INDEX  = 'wv_ov_idx';
+const MAX_LS_ENTRIES = 100;
+const MAX_LS_ENTRY_BYTES = 200_000; // skip localStorage for very large responses
+
+interface LsEntry { ts: number; data: any[] }
+
+function lsGet(key: string, maxAgeMs: number): any[] | null {
+    try {
+        const raw = localStorage.getItem(LS_PREFIX + key);
+        if (!raw) return null;
+        const entry: LsEntry = JSON.parse(raw);
+        if (Date.now() - entry.ts > maxAgeMs) {
+            localStorage.removeItem(LS_PREFIX + key);
+            return null;
+        }
+        return entry.data;
+    } catch { return null; }
+}
+
+function lsSet(key: string, data: any[]): void {
+    try {
+        const serialized = JSON.stringify({ ts: Date.now(), data } satisfies LsEntry);
+        if (serialized.length > MAX_LS_ENTRY_BYTES) return; // too large, skip
+
+        let index: Record<string, number> = {};
+        try { index = JSON.parse(localStorage.getItem(LS_INDEX) ?? '{}'); } catch {}
+
+        // Evict oldest 20% when index is full
+        const existingKeys = Object.keys(index);
+        if (existingKeys.length >= MAX_LS_ENTRIES) {
+            const toEvict = existingKeys
+                .sort((a, b) => index[a] - index[b])
+                .slice(0, Math.ceil(MAX_LS_ENTRIES * 0.2));
+            for (const k of toEvict) {
+                localStorage.removeItem(LS_PREFIX + k);
+                delete index[k];
+            }
+        }
+
+        localStorage.setItem(LS_PREFIX + key, serialized);
+        index[key] = Date.now();
+        localStorage.setItem(LS_INDEX, JSON.stringify(index));
+    } catch { /* quota exceeded — in-memory cache still works */ }
+}
+
+// ── Fetch with two-layer cache ───────────────────────────────────────────────
+
+export const DAY_MS = 86_400_000;
+
+export async function fetchOverpassElements(
+    query: string,
+    cacheKey: string,
+    maxAgeMs: number = 7 * DAY_MS,
+): Promise<any[]> {
+    // 1. In-memory (fastest, session-scoped)
     if (_genericCache.has(cacheKey)) return _genericCache.get(cacheKey)!;
+
+    // 2. localStorage (survives page reload)
+    const persisted = lsGet(cacheKey, maxAgeMs);
+    if (persisted) {
+        _genericCache.set(cacheKey, persisted);
+        return persisted;
+    }
+
+    // 3. Overpass API
     try {
         const res = await fetch(ENDPOINT, {
             method: 'POST',
@@ -100,6 +166,7 @@ export async function fetchOverpassElements(query: string, cacheKey: string): Pr
         const json = await res.json();
         const elements = json.elements ?? [];
         _genericCache.set(cacheKey, elements);
+        lsSet(cacheKey, elements);
         return elements;
     } catch {
         return [];

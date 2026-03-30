@@ -1,0 +1,167 @@
+export interface Place {
+    name: string;
+    lat: number;
+    lon: number;
+    country: string;
+    population?: number;
+    type: 'capital' | 'city' | 'town';
+}
+
+// Compact format: [name, lat, lon, country, population, type]
+type RawPlace = [string, number, number, string, number, 'capital' | 'city' | 'town'];
+
+const RAW_PLACES: RawPlace[] = [
+    // ── Norge ──
+    ['Oslo', 59.91, 10.75, 'Norge', 709037, 'capital'],
+    ['Bergen', 60.39, 5.32, 'Norge', 289330, 'city'],
+    ['Trondheim', 63.43, 10.40, 'Norge', 212660, 'city'],
+    ['Stavanger', 58.97, 5.73, 'Norge', 144147, 'city'],
+    ['Kristiansand', 58.15, 8.00, 'Norge', 114985, 'city'],
+    ['Tromsø', 69.65, 18.96, 'Norge', 77544, 'city'],
+    ['Drammen', 59.74, 10.20, 'Norge', 101859, 'city'],
+    ['Fredrikstad', 59.22, 10.93, 'Norge', 83193, 'city'],
+    ['Sandnes', 58.85, 5.74, 'Norge', 81972, 'city'],
+    ['Ålesund', 62.47, 6.15, 'Norge', 67272, 'city'],
+    ['Bodø', 67.28, 14.40, 'Norge', 53082, 'city'],
+    ['Tønsberg', 59.27, 10.41, 'Norge', 57096, 'city'],
+    ['Haugesund', 59.41, 5.27, 'Norge', 37444, 'town'],
+    ['Sandefjord', 59.13, 10.22, 'Norge', 45928, 'town'],
+    ['Molde', 62.74, 7.16, 'Norge', 32586, 'town'],
+    ['Harstad', 68.80, 16.54, 'Norge', 24804, 'town'],
+    ['Lillehammer', 61.12, 10.47, 'Norge', 28738, 'town'],
+    ['Moss', 59.43, 10.66, 'Norge', 50290, 'town'],
+    ['Gjøvik', 60.80, 10.69, 'Norge', 30789, 'town'],
+    ['Narvik', 68.43, 17.43, 'Norge', 18473, 'town'],
+    ['Alta', 69.97, 23.27, 'Norge', 21184, 'town'],
+    ['Hammerfest', 70.66, 23.68, 'Norge', 10794, 'town'],
+    ['Kirkenes', 69.73, 30.05, 'Norge', 3529, 'town'],
+    ['Larvik', 59.05, 10.03, 'Norge', 47710, 'town'],
+    ['Skien', 59.21, 9.61, 'Norge', 55513, 'town'],
+    ['Hamar', 60.79, 11.07, 'Norge', 32699, 'town'],
+    ['Arendal', 58.46, 8.77, 'Norge', 45502, 'town'],
+    ['Kongsberg', 59.67, 9.65, 'Norge', 28700, 'town'],
+    ['Halden', 59.12, 11.39, 'Norge', 31444, 'town'],
+
+    // ── Norden ──
+    ['Stockholm', 59.33, 18.07, 'Sverige', 975904, 'capital'],
+    ['Göteborg', 57.71, 11.97, 'Sverige', 590580, 'city'],
+    ['Malmö', 55.60, 13.00, 'Sverige', 351749, 'city'],
+    ['København', 55.68, 12.57, 'Danmark', 644431, 'capital'],
+    ['Helsinki', 60.17, 24.94, 'Finland', 658864, 'capital'],
+    ['Reykjavik', 64.15, -21.94, 'Island', 133262, 'capital'],
+
+    // ── Europa ──
+    ['London', 51.51, -0.13, 'Storbritannia', 8982000, 'capital'],
+    ['Paris', 48.86, 2.35, 'Frankrike', 2161000, 'capital'],
+    ['Berlin', 52.52, 13.41, 'Tyskland', 3748148, 'capital'],
+    ['Madrid', 40.42, -3.70, 'Spania', 3223334, 'capital'],
+    ['Roma', 41.90, 12.50, 'Italia', 2873000, 'capital'],
+    ['Moskva', 55.76, 37.62, 'Russland', 12506468, 'capital'],
+    ['Kyiv', 50.45, 30.52, 'Ukraina', 2962180, 'capital'],
+    ['Warszawa', 52.23, 21.01, 'Polen', 1793579, 'capital'],
+    ['Praha', 50.08, 14.44, 'Tsjekkia', 1309000, 'capital'],
+    ['Wien', 48.21, 16.37, 'Østerrike', 1911191, 'capital'],
+    ['Budapest', 47.50, 19.04, 'Ungarn', 1752286, 'capital'],
+    ['Bucuresti', 44.43, 26.10, 'Romania', 1883425, 'capital'],
+    ['Aten', 37.98, 23.73, 'Hellas', 664046, 'capital'],
+    ['Lisboa', 38.72, -9.14, 'Portugal', 544851, 'capital'],
+    ['Dublin', 53.35, -6.26, 'Irland', 544107, 'capital'],
+    ['Brussel', 50.85, 4.35, 'Belgia', 185103, 'capital'],
+    ['Amsterdam', 52.37, 4.90, 'Nederland', 872680, 'capital'],
+    ['Bern', 46.95, 7.45, 'Sveits', 133883, 'capital'],
+    ['Zürich', 47.37, 8.54, 'Sveits', 421878, 'city'],
+    ['Barcelona', 41.39, 2.17, 'Spania', 1621000, 'city'],
+    ['Milano', 45.46, 9.19, 'Italia', 1396059, 'city'],
+    ['München', 48.14, 11.58, 'Tyskland', 1484226, 'city'],
+    ['Hamburg', 53.55, 9.99, 'Tyskland', 1841179, 'city'],
+    ['Istanbul', 41.01, 28.98, 'Tyrkia', 15462452, 'city'],
+    ['Ankara', 39.93, 32.86, 'Tyrkia', 5663322, 'capital'],
+    ['Belgrad', 44.79, 20.47, 'Serbia', 1166763, 'capital'],
+    ['Sofia', 42.70, 23.32, 'Bulgaria', 1307439, 'capital'],
+    ['Zagreb', 45.81, 15.98, 'Kroatia', 806341, 'capital'],
+    ['Bratislava', 48.15, 17.11, 'Slovakia', 475503, 'capital'],
+    ['Vilnius', 54.69, 25.28, 'Litauen', 592389, 'capital'],
+    ['Riga', 56.95, 24.11, 'Latvia', 614618, 'capital'],
+    ['Tallinn', 59.44, 24.75, 'Estland', 444532, 'capital'],
+    ['Edinburgh', 55.95, -3.19, 'Storbritannia', 488050, 'city'],
+    ['Manchester', 53.48, -2.24, 'Storbritannia', 553230, 'city'],
+    ['Marseille', 43.30, 5.37, 'Frankrike', 870018, 'city'],
+    ['Sankt Petersburg', 59.93, 30.32, 'Russland', 5384342, 'city'],
+    ['Minsk', 53.90, 27.57, 'Hviterussland', 1996553, 'capital'],
+
+    // ── Nord-Amerika ──
+    ['Washington D.C.', 38.91, -77.04, 'USA', 689545, 'capital'],
+    ['New York', 40.71, -74.01, 'USA', 8336817, 'city'],
+    ['Los Angeles', 34.05, -118.24, 'USA', 3979576, 'city'],
+    ['Chicago', 41.88, -87.63, 'USA', 2693976, 'city'],
+    ['San Francisco', 37.77, -122.42, 'USA', 873965, 'city'],
+    ['Miami', 25.76, -80.19, 'USA', 449514, 'city'],
+    ['Houston', 29.76, -95.37, 'USA', 2304580, 'city'],
+    ['Ottawa', 45.42, -75.70, 'Canada', 1017449, 'capital'],
+    ['Toronto', 43.65, -79.38, 'Canada', 2794356, 'city'],
+    ['Vancouver', 49.28, -123.12, 'Canada', 662248, 'city'],
+    ['Ciudad de México', 19.43, -99.13, 'Mexico', 9209944, 'capital'],
+    ['Havanna', 23.11, -82.37, 'Cuba', 2130081, 'capital'],
+
+    // ── Sør-Amerika ──
+    ['Brasília', -15.79, -47.88, 'Brasil', 3094325, 'capital'],
+    ['São Paulo', -23.55, -46.63, 'Brasil', 12325232, 'city'],
+    ['Rio de Janeiro', -22.91, -43.17, 'Brasil', 6748000, 'city'],
+    ['Buenos Aires', -34.60, -58.38, 'Argentina', 2891082, 'capital'],
+    ['Lima', -12.05, -77.04, 'Peru', 9751717, 'capital'],
+    ['Santiago', -33.45, -70.67, 'Chile', 6160040, 'capital'],
+    ['Bogotá', 4.71, -74.07, 'Colombia', 7181469, 'capital'],
+
+    // ── Afrika ──
+    ['Kairo', 30.04, 31.24, 'Egypt', 10025657, 'capital'],
+    ['Lagos', 6.52, 3.38, 'Nigeria', 15388000, 'city'],
+    ['Abuja', 9.06, 7.49, 'Nigeria', 3464123, 'capital'],
+    ['Nairobi', -1.29, 36.82, 'Kenya', 4397073, 'capital'],
+    ['Johannesburg', -26.20, 28.05, 'Sør-Afrika', 5635127, 'city'],
+    ['Cape Town', -33.93, 18.42, 'Sør-Afrika', 4618000, 'city'],
+    ['Pretoria', -25.75, 28.19, 'Sør-Afrika', 2473000, 'capital'],
+    ['Casablanca', 33.57, -7.59, 'Marokko', 3752357, 'city'],
+    ['Addis Abeba', 9.03, 38.75, 'Etiopia', 3352000, 'capital'],
+    ['Kinshasa', -4.32, 15.31, 'DR Kongo', 14970000, 'capital'],
+    ['Accra', 5.56, -0.19, 'Ghana', 2291352, 'capital'],
+    ['Dakar', 14.69, -17.44, 'Senegal', 1146053, 'capital'],
+    ['Algier', 36.75, 3.06, 'Algerie', 3415811, 'capital'],
+
+    // ── Asia ──
+    ['Beijing', 39.90, 116.40, 'Kina', 21542000, 'capital'],
+    ['Shanghai', 31.23, 121.47, 'Kina', 24870895, 'city'],
+    ['Hong Kong', 22.32, 114.17, 'Kina', 7482500, 'city'],
+    ['Guangzhou', 23.13, 113.26, 'Kina', 18676605, 'city'],
+    ['Tokyo', 35.68, 139.69, 'Japan', 13960000, 'capital'],
+    ['Osaka', 34.69, 135.50, 'Japan', 2753862, 'city'],
+    ['Seoul', 37.57, 126.98, 'Sør-Korea', 9776000, 'capital'],
+    ['New Delhi', 28.61, 77.21, 'India', 16787941, 'capital'],
+    ['Mumbai', 19.08, 72.88, 'India', 12478447, 'city'],
+    ['Kolkata', 22.57, 88.36, 'India', 4496694, 'city'],
+    ['Bangkok', 13.76, 100.50, 'Thailand', 10539415, 'capital'],
+    ['Jakarta', -6.21, 106.85, 'Indonesia', 10562088, 'capital'],
+    ['Singapore', 1.35, 103.82, 'Singapore', 5850342, 'capital'],
+    ['Kuala Lumpur', 3.14, 101.69, 'Malaysia', 1982112, 'capital'],
+    ['Manila', 14.60, 120.98, 'Filippinene', 1846513, 'capital'],
+    ['Hanoi', 21.03, 105.85, 'Vietnam', 8053663, 'capital'],
+    ['Ho Chi Minh-byen', 10.82, 106.63, 'Vietnam', 8993082, 'city'],
+    ['Teheran', 35.69, 51.39, 'Iran', 8693706, 'capital'],
+    ['Riyadh', 24.69, 46.72, 'Saudi-Arabia', 7676654, 'capital'],
+    ['Dubai', 25.20, 55.27, 'UAE', 3478300, 'city'],
+    ['Baghdad', 33.31, 44.37, 'Irak', 8126755, 'capital'],
+    ['Islamabad', 33.69, 73.04, 'Pakistan', 1095064, 'capital'],
+    ['Karachi', 24.86, 67.01, 'Pakistan', 14910352, 'city'],
+    ['Dhaka', 23.81, 90.41, 'Bangladesh', 8906039, 'capital'],
+    ['Kabul', 34.53, 69.17, 'Afghanistan', 4601789, 'capital'],
+
+    // ── Oseania ──
+    ['Canberra', -35.28, 149.13, 'Australia', 462213, 'capital'],
+    ['Sydney', -33.87, 151.21, 'Australia', 5367206, 'city'],
+    ['Melbourne', -37.81, 144.96, 'Australia', 5078193, 'city'],
+    ['Wellington', -41.29, 174.78, 'New Zealand', 215400, 'capital'],
+    ['Auckland', -36.85, 174.76, 'New Zealand', 1657200, 'city'],
+];
+
+export const PLACES: Place[] = RAW_PLACES.map(([name, lat, lon, country, population, type]) => ({
+    name, lat, lon, country, population, type,
+}));

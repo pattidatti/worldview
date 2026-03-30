@@ -1,5 +1,5 @@
 import { type Viewport } from '@/hooks/useViewport';
-import { fetchOverpassElements, overpassViewportKey05 } from './overpass';
+import { fetchOverpassElements, overpassViewportKey05, DAY_MS } from './overpass';
 import {
     type PowerData,
     type WindData,
@@ -20,8 +20,10 @@ function centroid(geometry: { lat: string; lon: string }[]): { lat: number; lon:
     };
 }
 
+// Use rounded bbox so the query bbox matches the cache key — avoids partial coverage bugs
 function bbox(vp: Viewport): string {
-    return `${vp.south},${vp.west},${vp.north},${vp.east}`;
+    const r = (n: number) => Math.round(n * 2) / 2;
+    return `${r(vp.south)},${r(vp.west)},${r(vp.north)},${r(vp.east)}`;
 }
 
 // ── Power infrastructure ────────────────────────────────────────────────────
@@ -30,7 +32,7 @@ export async function fetchPowerData(viewport: Viewport): Promise<PowerData> {
     const bb = bbox(viewport);
     const query = `[out:json][timeout:30];(way["power"="line"](${bb});node["power"="substation"](${bb});way["power"="substation"](${bb});node["power"="plant"](${bb});way["power"="plant"](${bb}););out geom;`;
     const key = `power:${overpassViewportKey05(viewport)}`;
-    const elements = await fetchOverpassElements(query, key);
+    const elements = await fetchOverpassElements(query, key, 7 * DAY_MS);
 
     const lines: OsmWay[] = [];
     const substations: OsmPoint[] = [];
@@ -73,7 +75,7 @@ export async function fetchWindData(viewport: Viewport): Promise<WindData> {
     const bb = bbox(viewport);
     const query = `[out:json][timeout:25];(node["power"="generator"]["generator:source"="wind"](${bb});node["generator:source"="wind"](${bb}););out body;`;
     const key = `wind:${overpassViewportKey05(viewport)}`;
-    const elements = await fetchOverpassElements(query, key);
+    const elements = await fetchOverpassElements(query, key, 7 * DAY_MS);
 
     const seen = new Set<string>();
     const turbines: OsmPoint[] = [];
@@ -96,7 +98,7 @@ export async function fetchHarborData(viewport: Viewport): Promise<HarborData> {
     const bb = bbox(viewport);
     const query = `[out:json][timeout:25];(node["harbour"="yes"](${bb});node["amenity"="ferry_terminal"](${bb});node["man_made"="pier"](${bb});way["man_made"="pier"](${bb}););out geom;`;
     const key = `harbors:${overpassViewportKey05(viewport)}`;
-    const elements = await fetchOverpassElements(query, key);
+    const elements = await fetchOverpassElements(query, key, 14 * DAY_MS);
 
     const terminals: OsmPoint[] = [];
     const piers: OsmWay[] = [];
@@ -125,7 +127,7 @@ export async function fetchLighthouseData(viewport: Viewport): Promise<Lighthous
     const bb = bbox(viewport);
     const query = `[out:json][timeout:20];(node["man_made"="lighthouse"](${bb});way["man_made"="lighthouse"](${bb}););out geom;`;
     const key = `lighthouses:${overpassViewportKey05(viewport)}`;
-    const elements = await fetchOverpassElements(query, key);
+    const elements = await fetchOverpassElements(query, key, 30 * DAY_MS);
 
     const lighthouses: OsmPoint[] = [];
 
@@ -146,9 +148,9 @@ export async function fetchLighthouseData(viewport: Viewport): Promise<Lighthous
 
 export async function fetchTelecomData(viewport: Viewport): Promise<TelecomData> {
     const bb = bbox(viewport);
-    const query = `[out:json][timeout:25];(node["tower:type"="communication"](${bb});node["man_made"="mast"]["communication"](${bb});node["man_made"="tower"]["tower:type"="communication"](${bb}););out body;`;
+    const query = `[out:json][timeout:25];(node["tower:type"="communication"](${bb});node["man_made"="communication_tower"](${bb}););out body;`;
     const key = `telecom:${overpassViewportKey05(viewport)}`;
-    const elements = await fetchOverpassElements(query, key);
+    const elements = await fetchOverpassElements(query, key, 14 * DAY_MS);
 
     const seen = new Set<string>();
     const towers: OsmPoint[] = [];
@@ -171,7 +173,7 @@ export async function fetchMineData(viewport: Viewport): Promise<MineData> {
     const bb = bbox(viewport);
     const query = `[out:json][timeout:25];(node["man_made"="mineshaft"](${bb});node["man_made"="adit"](${bb});node["industrial"="mine"](${bb});way["landuse"="quarry"](${bb}););out geom;`;
     const key = `mines:${overpassViewportKey05(viewport)}`;
-    const elements = await fetchOverpassElements(query, key);
+    const elements = await fetchOverpassElements(query, key, 30 * DAY_MS);
 
     const mines: OsmPoint[] = [];
     const quarryCentroids: OsmPoint[] = [];

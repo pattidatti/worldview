@@ -135,6 +135,7 @@ export function HarborLayer() {
                             positions,
                             width: new ConstantProperty(3),
                             material: new ColorMaterialProperty(C.withAlpha(0.8)),
+                            clampToGround: new ConstantProperty(true),
                         }),
                     }));
                 } catch { /* skip */ }
@@ -154,6 +155,7 @@ export function HarborLayer() {
                             width: new ConstantProperty(20),
                             height: new ConstantProperty(20),
                             heightReference: new ConstantProperty(HeightReference.CLAMP_TO_GROUND),
+                            disableDepthTestDistance: new ConstantProperty(Number.POSITIVE_INFINITY),
                         },
                     }));
                 } catch { /* skip */ }

@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useLayers } from '@/context/LayerContext';
 import { type LayerConfig, LAYER_ICONS } from '@/types/layers';
 
+const INFRA_IDS = new Set(['infrastructure', 'infrastructurePipelines', 'infrastructureFields']);
+
 function formatTimeAgo(ts: number): string {
     const sec = Math.floor((Date.now() - ts) / 1000);
     if (sec < 60) return 'Nå';
@@ -10,13 +12,14 @@ function formatTimeAgo(ts: number): string {
     return `${Math.floor(min / 60)}t siden`;
 }
 
-function LayerToggle({ layer }: { layer: LayerConfig }) {
+function LayerToggle({ layer, indent = false }: { layer: LayerConfig; indent?: boolean }) {
     const { toggleLayer } = useLayers();
 
     return (
         <button
             onClick={() => toggleLayer(layer.id)}
-            className={`flex items-center gap-3 w-full px-3 py-2 rounded-lg transition-all duration-200 cursor-pointer
+            className={`flex items-center gap-3 w-full py-2 rounded-lg transition-all duration-200 cursor-pointer
+                ${indent ? 'pl-5 pr-3' : 'px-3'}
                 ${layer.visible ? 'bg-white/5' : 'bg-transparent opacity-40'}
                 hover:bg-white/10`}
         >
@@ -68,7 +71,14 @@ export function LayerPanel() {
                 {!collapsed && (
                     <div className="px-2 pb-2 flex flex-col gap-0.5">
                         {layers.map((layer) => (
-                            <LayerToggle key={layer.id} layer={layer} />
+                            <div key={layer.id}>
+                                {layer.id === 'infrastructure' && (
+                                    <span className="px-3 pt-2 pb-0.5 block font-mono text-[10px] tracking-wider text-[var(--text-muted)] uppercase">
+                                        Olje &amp; gass
+                                    </span>
+                                )}
+                                <LayerToggle layer={layer} indent={INFRA_IDS.has(layer.id)} />
+                            </div>
                         ))}
                     </div>
                 )}

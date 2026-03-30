@@ -2,12 +2,67 @@ import { useRef, useEffect, useState, type ReactNode } from 'react';
 import {
     Viewer, Color, Ion, Entity, CameraEventType, Cartesian2, Cartesian3,
     ScreenSpaceEventHandler, ScreenSpaceEventType, defined,
-    UrlTemplateImageryProvider, Math as CesiumMath,
+    UrlTemplateImageryProvider, Math as CesiumMath, Cesium3DTileset, ImageryLayer,
 } from 'cesium';
 import { reverseGeocode } from '@/services/geocoding';
 import { ViewerProvider } from '@/context/ViewerContext';
 import { usePopupRegistry } from '@/context/PopupRegistry';
+import { useImagery } from '@/context/ImageryContext';
 import { type PopupContent } from '@/types/popup';
+
+// Fjerner kun GlobeViewers egne baselayers — overlay-lag (trafikkflyt osv.) overlever
+function clearBaseLayers(v: Viewer, tracked: ImageryLayer[]) {
+    for (const layer of tracked) {
+        if (v.imageryLayers.contains(layer)) v.imageryLayers.remove(layer, true);
+    }
+    tracked.length = 0;
+}
+
+function applySatelliteImagery(v: Viewer, tracked: ImageryLayer[]) {
+    clearBaseLayers(v, tracked);
+    tracked.push(v.imageryLayers.addImageryProvider(new UrlTemplateImageryProvider({
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        credit: 'Esri, Maxar, Earthstar Geographics',
+    }), 0));
+    const lbl = v.imageryLayers.addImageryProvider(new UrlTemplateImageryProvider({
+        url: 'https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}.png',
+        subdomains: 'abcd',
+        credit: 'CartoDB',
+    }), 1);
+    lbl.alpha = 0.5;
+    tracked.push(lbl);
+}
+
+function applyMapImagery(v: Viewer, tracked: ImageryLayer[]) {
+    clearBaseLayers(v, tracked);
+    tracked.push(v.imageryLayers.addImageryProvider(new UrlTemplateImageryProvider({
+        url: 'https://{s}.basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}.png',
+        subdomains: 'abcd',
+        credit: 'CartoDB',
+    }), 0));
+}
+
+function applyBlendImagery(v: Viewer, tracked: ImageryLayer[]) {
+    clearBaseLayers(v, tracked);
+    tracked.push(v.imageryLayers.addImageryProvider(new UrlTemplateImageryProvider({
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        credit: 'Esri, Maxar',
+    }), 0));
+    const roads = v.imageryLayers.addImageryProvider(new UrlTemplateImageryProvider({
+        url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}.png',
+        subdomains: 'abcd',
+        credit: 'CartoDB',
+    }), 1);
+    roads.alpha = 0.45;
+    tracked.push(roads);
+    const lbl = v.imageryLayers.addImageryProvider(new UrlTemplateImageryProvider({
+        url: 'https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}.png',
+        subdomains: 'abcd',
+        credit: 'CartoDB',
+    }), 2);
+    lbl.alpha = 0.5;
+    tracked.push(lbl);
+}
 
 interface GlobeViewerProps {
     children?: ReactNode;
@@ -19,6 +74,9 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
     const initRef = useRef(false);
     const [viewer, setViewer] = useState<Viewer | null>(null);
     const { resolve } = usePopupRegistry();
+    const { activeMode } = useImagery();
+    const tilesetRef = useRef<Cesium3DTileset | null>(null);
+    const baseLayersRef = useRef<ImageryLayer[]>([]);
     const onSelectRef = useRef(onSelect);
     onSelectRef.current = onSelect;
     const resolveRef = useRef(resolve);
@@ -51,15 +109,6 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
         scene.backgroundColor = Color.fromCssColorString('#0a0a0f');
         scene.globe.baseColor = Color.fromCssColorString('#12121a');
         scene.globe.enableLighting = true;
-
-        // Label overlay — CartoDB Dark Matter (labels only)
-        const labelProvider = new UrlTemplateImageryProvider({
-            url: 'https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png',
-            subdomains: 'abcd',
-            credit: 'CartoDB',
-        });
-        const labelLayer = v.imageryLayers.addImageryProvider(labelProvider);
-        labelLayer.alpha = 0.85;
 
         // Clean dark sky
         if (scene.skyAtmosphere) scene.skyAtmosphere.show = false;
@@ -206,6 +255,7 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
             { timeout: 5000 }
         );
 
+        applySatelliteImagery(v, baseLayersRef.current);
         setViewer(v);
 
         return () => {
@@ -218,6 +268,52 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
             initRef.current = false;
         };
     }, []);
+
+    // Imagery-switching effect
+    useEffect(() => {
+        if (!viewer) return;
+        let cancelled = false;
+        const { scene } = viewer;
+
+        async function apply() {
+            if (activeMode === 'photorealistic3d') {
+                scene.globe.show = false;
+
+                if (!tilesetRef.current) {
+                    try {
+                        const tileset = await Cesium3DTileset.fromIonAssetId(2275207);
+                        if (cancelled) return;
+                        tilesetRef.current = tileset;
+                        scene.primitives.add(tileset);
+                    } catch (e) {
+                        console.warn(
+                            '[WorldView] Google Photorealistic 3D Tiles utilgjengelig.\n' +
+                            'Legg til asset ID 2275207 i Cesium Ion-kontoen din på ion.cesium.com/assetdepot\n',
+                            e
+                        );
+                        if (!cancelled) {
+                            scene.globe.show = true;
+                            applySatelliteImagery(viewer!, baseLayersRef.current);
+                        }
+                    }
+                } else {
+                    tilesetRef.current.show = true;
+                }
+            } else {
+                scene.globe.show = true;
+                if (tilesetRef.current) tilesetRef.current.show = false;
+
+                if (activeMode === 'satellite') applySatelliteImagery(viewer!, baseLayersRef.current);
+                else if (activeMode === 'map') applyMapImagery(viewer!, baseLayersRef.current);
+                else if (activeMode === 'blend') applyBlendImagery(viewer!, baseLayersRef.current);
+            }
+
+            if (!cancelled) scene.requestRender();
+        }
+
+        apply();
+        return () => { cancelled = true; };
+    }, [viewer, activeMode]);
 
     return (
         <ViewerProvider value={viewer}>

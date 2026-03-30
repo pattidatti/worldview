@@ -110,6 +110,7 @@ export function TelecomLayer() {
                             width: new ConstantProperty(18),
                             height: new ConstantProperty(24),
                             heightReference: new ConstantProperty(HeightReference.CLAMP_TO_GROUND),
+                            disableDepthTestDistance: new ConstantProperty(Number.POSITIVE_INFINITY),
                         },
                     }));
                 } catch { /* skip */ }

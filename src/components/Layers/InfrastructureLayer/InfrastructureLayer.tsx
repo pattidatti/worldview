@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import {
     CustomDataSource,
     Entity,
@@ -73,26 +73,50 @@ export function InfrastructureLayer() {
     const { isVisible, setLayerLoading, setLayerCount, setLayerError, setLayerLastUpdated } = useLayers();
     const { register, unregister } = usePopupRegistry();
     const { register: tooltipRegister, unregister: tooltipUnregister } = useTooltipRegistry();
-    const visible = isVisible('infrastructure');
+
+    const visibleInstallations = isVisible('infrastructure');
+    const visiblePipelines = isVisible('infrastructurePipelines');
+    const visibleFields = isVisible('infrastructureFields');
+    const anyVisible = visibleInstallations || visiblePipelines || visibleFields;
+
     const viewport = useViewport(viewer, 2000);
-    const dataSourceRef = useRef<CustomDataSource | null>(null);
-    const osmDsRef = useRef<CustomDataSource | null>(null);
+
+    const facilitiesDsRef = useRef<CustomDataSource | null>(null);
+    const pipelinesDsRef = useRef<CustomDataSource | null>(null);
+    const fieldsDsRef = useRef<CustomDataSource | null>(null);
+    const osmInstallationsDsRef = useRef<CustomDataSource | null>(null);
+    const osmPipelinesDsRef = useRef<CustomDataSource | null>(null);
+
     const dataRef = useRef<InfrastructureData>({ facilities: [], pipelines: [], fields: [] });
     const osmDataRef = useRef<OverpassInfrastructureData>({ pipelines: [], platforms: [], wells: [] });
-    const [osmCount, setOsmCount] = useState(0);
 
-    const { data, loading, error, lastUpdated } = usePollingData(fetchInfrastructure, POLL_MS, visible);
+    const { data, loading, error, lastUpdated } = usePollingData(fetchInfrastructure, POLL_MS, anyVisible);
     if (data) dataRef.current = data;
 
-    useEffect(() => { setLayerError('infrastructure', error); }, [error, setLayerError]);
-    useEffect(() => { setLayerLastUpdated('infrastructure', lastUpdated); }, [lastUpdated, setLayerLastUpdated]);
+    useEffect(() => {
+        setLayerLoading('infrastructure', loading);
+        setLayerLoading('infrastructurePipelines', loading);
+        setLayerLoading('infrastructureFields', loading);
+    }, [loading, setLayerLoading]);
 
-    // Popup builder (SODIR + OSM)
+    useEffect(() => {
+        setLayerError('infrastructure', error);
+        setLayerError('infrastructurePipelines', error);
+        setLayerError('infrastructureFields', error);
+    }, [error, setLayerError]);
+
+    useEffect(() => {
+        setLayerLastUpdated('infrastructure', lastUpdated);
+        setLayerLastUpdated('infrastructurePipelines', lastUpdated);
+        setLayerLastUpdated('infrastructureFields', lastUpdated);
+    }, [lastUpdated, setLayerLastUpdated]);
+
+    // Popup: Installasjoner (SODIR facilities + OSM platforms + wells)
     useEffect(() => {
         register('infrastructure', (entity: Entity) => {
-            const inSodir = dataSourceRef.current?.entities.contains(entity);
-            const inOsm = osmDsRef.current?.entities.contains(entity);
-            if (!inSodir && !inOsm) return null;
+            const inDs = facilitiesDsRef.current?.entities.contains(entity)
+                      || osmInstallationsDsRef.current?.entities.contains(entity);
+            if (!inDs) return null;
             const id = entity.id;
 
             if (id.startsWith('facility-')) {
@@ -114,58 +138,7 @@ export function InfrastructureLayer() {
                 };
             }
 
-            if (id.startsWith('pipeline-')) {
-                const ppl = dataRef.current.pipelines.find((p) => `pipeline-${p.id}` === id);
-                if (!ppl) return null;
-                return {
-                    title: ppl.name || `Rørledning ${ppl.id}`,
-                    icon: '🛢',
-                    color: MEDIUM_COLORS[ppl.medium.toUpperCase()] ?? INFRA_COLOR,
-                    fields: [
-                        { label: 'Medium', value: ppl.medium },
-                        { label: 'Operatør', value: ppl.operator },
-                        ...(ppl.dimension ? [{ label: 'Dimensjon', value: `${ppl.dimension}"` }] : []),
-                        ...(ppl.fromFacility ? [{ label: 'Fra', value: ppl.fromFacility }] : []),
-                        ...(ppl.toFacility ? [{ label: 'Til', value: ppl.toFacility }] : []),
-                        ...(ppl.belongsTo ? [{ label: 'Tilhører felt', value: ppl.belongsTo }] : []),
-                        { label: 'Vanndybde', value: ppl.waterDepth ? `${ppl.waterDepth} m` : 'Ukjent' },
-                        { label: 'Fase', value: ppl.phase },
-                    ],
-                };
-            }
-
-            if (id.startsWith('field-')) {
-                const fld = dataRef.current.fields.find((f) => `field-${f.id}` === id);
-                if (!fld) return null;
-                return {
-                    title: fld.name,
-                    icon: '🛢',
-                    color: INFRA_COLOR,
-                    fields: [
-                        { label: 'Status', value: fld.status },
-                        { label: 'Operatør', value: fld.operator },
-                        { label: 'HC-type', value: fld.hcType },
-                        ...(fld.discoveryYear ? [{ label: 'Oppdagelsesår', value: String(fld.discoveryYear) }] : []),
-                        { label: 'Område', value: fld.mainArea },
-                    ],
-                };
-            }
-
-            // OSM entities
             if (id.startsWith('osm-way-')) {
-                const ppl = osmDataRef.current.pipelines.find((p) => p.id === id);
-                if (ppl) {
-                    return {
-                        title: ppl.name || 'Rørledning (OSM)',
-                        icon: '🛢',
-                        color: SUBSTANCE_COLORS[ppl.substance.toLowerCase()] ?? INFRA_COLOR,
-                        fields: [
-                            ...(ppl.substance ? [{ label: 'Medium', value: ppl.substance }] : []),
-                            ...(ppl.operator ? [{ label: 'Operatør', value: ppl.operator }] : []),
-                            { label: 'Kilde', value: 'OpenStreetMap' },
-                        ],
-                    };
-                }
                 const plat = osmDataRef.current.platforms.find((p) => p.id === id);
                 if (plat) {
                     return {
@@ -212,32 +185,98 @@ export function InfrastructureLayer() {
         return () => unregister('infrastructure');
     }, [register, unregister]);
 
-    // Register tooltip builder (SODIR + OSM)
+    // Popup: Rørledninger (SODIR pipelines + OSM pipelines)
+    useEffect(() => {
+        register('infrastructure-pipelines', (entity: Entity) => {
+            const inDs = pipelinesDsRef.current?.entities.contains(entity)
+                      || osmPipelinesDsRef.current?.entities.contains(entity);
+            if (!inDs) return null;
+            const id = entity.id;
+
+            if (id.startsWith('pipeline-')) {
+                const ppl = dataRef.current.pipelines.find(
+                    (p) => id === `pipeline-${p.id}` || id.startsWith(`pipeline-${p.id}-`)
+                );
+                if (!ppl) return null;
+                return {
+                    title: ppl.name || `Rørledning ${ppl.id}`,
+                    icon: '〰',
+                    color: MEDIUM_COLORS[ppl.medium.toUpperCase()] ?? INFRA_COLOR,
+                    fields: [
+                        { label: 'Medium', value: ppl.medium },
+                        { label: 'Operatør', value: ppl.operator },
+                        ...(ppl.dimension ? [{ label: 'Dimensjon', value: `${ppl.dimension}"` }] : []),
+                        ...(ppl.fromFacility ? [{ label: 'Fra', value: ppl.fromFacility }] : []),
+                        ...(ppl.toFacility ? [{ label: 'Til', value: ppl.toFacility }] : []),
+                        ...(ppl.belongsTo ? [{ label: 'Tilhører felt', value: ppl.belongsTo }] : []),
+                        { label: 'Vanndybde', value: ppl.waterDepth ? `${ppl.waterDepth} m` : 'Ukjent' },
+                        { label: 'Fase', value: ppl.phase },
+                    ],
+                };
+            }
+
+            if (id.startsWith('osm-way-')) {
+                const ppl = osmDataRef.current.pipelines.find((p) => p.id === id);
+                if (ppl) {
+                    return {
+                        title: ppl.name || 'Rørledning (OSM)',
+                        icon: '〰',
+                        color: SUBSTANCE_COLORS[ppl.substance.toLowerCase()] ?? INFRA_COLOR,
+                        fields: [
+                            ...(ppl.substance ? [{ label: 'Medium', value: ppl.substance }] : []),
+                            ...(ppl.operator ? [{ label: 'Operatør', value: ppl.operator }] : []),
+                            { label: 'Kilde', value: 'OpenStreetMap' },
+                        ],
+                    };
+                }
+            }
+
+            return null;
+        });
+        return () => unregister('infrastructure-pipelines');
+    }, [register, unregister]);
+
+    // Popup: Felt (SODIR fields)
+    useEffect(() => {
+        register('infrastructure-fields', (entity: Entity) => {
+            if (!fieldsDsRef.current?.entities.contains(entity)) return null;
+            const id = entity.id;
+
+            if (id.startsWith('field-')) {
+                const fld = dataRef.current.fields.find((f) => `field-${f.id}` === id);
+                if (!fld) return null;
+                return {
+                    title: fld.name,
+                    icon: '⬡',
+                    color: INFRA_COLOR,
+                    fields: [
+                        { label: 'Status', value: fld.status },
+                        { label: 'Operatør', value: fld.operator },
+                        { label: 'HC-type', value: fld.hcType },
+                        ...(fld.discoveryYear ? [{ label: 'Oppdagelsesår', value: String(fld.discoveryYear) }] : []),
+                        { label: 'Område', value: fld.mainArea },
+                    ],
+                };
+            }
+
+            return null;
+        });
+        return () => unregister('infrastructure-fields');
+    }, [register, unregister]);
+
+    // Tooltip: Installasjoner
     useEffect(() => {
         tooltipRegister('infrastructure', (entity: Entity) => {
-            const inSodir = dataSourceRef.current?.entities.contains(entity);
-            const inOsm = osmDsRef.current?.entities.contains(entity);
-            if (!inSodir && !inOsm) return null;
+            const inDs = facilitiesDsRef.current?.entities.contains(entity)
+                      || osmInstallationsDsRef.current?.entities.contains(entity);
+            if (!inDs) return null;
             const id = entity.id;
             if (id.startsWith('facility-')) {
                 const fac = dataRef.current.facilities.find((f) => `facility-${f.id}` === id);
                 if (!fac) return null;
                 return { title: fac.name, subtitle: `${fac.kind} · ${fac.operator}`, icon: '🛢', color: INFRA_COLOR };
             }
-            if (id.startsWith('pipeline-')) {
-                const ppl = dataRef.current.pipelines.find((p) => `pipeline-${p.id}` === id);
-                if (!ppl) return null;
-                return { title: ppl.name || `Rørledning ${ppl.id}`, subtitle: `${ppl.medium} · ${ppl.operator}`, icon: '🛢', color: MEDIUM_COLORS[ppl.medium.toUpperCase()] ?? INFRA_COLOR };
-            }
-            if (id.startsWith('field-')) {
-                const fld = dataRef.current.fields.find((f) => `field-${f.id}` === id);
-                if (!fld) return null;
-                return { title: fld.name, subtitle: `${fld.status} · ${fld.operator}`, icon: '🛢', color: INFRA_COLOR };
-            }
-            // OSM
             if (id.startsWith('osm-way-')) {
-                const ppl = osmDataRef.current.pipelines.find((p) => p.id === id);
-                if (ppl) return { title: ppl.name || 'Rørledning', subtitle: [ppl.substance, ppl.operator].filter(Boolean).join(' · ') || 'OSM', icon: '🛢', color: SUBSTANCE_COLORS[ppl.substance.toLowerCase()] ?? INFRA_COLOR };
                 const plat = osmDataRef.current.platforms.find((p) => p.id === id);
                 if (plat) return { title: plat.name || 'Plattform', subtitle: plat.operator || 'OSM', icon: '🛢', color: INFRA_COLOR };
             }
@@ -252,47 +291,108 @@ export function InfrastructureLayer() {
         return () => tooltipUnregister('infrastructure');
     }, [tooltipRegister, tooltipUnregister]);
 
-    useEffect(() => { setLayerLoading('infrastructure', loading); }, [loading, setLayerLoading]);
+    // Tooltip: Rørledninger
+    useEffect(() => {
+        tooltipRegister('infrastructure-pipelines', (entity: Entity) => {
+            const inDs = pipelinesDsRef.current?.entities.contains(entity)
+                      || osmPipelinesDsRef.current?.entities.contains(entity);
+            if (!inDs) return null;
+            const id = entity.id;
+            if (id.startsWith('pipeline-')) {
+                const ppl = dataRef.current.pipelines.find(
+                    (p) => id === `pipeline-${p.id}` || id.startsWith(`pipeline-${p.id}-`)
+                );
+                if (!ppl) return null;
+                return { title: ppl.name || `Rørledning ${ppl.id}`, subtitle: `${ppl.medium} · ${ppl.operator}`, icon: '〰', color: MEDIUM_COLORS[ppl.medium.toUpperCase()] ?? INFRA_COLOR };
+            }
+            if (id.startsWith('osm-way-')) {
+                const ppl = osmDataRef.current.pipelines.find((p) => p.id === id);
+                if (ppl) return { title: ppl.name || 'Rørledning', subtitle: [ppl.substance, ppl.operator].filter(Boolean).join(' · ') || 'OSM', icon: '〰', color: SUBSTANCE_COLORS[ppl.substance.toLowerCase()] ?? INFRA_COLOR };
+            }
+            return null;
+        });
+        return () => tooltipUnregister('infrastructure-pipelines');
+    }, [tooltipRegister, tooltipUnregister]);
 
-    // Create data sources (SODIR + OSM)
+    // Tooltip: Felt
+    useEffect(() => {
+        tooltipRegister('infrastructure-fields', (entity: Entity) => {
+            if (!fieldsDsRef.current?.entities.contains(entity)) return null;
+            const id = entity.id;
+            if (id.startsWith('field-')) {
+                const fld = dataRef.current.fields.find((f) => `field-${f.id}` === id);
+                if (!fld) return null;
+                return { title: fld.name, subtitle: `${fld.status} · ${fld.operator}`, icon: '⬡', color: INFRA_COLOR };
+            }
+            return null;
+        });
+        return () => tooltipUnregister('infrastructure-fields');
+    }, [tooltipRegister, tooltipUnregister]);
+
+    // Create all 5 datasources
     useEffect(() => {
         if (!viewer || viewer.isDestroyed()) return;
-        const ds = new CustomDataSource('infrastructure');
-        configureCluster(ds, { pixelRange: 40, minimumClusterSize: 3, color: '#ff9800' });
-        viewer.dataSources.add(ds);
-        dataSourceRef.current = ds;
 
-        const osmDs = new CustomDataSource('infrastructure-osm');
-        viewer.dataSources.add(osmDs);
-        osmDsRef.current = osmDs;
+        const facilitiesDs = new CustomDataSource('infrastructure');
+        configureCluster(facilitiesDs, { pixelRange: 40, minimumClusterSize: 3, color: '#ff9800' });
+        viewer.dataSources.add(facilitiesDs);
+        facilitiesDsRef.current = facilitiesDs;
+
+        const pipelinesDs = new CustomDataSource('infrastructure-pipelines');
+        viewer.dataSources.add(pipelinesDs);
+        pipelinesDsRef.current = pipelinesDs;
+
+        const fieldsDs = new CustomDataSource('infrastructure-fields');
+        viewer.dataSources.add(fieldsDs);
+        fieldsDsRef.current = fieldsDs;
+
+        const osmInstallationsDs = new CustomDataSource('infrastructure-osm-installations');
+        configureCluster(osmInstallationsDs, { pixelRange: 40, minimumClusterSize: 3, color: '#ff9800' });
+        viewer.dataSources.add(osmInstallationsDs);
+        osmInstallationsDsRef.current = osmInstallationsDs;
+
+        const osmPipelinesDs = new CustomDataSource('infrastructure-osm-pipelines');
+        viewer.dataSources.add(osmPipelinesDs);
+        osmPipelinesDsRef.current = osmPipelinesDs;
 
         return () => {
             if (!viewer.isDestroyed()) {
-                viewer.dataSources.remove(ds, true);
-                viewer.dataSources.remove(osmDs, true);
+                viewer.dataSources.remove(facilitiesDs, true);
+                viewer.dataSources.remove(pipelinesDs, true);
+                viewer.dataSources.remove(fieldsDs, true);
+                viewer.dataSources.remove(osmInstallationsDs, true);
+                viewer.dataSources.remove(osmPipelinesDs, true);
             }
-            dataSourceRef.current = null;
-            osmDsRef.current = null;
+            facilitiesDsRef.current = null;
+            pipelinesDsRef.current = null;
+            fieldsDsRef.current = null;
+            osmInstallationsDsRef.current = null;
+            osmPipelinesDsRef.current = null;
         };
     }, [viewer]);
 
-    // Toggle visibility
+    // Visibility — 3 independent effects
     useEffect(() => {
-        if (dataSourceRef.current) dataSourceRef.current.show = visible;
-        if (osmDsRef.current) osmDsRef.current.show = visible;
-    }, [visible]);
+        if (facilitiesDsRef.current)       facilitiesDsRef.current.show       = visibleInstallations;
+        if (osmInstallationsDsRef.current) osmInstallationsDsRef.current.show = visibleInstallations;
+    }, [visibleInstallations]);
 
-    const updateEntities = useCallback(() => {
-        const ds = dataSourceRef.current;
+    useEffect(() => {
+        if (pipelinesDsRef.current)    pipelinesDsRef.current.show    = visiblePipelines;
+        if (osmPipelinesDsRef.current) osmPipelinesDsRef.current.show = visiblePipelines;
+    }, [visiblePipelines]);
+
+    useEffect(() => {
+        if (fieldsDsRef.current) fieldsDsRef.current.show = visibleFields;
+    }, [visibleFields]);
+
+    // SODIR: Fields (polygons)
+    useEffect(() => {
+        const ds = fieldsDsRef.current;
         if (!ds || !data) return;
-
-        const { facilities, pipelines, fields } = data;
-        const sodirCount = facilities.length + pipelines.length + fields.length;
-        setLayerCount('infrastructure', sodirCount + osmCount);
         ds.entities.removeAll();
 
-        // Fields (polygons) — render first so they're behind other entities
-        for (const field of fields) {
+        for (const field of data.fields) {
             try {
                 const ring = field.rings[0];
                 if (!ring || ring.length < 3) continue;
@@ -315,8 +415,17 @@ export function InfrastructureLayer() {
             } catch { /* skip bad geometry */ }
         }
 
-        // Pipelines (polylines)
-        for (const ppl of pipelines) {
+        setLayerCount('infrastructureFields', data.fields.length);
+        if (viewer && !viewer.isDestroyed()) viewer.scene.requestRender();
+    }, [data, viewer, setLayerCount]);
+
+    // SODIR: Pipelines (polylines)
+    useEffect(() => {
+        const ds = pipelinesDsRef.current;
+        if (!ds || !data) return;
+        ds.entities.removeAll();
+
+        for (const ppl of data.pipelines) {
             for (let i = 0; i < ppl.paths.length; i++) {
                 try {
                     const coords = ppl.paths[i];
@@ -343,8 +452,17 @@ export function InfrastructureLayer() {
             }
         }
 
-        // Facilities (points)
-        for (const fac of facilities) {
+        setLayerCount('infrastructurePipelines', data.pipelines.length);
+        if (viewer && !viewer.isDestroyed()) viewer.scene.requestRender();
+    }, [data, viewer, setLayerCount]);
+
+    // SODIR: Facilities (points)
+    useEffect(() => {
+        const ds = facilitiesDsRef.current;
+        if (!ds || !data) return;
+        ds.entities.removeAll();
+
+        for (const fac of data.facilities) {
             try {
                 if (!isFinite(fac.lon) || !isFinite(fac.lat)) continue;
                 ds.entities.add(new Entity({
@@ -361,85 +479,89 @@ export function InfrastructureLayer() {
             } catch { /* skip bad geometry */ }
         }
 
+        setLayerCount('infrastructure', data.facilities.length);
         if (viewer && !viewer.isDestroyed()) viewer.scene.requestRender();
-    }, [data, viewer, setLayerCount, osmCount]);
+    }, [data, viewer, setLayerCount]);
 
-    useEffect(() => { updateEntities(); }, [updateEntities]);
-
-    // Overpass (OSM) — viewport-based fetch
+    // Overpass (OSM) — viewport-based, split into installations + pipelines datasources
     useEffect(() => {
-        if (!visible || !viewport || !osmDsRef.current) return;
+        if ((!visibleInstallations && !visiblePipelines) || !viewport) return;
         let cancelled = false;
 
         fetchOverpassInfrastructure(viewport).then((osmData) => {
-            if (cancelled || !osmDsRef.current) return;
+            if (cancelled) return;
             osmDataRef.current = osmData;
-            const ds = osmDsRef.current;
-            ds.entities.removeAll();
 
-            const total = osmData.pipelines.length + osmData.platforms.length + osmData.wells.length;
-            setOsmCount(total);
-
-            // OSM Pipelines
-            for (const ppl of osmData.pipelines) {
-                try {
-                    const positions = ppl.positions
-                        .filter(([lon, lat]) => isFinite(lon) && isFinite(lat))
-                        .map(([lon, lat]) => Cartesian3.fromDegrees(lon, lat));
-                    if (positions.length < 2) continue;
-                    ds.entities.add(new Entity({
-                        id: ppl.id,
-                        name: ppl.name || 'Rørledning (OSM)',
-                        polyline: new PolylineGraphics({
-                            positions,
-                            width: new ConstantProperty(2),
-                            material: new ColorMaterialProperty(getSubstanceColor(ppl.substance).withAlpha(0.7)),
-                        }),
-                    }));
-                } catch { /* skip */ }
+            // OSM Pipelines → osmPipelinesDsRef
+            if (osmPipelinesDsRef.current) {
+                const ds = osmPipelinesDsRef.current;
+                ds.entities.removeAll();
+                for (const ppl of osmData.pipelines) {
+                    try {
+                        const positions = ppl.positions
+                            .filter(([lon, lat]) => isFinite(lon) && isFinite(lat))
+                            .map(([lon, lat]) => Cartesian3.fromDegrees(lon, lat));
+                        if (positions.length < 2) continue;
+                        ds.entities.add(new Entity({
+                            id: ppl.id,
+                            name: ppl.name || 'Rørledning (OSM)',
+                            polyline: new PolylineGraphics({
+                                positions,
+                                width: new ConstantProperty(2),
+                                material: new ColorMaterialProperty(getSubstanceColor(ppl.substance).withAlpha(0.7)),
+                            }),
+                        }));
+                    } catch { /* skip */ }
+                }
             }
+            setLayerCount('infrastructurePipelines', dataRef.current.pipelines.length + osmData.pipelines.length);
 
-            // OSM Platforms
-            for (const plat of osmData.platforms) {
-                try {
-                    if (!isFinite(plat.lon) || !isFinite(plat.lat)) continue;
-                    ds.entities.add(new Entity({
-                        id: plat.id,
-                        name: plat.name || 'Plattform (OSM)',
-                        position: Cartesian3.fromDegrees(plat.lon, plat.lat, 0),
-                        billboard: {
-                            image: PLATFORM_SVG_SM,
-                            width: new ConstantProperty(16),
-                            height: new ConstantProperty(16),
-                            heightReference: new ConstantProperty(HeightReference.CLAMP_TO_GROUND),
-                        },
-                    }));
-                } catch { /* skip */ }
-            }
+            // OSM Installations (platforms + wells) → osmInstallationsDsRef
+            if (osmInstallationsDsRef.current) {
+                const ds = osmInstallationsDsRef.current;
+                ds.entities.removeAll();
 
-            // OSM Wells
-            for (const well of osmData.wells) {
-                try {
-                    if (!isFinite(well.lon) || !isFinite(well.lat)) continue;
-                    ds.entities.add(new Entity({
-                        id: well.id,
-                        name: well.name || 'Brønn (OSM)',
-                        position: Cartesian3.fromDegrees(well.lon, well.lat, 0),
-                        point: new PointGraphics({
-                            pixelSize: 4,
-                            color: Color.fromCssColorString(INFRA_COLOR).withAlpha(0.7),
-                            outlineColor: Color.BLACK,
-                            outlineWidth: 1,
-                        }),
-                    }));
-                } catch { /* skip */ }
+                for (const plat of osmData.platforms) {
+                    try {
+                        if (!isFinite(plat.lon) || !isFinite(plat.lat)) continue;
+                        ds.entities.add(new Entity({
+                            id: plat.id,
+                            name: plat.name || 'Plattform (OSM)',
+                            position: Cartesian3.fromDegrees(plat.lon, plat.lat, 0),
+                            billboard: {
+                                image: PLATFORM_SVG_SM,
+                                width: new ConstantProperty(16),
+                                height: new ConstantProperty(16),
+                                heightReference: new ConstantProperty(HeightReference.CLAMP_TO_GROUND),
+                            },
+                        }));
+                    } catch { /* skip */ }
+                }
+
+                for (const well of osmData.wells) {
+                    try {
+                        if (!isFinite(well.lon) || !isFinite(well.lat)) continue;
+                        ds.entities.add(new Entity({
+                            id: well.id,
+                            name: well.name || 'Brønn (OSM)',
+                            position: Cartesian3.fromDegrees(well.lon, well.lat, 0),
+                            point: new PointGraphics({
+                                pixelSize: 4,
+                                color: Color.fromCssColorString(INFRA_COLOR).withAlpha(0.7),
+                                outlineColor: Color.BLACK,
+                                outlineWidth: 1,
+                            }),
+                        }));
+                    } catch { /* skip */ }
+                }
             }
+            setLayerCount('infrastructure', dataRef.current.facilities.length + osmData.platforms.length + osmData.wells.length);
 
             if (viewer && !viewer.isDestroyed()) viewer.scene.requestRender();
         });
 
         return () => { cancelled = true; };
-    }, [visible, viewport, viewer]);
+    }, [visibleInstallations, visiblePipelines, viewport, viewer, setLayerCount]);
 
     return null;
 }
