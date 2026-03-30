@@ -48,6 +48,7 @@ const LAYER_COLORS: Record<LayerId, string> = {
     news: '#e040fb',
     conflicts: '#ff1744',
     weatherRadar: '#00e5ff',
+    sigmet: '#ff8800',
 };
 
 function searchEntities(viewer: import('cesium').Viewer | null, query: string, visibleLayerIds: Set<LayerId>): EntityResult[] {

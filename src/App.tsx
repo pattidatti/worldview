@@ -45,6 +45,7 @@ import { EventLog } from './components/UI/EventLog';
 import { TrackingProvider, useTracking } from './context/TrackingContext';
 import { OrbitProvider } from './context/OrbitContext';
 import { OrbitButton } from './components/UI/OrbitButton';
+import { GeoNavigator } from './components/UI/GeoNavigator';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useHoverTooltip } from './hooks/useHoverTooltip';
 import { useViewer } from './context/ViewerContext';
@@ -125,6 +126,7 @@ function AppContent({
                 <EventLog />
                 <CameraHud />
                 <OrbitButton />
+                <GeoNavigator />
                 <StatusTicker />
                 <LayerErrorWatcher />
                 {popup && (

@@ -139,15 +139,21 @@ export function ShipLayer() {
                 linkUrl: `https://www.marinetraffic.com/en/ais/details/ships/mmsi:${ship.mmsi}`,
                 linkLabel: 'Se på MarineTraffic →',
             };
-        });
-        return () => unregister('ships');
+        };
+        register('ships', builder);
+        register('ships-super', builder);
+        return () => { unregister('ships'); unregister('ships-super'); };
     }, [register, unregister]);
 
     // Register tooltip builder
     useEffect(() => {
-        tooltipRegister('ships', (entity: Entity) => {
-            if (!dataSourceRef.current?.entities.contains(entity)) return null;
-            const ship = shipsRef.current.get(Number(entity.id));
+        const tipBuilder = (entity: Entity) => {
+            const inHull = dataSourceRef.current?.entities.contains(entity);
+            const inSuper = superDsRef.current?.entities.contains(entity);
+            if (!inHull && !inSuper) return null;
+            const rawId = entity.id;
+            const mmsiStr = rawId.endsWith('-s') ? rawId.slice(0, -2) : rawId;
+            const ship = shipsRef.current.get(Number(mmsiStr));
             if (!ship) return null;
             return {
                 title: ship.name || `MMSI ${ship.mmsi}`,
@@ -155,8 +161,10 @@ export function ShipLayer() {
                 icon: '⚓',
                 color: '#00d4ff',
             };
-        });
-        return () => tooltipUnregister('ships');
+        };
+        tooltipRegister('ships', tipBuilder);
+        tooltipRegister('ships-super', tipBuilder);
+        return () => { tooltipUnregister('ships'); tooltipUnregister('ships-super'); };
     }, [tooltipRegister, tooltipUnregister]);
 
     // Create data source
