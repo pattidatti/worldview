@@ -2,6 +2,38 @@ import { type WeatherPoint } from '@/types/weather';
 
 const MET_BASE = 'https://api.met.no/weatherapi/locationforecast/2.0/compact';
 const USER_AGENT = 'WorldView/0.1 github.com/worldview';
+const DEFAULT_TTL_MS = 9 * 60 * 1000; // 9 min
+const SS_PREFIX = 'metno:forecast:';
+
+interface CachedForecast {
+    data: WeatherPoint;
+    expiresAt: number;
+}
+
+function loadFromCache(cityName: string): WeatherPoint | null {
+    try {
+        const raw = sessionStorage.getItem(SS_PREFIX + cityName);
+        if (!raw) return null;
+        const entry: CachedForecast = JSON.parse(raw);
+        if (Date.now() > entry.expiresAt) {
+            sessionStorage.removeItem(SS_PREFIX + cityName);
+            return null;
+        }
+        return entry.data;
+    } catch {
+        return null;
+    }
+}
+
+function saveToCache(cityName: string, data: WeatherPoint, expiresHeader: string | null): void {
+    try {
+        const expiresAt = expiresHeader
+            ? Date.parse(expiresHeader)
+            : Date.now() + DEFAULT_TTL_MS;
+        const entry: CachedForecast = { data, expiresAt: isNaN(expiresAt) ? Date.now() + DEFAULT_TTL_MS : expiresAt };
+        sessionStorage.setItem(SS_PREFIX + cityName, JSON.stringify(entry));
+    } catch { /* quota exceeded — ignore */ }
+}
 
 // Grid of cities/locations to show weather for
 const LOCATIONS = [
@@ -26,6 +58,9 @@ const LOCATIONS = [
 ];
 
 async function fetchOneLocation(loc: { name: string; lat: number; lon: number }): Promise<WeatherPoint | null> {
+    const cached = loadFromCache(loc.name);
+    if (cached) return cached;
+
     try {
         const url = `${MET_BASE}?lat=${loc.lat}&lon=${loc.lon}`;
         const res = await fetch(url, {
@@ -34,6 +69,7 @@ async function fetchOneLocation(loc: { name: string; lat: number; lon: number })
 
         if (!res.ok) return null;
 
+        const expiresHeader = res.headers.get('Expires');
         const data = await res.json();
         const timeseries = data?.properties?.timeseries;
         if (!timeseries?.length) return null;
@@ -44,7 +80,7 @@ async function fetchOneLocation(loc: { name: string; lat: number; lon: number })
 
         if (!instant) return null;
 
-        return {
+        const result: WeatherPoint = {
             name: loc.name,
             lat: loc.lat,
             lon: loc.lon,
@@ -55,6 +91,8 @@ async function fetchOneLocation(loc: { name: string; lat: number; lon: number })
             precipitation: next1h?.details?.precipitation_amount ?? 0,
             symbol: next1h?.summary?.symbol_code ?? 'cloudy',
         };
+        saveToCache(loc.name, result, expiresHeader);
+        return result;
     } catch {
         return null;
     }

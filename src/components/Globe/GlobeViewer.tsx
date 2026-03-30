@@ -3,11 +3,17 @@ import {
     Viewer, Color, Ion, Entity, CameraEventType, Cartesian2, Cartesian3,
     ScreenSpaceEventHandler, ScreenSpaceEventType, defined,
     UrlTemplateImageryProvider, Math as CesiumMath, Cesium3DTileset, ImageryLayer,
+    JulianDate, HeadingPitchRange, Matrix4, PostProcessStage,
 } from 'cesium';
 import { reverseGeocode } from '@/services/geocoding';
 import { ViewerProvider } from '@/context/ViewerContext';
 import { usePopupRegistry } from '@/context/PopupRegistry';
 import { useImagery } from '@/context/ImageryContext';
+import { useTracking } from '@/context/TrackingContext';
+import { useShaderOverlay } from '@/context/ShaderOverlayContext';
+import { NIGHT_VISION_SHADER } from '@/shaders/nightVision';
+import { CRT_SHADER } from '@/shaders/crt';
+import { THERMAL_SHADER } from '@/shaders/thermal';
 import { type PopupContent } from '@/types/popup';
 
 // Fjerner kun GlobeViewers egne baselayers — overlay-lag (trafikkflyt osv.) overlever
@@ -75,12 +81,20 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
     const [viewer, setViewer] = useState<Viewer | null>(null);
     const { resolve } = usePopupRegistry();
     const { activeMode } = useImagery();
+    const { activeOverlay } = useShaderOverlay();
+    const { trackedEntityId, setTrackedEntityId } = useTracking();
     const tilesetRef = useRef<Cesium3DTileset | null>(null);
     const baseLayersRef = useRef<ImageryLayer[]>([]);
+    const shaderStageRef = useRef<PostProcessStage | null>(null);
     const onSelectRef = useRef(onSelect);
     onSelectRef.current = onSelect;
     const resolveRef = useRef(resolve);
     resolveRef.current = resolve;
+    const trackedIdRef = useRef(trackedEntityId);
+    trackedIdRef.current = trackedEntityId;
+    const setTrackedIdRef = useRef(setTrackedEntityId);
+    setTrackedIdRef.current = setTrackedEntityId;
+    const trackDistRef = useRef(500_000);
 
     useEffect(() => {
         if (!containerRef.current || initRef.current) return;
@@ -104,6 +118,8 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
         });
 
         const { scene } = v;
+
+        v.camera.percentageChanged = 0.2;
 
         // Dark theme
         scene.backgroundColor = Color.fromCssColorString('#0a0a0f');
@@ -146,30 +162,63 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
         }, { passive: false });
 
         scene.preRender.addEventListener(() => {
-            if (pendingDelta !== 0) {
-                zoomVelocity += pendingDelta * 0.001;
-                zoomVelocity = Math.max(-0.4, Math.min(0.4, zoomVelocity));
-                pendingDelta = 0;
-            }
-            if (Math.abs(zoomVelocity) < 0.0002) { zoomVelocity = 0; return; }
+            const tracking = trackedIdRef.current;
 
-            const height = v.camera.positionCartographic.height;
-            if ((height <= 60 && zoomVelocity > 0) || (height >= 48_000_000 && zoomVelocity < 0)) {
-                zoomVelocity = 0;
+            if (pendingDelta !== 0) {
+                if (tracking) {
+                    // While following: scroll adjusts distance instead of moving camera
+                    trackDistRef.current *= (1 - pendingDelta * 0.0008);
+                    trackDistRef.current = Math.max(500, Math.min(20_000_000, trackDistRef.current));
+                    pendingDelta = 0;
+                    zoomVelocity = 0;
+                } else {
+                    zoomVelocity += pendingDelta * 0.001;
+                    zoomVelocity = Math.max(-0.4, Math.min(0.4, zoomVelocity));
+                    pendingDelta = 0;
+                }
+            }
+
+            if (!tracking) {
+                if (Math.abs(zoomVelocity) < 0.0002) { zoomVelocity = 0; return; }
+
+                const height = v.camera.positionCartographic.height;
+                if ((height <= 60 && zoomVelocity > 0) || (height >= 48_000_000 && zoomVelocity < 0)) {
+                    zoomVelocity = 0;
+                    return;
+                }
+
+                const amount = height * zoomVelocity;
+                if (cursorWorldPos) {
+                    Cartesian3.subtract(cursorWorldPos, v.camera.position, dirScratch);
+                    Cartesian3.normalize(dirScratch, dirScratch);
+                    v.camera.move(dirScratch, amount);
+                } else {
+                    v.camera.move(v.camera.direction, amount);
+                }
+
+                zoomVelocity *= 0.85;
+                scene.requestRender();
                 return;
             }
 
-            const amount = height * zoomVelocity;
-            if (cursorWorldPos) {
-                Cartesian3.subtract(cursorWorldPos, v.camera.position, dirScratch);
-                Cartesian3.normalize(dirScratch, dirScratch);
-                v.camera.move(dirScratch, amount);
-            } else {
-                v.camera.move(v.camera.direction, amount);
+            // Camera tracking: find entity in all dataSources and lock camera onto it
+            for (let i = 0; i < v.dataSources.length; i++) {
+                const entity = v.dataSources.get(i).entities.getById(tracking);
+                if (entity?.position) {
+                    const pos = entity.position.getValue(JulianDate.now());
+                    if (pos) {
+                        v.camera.lookAt(pos, new HeadingPitchRange(
+                            v.camera.heading,
+                            CesiumMath.toRadians(-30),
+                            trackDistRef.current,
+                        ));
+                        scene.requestRender();
+                    }
+                    return;
+                }
             }
-
-            zoomVelocity *= 0.85;
-            scene.requestRender();
+            // Entity not found — stop tracking
+            setTrackedIdRef.current(null);
         });
 
         // Single centralized click handler
@@ -269,6 +318,17 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
         };
     }, []);
 
+    // Camera lock/unlock when tracking changes
+    useEffect(() => {
+        if (!viewer || viewer.isDestroyed()) return;
+        if (!trackedEntityId) {
+            viewer.camera.lookAtTransform(Matrix4.IDENTITY);
+        } else {
+            trackDistRef.current = Math.max(10_000, viewer.camera.positionCartographic.height * 0.3);
+        }
+        viewer.scene.requestRender();
+    }, [trackedEntityId, viewer]);
+
     // Imagery-switching effect
     useEffect(() => {
         if (!viewer) return;
@@ -314,6 +374,29 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
         apply();
         return () => { cancelled = true; };
     }, [viewer, activeMode]);
+
+    // Shader overlay effect
+    useEffect(() => {
+        if (!viewer || viewer.isDestroyed()) return;
+        const { scene } = viewer;
+
+        if (shaderStageRef.current) {
+            scene.postProcessStages.remove(shaderStageRef.current);
+            if (!shaderStageRef.current.isDestroyed()) shaderStageRef.current.destroy();
+            shaderStageRef.current = null;
+        }
+
+        if (activeOverlay !== 'none') {
+            const src = activeOverlay === 'nightvision' ? NIGHT_VISION_SHADER
+                      : activeOverlay === 'crt'         ? CRT_SHADER
+                      : THERMAL_SHADER;
+            const stage = new PostProcessStage({ fragmentShader: src });
+            scene.postProcessStages.add(stage);
+            shaderStageRef.current = stage;
+        }
+
+        scene.requestRender();
+    }, [viewer, activeOverlay]);
 
     return (
         <ViewerProvider value={viewer}>

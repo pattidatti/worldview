@@ -15,7 +15,8 @@ import {
 import { useViewer } from '@/context/ViewerContext';
 import { usePopupRegistry } from '@/context/PopupRegistry';
 import { useTooltipRegistry } from '@/context/TooltipRegistry';
-import { PLACES, type Place } from '@/services/places';
+import { PLACES, countryFlag, type Place } from '@/services/places';
+import { fetchWikiSummary } from '@/services/wikipedia';
 
 const LABEL_COLOR = Color.fromCssColorString('#c8d2e1');
 const LABEL_COLOR_DIM = Color.fromCssColorString('#8899aa');
@@ -70,7 +71,7 @@ export function PlaceLabels() {
                     verticalOrigin: VerticalOrigin.CENTER,
                     horizontalOrigin: HorizontalOrigin.LEFT,
                     pixelOffset: new Cartesian2(8, 0),
-                    disableDepthTestDistance: Number.POSITIVE_INFINITY,
+                    disableDepthTestDistance: 0,
                     distanceDisplayCondition: new DistanceDisplayCondition(0, dist),
                 }),
                 point: new PointGraphics({
@@ -78,7 +79,7 @@ export function PlaceLabels() {
                     color: POINT_COLOR,
                     outlineColor: LABEL_COLOR_DIM,
                     outlineWidth: 1,
-                    disableDepthTestDistance: Number.POSITIVE_INFINITY,
+                    disableDepthTestDistance: 0,
                     distanceDisplayCondition: new DistanceDisplayCondition(0, dist),
                 }),
             }));
@@ -99,9 +100,10 @@ export function PlaceLabels() {
             const place = PLACES.find((p) => `place-${p.name}-${p.lat}` === entity.id);
             if (!place) return null;
 
+            const flag = countryFlag(place.countryCode);
             const typeLabel = place.type === 'capital' ? 'Hovedstad' : place.type === 'city' ? 'Storby' : 'By';
             const fields: { label: string; value: string }[] = [
-                { label: 'Land', value: place.country },
+                { label: 'Land', value: `${flag} ${place.country}` },
             ];
             if (place.population) {
                 fields.push({ label: 'Befolkning', value: formatPopulation(place.population) });
@@ -111,13 +113,27 @@ export function PlaceLabels() {
                 { label: 'Koordinater', value: `${place.lat.toFixed(2)}°N, ${place.lon.toFixed(2)}°Ø` },
             );
 
+            const wikiSlug = place.wikiSlug;
+
             return {
-                title: `${place.name}, ${place.country}`,
-                icon: '\uD83D\uDCCD',
+                title: `${flag} ${place.name}`,
+                icon: place.type === 'capital' ? '\u{1F3DB}' : '\u{1F3D9}',
                 color: '#8899aa',
                 fields,
-                linkUrl: `https://www.openstreetmap.org/?mlat=${place.lat}&mlon=${place.lon}#map=12/${place.lat}/${place.lon}`,
-                linkLabel: 'Vis i OpenStreetMap',
+                linkUrl: wikiSlug
+                    ? `https://nb.wikipedia.org/wiki/${encodeURIComponent(wikiSlug)}`
+                    : `https://www.openstreetmap.org/?mlat=${place.lat}&mlon=${place.lon}#map=12/${place.lat}/${place.lon}`,
+                linkLabel: wikiSlug ? 'Les mer på Wikipedia' : 'Vis i OpenStreetMap',
+                enrichAsync: wikiSlug ? async () => {
+                    const wiki = await fetchWikiSummary(wikiSlug);
+                    if (!wiki) return {};
+                    return {
+                        description: wiki.extract,
+                        imageUrl: wiki.thumbnailUrl,
+                        linkUrl: wiki.pageUrl,
+                        linkLabel: 'Les mer på Wikipedia',
+                    };
+                } : undefined,
             };
         });
         return () => unregister('places');
@@ -129,13 +145,14 @@ export function PlaceLabels() {
             if (!dataSourceRef.current?.entities.contains(entity)) return null;
             const place = PLACES.find((p) => `place-${p.name}-${p.lat}` === entity.id);
             if (!place) return null;
+            const flag = countryFlag(place.countryCode);
             const sub = place.population
-                ? `${place.country} · ${formatPopulation(place.population)}`
-                : place.country;
+                ? `${flag} ${place.country} · ${formatPopulation(place.population)}`
+                : `${flag} ${place.country}`;
             return {
                 title: place.name,
                 subtitle: sub,
-                icon: '\uD83D\uDCCD',
+                icon: place.type === 'capital' ? '\u{1F3DB}' : '\u{1F3D9}',
                 color: '#8899aa',
             };
         });

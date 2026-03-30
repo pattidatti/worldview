@@ -1,5 +1,20 @@
+import { useEffect, useState } from 'react';
 import { useLayers } from '@/context/LayerContext';
 import { SearchBar, type SearchBarHandle } from './SearchBar';
+import { AnimatedCount } from './AnimatedCount';
+
+function SystemClock() {
+    const [time, setTime] = useState(() => new Date().toTimeString().slice(0, 8));
+    useEffect(() => {
+        const id = setInterval(() => setTime(new Date().toTimeString().slice(0, 8)), 1000);
+        return () => clearInterval(id);
+    }, []);
+    return (
+        <span className="font-mono text-xs tabular-nums" style={{ color: 'var(--text-muted)' }}>
+            {time}
+        </span>
+    );
+}
 
 interface TopBarProps {
     searchRef?: React.RefObject<SearchBarHandle | null>;
@@ -19,6 +34,12 @@ export function TopBar({ searchRef }: TopBarProps) {
                     <h1 className="font-mono text-base font-bold tracking-wider text-[var(--accent-blue)]">
                         WORLDVIEW
                     </h1>
+                    {/* LIVE badge */}
+                    <span className="hidden sm:flex items-center gap-1 font-mono font-bold tracking-widest"
+                        style={{ fontSize: '10px', color: 'rgba(248, 113, 113, 0.9)' }}>
+                        <span className="live-pulse-dot w-1.5 h-1.5 rounded-full bg-red-500" />
+                        LIVE
+                    </span>
                     <div className="hidden sm:flex items-center gap-1.5">
                         {layers.map((l) => (
                             <span
@@ -40,13 +61,18 @@ export function TopBar({ searchRef }: TopBarProps) {
                 {/* Status */}
                 <div className="hidden md:flex items-center gap-4 font-mono text-xs text-[var(--text-muted)]">
                     <span>
-                        <span className="text-[var(--accent-green)]">{totalObjects.toLocaleString('nb-NO')}</span>
+                        <AnimatedCount
+                            value={totalObjects}
+                            color="var(--accent-green)"
+                            className="text-[var(--accent-green)]"
+                        />
                         {' '}objekter
                     </span>
                     <span>
                         <span className="text-[var(--accent-blue)]">{activeLayers.length}</span>
                         /{layers.length} lag
                     </span>
+                    <SystemClock />
                 </div>
             </div>
         </div>

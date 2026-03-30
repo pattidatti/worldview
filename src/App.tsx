@@ -23,9 +23,19 @@ import { HarborLayer } from './components/Layers/HarborLayer/HarborLayer';
 import { LighthouseLayer } from './components/Layers/LighthouseLayer/LighthouseLayer';
 import { TelecomLayer } from './components/Layers/TelecomLayer/TelecomLayer';
 import { MineLayer } from './components/Layers/MineLayer/MineLayer';
+import { BuildingsLayer } from './components/Layers/BuildingsLayer/BuildingsLayer';
+import { SubmarineCableLayer } from './components/Layers/SubmarineCableLayer/SubmarineCableLayer';
+import { EarthquakeLayer } from './components/Layers/EarthquakeLayer/EarthquakeLayer';
 import { PlaceLabels } from './components/Globe/PlaceLabels';
 import { ImageryProvider } from './context/ImageryContext';
 import { ImageryPicker } from './components/UI/ImageryPicker';
+import { ShaderOverlayProvider } from './context/ShaderOverlayContext';
+import { ShaderOverlayPicker } from './components/UI/ShaderOverlayPicker';
+import { HudOverlay } from './components/UI/HudOverlay';
+import { CameraHud } from './components/UI/CameraHud';
+import { StatusTicker } from './components/UI/StatusTicker';
+import { EventLog } from './components/UI/EventLog';
+import { TrackingProvider, useTracking } from './context/TrackingContext';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useHoverTooltip } from './hooks/useHoverTooltip';
 import { useViewer } from './context/ViewerContext';
@@ -54,8 +64,12 @@ function AppContent({
     searchRef: React.RefObject<SearchBarHandle | null>;
 }) {
     const { toggleLayer } = useLayers();
+    const { trackedEntityId, setTrackedEntityId } = useTracking();
 
-    const closePopup = useCallback(() => setPopup(null), [setPopup]);
+    const closePopup = useCallback(() => {
+        setPopup(null);
+        setTrackedEntityId(null);
+    }, [setPopup, setTrackedEntityId]);
     const focusSearch = useCallback(() => searchRef.current?.focus(), [searchRef]);
     const layerIds = useMemo(() => LAYER_IDS, []);
 
@@ -83,12 +97,27 @@ function AppContent({
                 <LighthouseLayer />
                 <TelecomLayer />
                 <MineLayer />
+                <BuildingsLayer />
+                <SubmarineCableLayer />
+                <EarthquakeLayer />
                 <PlaceLabels />
                 <TopBar searchRef={searchRef} />
                 <LayerPanel />
                 <ImageryPicker />
+                <ShaderOverlayPicker />
+                <HudOverlay />
+                <EventLog />
+                <CameraHud />
+                <StatusTicker />
                 <LayerErrorWatcher />
-                {popup && <InfoPopup content={popup} onClose={closePopup} />}
+                {popup && (
+                    <InfoPopup
+                        content={popup}
+                        onClose={closePopup}
+                        onFollow={setTrackedEntityId}
+                        isFollowing={trackedEntityId !== null && trackedEntityId === popup.followEntityId}
+                    />
+                )}
                 <TooltipHandler />
             </GlobeViewer>
             <ToastContainer />
@@ -102,8 +131,10 @@ export default function App() {
     const searchRef = useRef<SearchBarHandle>(null);
 
     return (
+        <ShaderOverlayProvider>
         <ImageryProvider>
         <LayerProvider>
+        <TrackingProvider>
             <PopupRegistryProvider>
             <TooltipRegistryProvider>
                 <AppContent
@@ -114,7 +145,9 @@ export default function App() {
                 />
             </TooltipRegistryProvider>
             </PopupRegistryProvider>
+        </TrackingProvider>
         </LayerProvider>
         </ImageryProvider>
+        </ShaderOverlayProvider>
     );
 }

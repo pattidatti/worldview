@@ -96,24 +96,34 @@ export function TelecomLayer() {
             if (cancelled || !dsRef.current) return;
             dataRef.current = data;
             const ds = dsRef.current;
-            ds.entities.removeAll();
+
+            const existing = new Map<string, Entity>();
+            for (const entity of ds.entities.values) existing.set(entity.id, entity);
+            const seen = new Set<string>();
 
             for (const t of data.towers) {
                 try {
                     if (!isFinite(t.lon) || !isFinite(t.lat)) continue;
-                    ds.entities.add(new Entity({
-                        id: t.id,
-                        name: t.name || 'Telekomtårn',
-                        position: Cartesian3.fromDegrees(t.lon, t.lat, 0),
-                        billboard: {
-                            image: TOWER_SVG,
-                            width: new ConstantProperty(18),
-                            height: new ConstantProperty(24),
-                            heightReference: new ConstantProperty(HeightReference.CLAMP_TO_GROUND),
-                            disableDepthTestDistance: new ConstantProperty(Number.POSITIVE_INFINITY),
-                        },
-                    }));
+                    seen.add(t.id);
+                    if (!existing.has(t.id)) {
+                        ds.entities.add(new Entity({
+                            id: t.id,
+                            name: t.name || 'Telekomtårn',
+                            position: Cartesian3.fromDegrees(t.lon, t.lat, 0),
+                            billboard: {
+                                image: TOWER_SVG,
+                                width: new ConstantProperty(18),
+                                height: new ConstantProperty(24),
+                                heightReference: new ConstantProperty(HeightReference.CLAMP_TO_GROUND),
+                                disableDepthTestDistance: new ConstantProperty(Number.POSITIVE_INFINITY),
+                            },
+                        }));
+                    }
                 } catch { /* skip */ }
+            }
+
+            for (const [id] of existing) {
+                if (!seen.has(id)) ds.entities.removeById(id);
             }
 
             setLayerCount('telecom', data.towers.length);

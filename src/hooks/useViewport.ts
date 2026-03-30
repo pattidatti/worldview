@@ -54,7 +54,6 @@ export function useViewport(viewer: Viewer | null, debounceMs: number = 1000): V
         // Initial
         computeViewport();
 
-        viewer.camera.percentageChanged = 0.2;
         const removeListener = viewer.camera.changed.addEventListener(onCameraChange);
 
         return () => {

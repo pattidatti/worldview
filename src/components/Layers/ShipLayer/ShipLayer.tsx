@@ -3,7 +3,11 @@ import {
     CustomDataSource,
     Entity,
     Cartesian3,
+    Color,
     ConstantPositionProperty,
+    ConstantProperty,
+    NearFarScalar,
+    PolylineGlowMaterialProperty,
     VerticalOrigin,
     HorizontalOrigin,
     HeightReference,
@@ -20,6 +24,10 @@ import { getShipTypeName, getNavStatusText, getFlagState, createShipIcon } from 
 
 const API_KEY = import.meta.env.VITE_AISSTREAM_API_KEY || '';
 const MAX_SHIPS = 1000;
+const MAX_SHIP_TRAIL = 60;
+const SHIP_TRAIL_COLOR = Color.fromCssColorString('#00d4ff');
+// Zoom-basert skalering: stor nær (havn), liten på avstand (kontinent)
+const SHIP_SCALE = new NearFarScalar(500, 4.0, 3_000_000, 0.4);
 
 export function ShipLayer() {
     const viewer = useViewer();
@@ -32,6 +40,8 @@ export function ShipLayer() {
     viewportRef.current = viewport;
     const hasViewport = viewport !== null;
     const dataSourceRef = useRef<CustomDataSource | null>(null);
+    const trailDsRef = useRef<CustomDataSource | null>(null);
+    const trailHistoryRef = useRef<Map<string, Cartesian3[]>>(new Map());
     const connRef = useRef<AISStreamConnection | null>(null);
     const [ships, setShips] = useState<Map<number, Ship>>(new Map());
     const shipsRef = useRef<Map<number, Ship>>(new Map());
@@ -51,6 +61,7 @@ export function ShipLayer() {
                 title: ship.name || `MMSI ${ship.mmsi}`,
                 icon: '⚓',
                 color: '#00d4ff',
+                followEntityId: String(ship.mmsi),
                 fields: [
                     { label: 'Type', value: getShipTypeName(ship.shipType) },
                     { label: 'Flagg', value: getFlagState(ship.mmsi) },
@@ -101,7 +112,20 @@ export function ShipLayer() {
     }, [viewer]);
 
     useEffect(() => {
+        if (!viewer || viewer.isDestroyed()) return;
+        const trailDs = new CustomDataSource('ships-trails');
+        viewer.dataSources.add(trailDs);
+        trailDsRef.current = trailDs;
+        return () => {
+            if (!viewer.isDestroyed()) viewer.dataSources.remove(trailDs, true);
+            trailDsRef.current = null;
+            trailHistoryRef.current.clear();
+        };
+    }, [viewer]);
+
+    useEffect(() => {
         if (dataSourceRef.current) dataSourceRef.current.show = visible;
+        if (trailDsRef.current) trailDsRef.current.show = visible;
     }, [visible]);
 
     // Connect to AIS stream
@@ -139,6 +163,7 @@ export function ShipLayer() {
     // Sync entities to Cesium
     const updateEntities = useCallback(() => {
         const ds = dataSourceRef.current;
+        const trailDs = trailDsRef.current;
         if (!ds) return;
         setLayerCount('ships', ships.size);
         const existing = new Map<string, Entity>();
@@ -159,15 +184,46 @@ export function ShipLayer() {
                     id, name: ship.name || `MMSI ${mmsi}`, position: pos,
                     billboard: {
                         image: createShipIcon(ship.heading, ship.shipType),
-                        width: 16, height: 16,
+                        width: 32, height: 32,
+                        scaleByDistance: SHIP_SCALE,
                         verticalOrigin: VerticalOrigin.CENTER,
                         horizontalOrigin: HorizontalOrigin.CENTER,
                         heightReference: HeightReference.NONE, rotation: 0,
                     },
                 }));
             }
+            if (trailDs) {
+                const history = trailHistoryRef.current.get(id) ?? [];
+                history.push(pos.clone());
+                if (history.length > MAX_SHIP_TRAIL) history.shift();
+                trailHistoryRef.current.set(id, history);
+                const trailId = `trail-${id}`;
+                const trailEntity = trailDs.entities.getById(trailId);
+                if (trailEntity?.polyline?.positions) {
+                    (trailEntity.polyline.positions as ConstantProperty).setValue([...history]);
+                } else if (history.length >= 2) {
+                    trailDs.entities.add(new Entity({
+                        id: trailId,
+                        polyline: {
+                            positions: new ConstantProperty([...history]),
+                            width: 1.5,
+                            material: new PolylineGlowMaterialProperty({
+                                glowPower: 0.2,
+                                color: SHIP_TRAIL_COLOR.withAlpha(0.7),
+                            }),
+                            clampToGround: false,
+                        },
+                    }));
+                }
+            }
         }
-        for (const [id] of existing) { if (!seen.has(id)) ds.entities.removeById(id); }
+        for (const [id] of existing) {
+            if (!seen.has(id)) {
+                ds.entities.removeById(id);
+                if (trailDs) trailDs.entities.removeById(`trail-${id}`);
+                trailHistoryRef.current.delete(id);
+            }
+        }
         if (viewer && !viewer.isDestroyed()) viewer.scene.requestRender();
     }, [ships, viewer, setLayerCount]);
 

@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useLayers } from '@/context/LayerContext';
 import { type LayerConfig, LAYER_ICONS } from '@/types/layers';
+import { AnimatedCount } from './AnimatedCount';
 
 const INFRA_IDS = new Set(['infrastructure', 'infrastructurePipelines', 'infrastructureFields']);
 
@@ -14,6 +15,18 @@ function formatTimeAgo(ts: number): string {
 
 function LayerToggle({ layer, indent = false }: { layer: LayerConfig; indent?: boolean }) {
     const { toggleLayer } = useLayers();
+    const [pulsing, setPulsing] = useState(false);
+    const prevCountRef = useRef(layer.count);
+
+    useEffect(() => {
+        if (layer.count !== prevCountRef.current && layer.count > 0 && layer.visible) {
+            setPulsing(true);
+            const t = setTimeout(() => setPulsing(false), 450);
+            prevCountRef.current = layer.count;
+            return () => clearTimeout(t);
+        }
+        prevCountRef.current = layer.count;
+    }, [layer.count, layer.visible]);
 
     return (
         <button
@@ -26,7 +39,12 @@ function LayerToggle({ layer, indent = false }: { layer: LayerConfig; indent?: b
             <span className="text-base w-6 text-center">{LAYER_ICONS[layer.id]}</span>
             <span
                 className="w-2 h-2 rounded-full shrink-0"
-                style={{ backgroundColor: layer.visible ? layer.color : '#555' }}
+                style={{
+                    backgroundColor: layer.visible ? layer.color : '#555',
+                    boxShadow: pulsing && layer.visible ? `0 0 7px 2px ${layer.color}` : 'none',
+                    transform: pulsing ? 'scale(1.5)' : 'scale(1)',
+                    transition: 'transform 0.15s ease-out, box-shadow 0.15s ease-out',
+                }}
             />
             <span className="font-sans text-sm text-[var(--text-secondary)] flex-1 text-left">
                 {layer.name}
@@ -36,12 +54,13 @@ function LayerToggle({ layer, indent = false }: { layer: LayerConfig; indent?: b
             ) : layer.error ? (
                 <span className="text-xs text-orange-400" title={layer.error}>⚠</span>
             ) : layer.count > 0 ? (
-                <span
-                    className="font-mono text-xs text-[var(--text-muted)]"
+                <AnimatedCount
+                    value={layer.count}
+                    color="var(--text-muted)"
+                    flashColor={layer.color}
+                    className="font-mono text-xs"
                     title={layer.lastUpdated ? `Sist oppdatert: ${formatTimeAgo(layer.lastUpdated)}` : undefined}
-                >
-                    {layer.count.toLocaleString('nb-NO')}
-                </span>
+                />
             ) : layer.visible ? (
                 <span className="text-xs text-[var(--text-muted)] italic">Ingen</span>
             ) : null}

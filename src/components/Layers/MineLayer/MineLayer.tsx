@@ -147,42 +147,55 @@ export function MineLayer() {
             if (cancelled || !dsRef.current) return;
             dataRef.current = data;
             const ds = dsRef.current;
-            ds.entities.removeAll();
+
+            const existing = new Map<string, Entity>();
+            for (const entity of ds.entities.values) existing.set(entity.id, entity);
+            const seen = new Set<string>();
 
             for (const mine of data.mines) {
                 try {
                     if (!isFinite(mine.lon) || !isFinite(mine.lat)) continue;
-                    ds.entities.add(new Entity({
-                        id: mine.id,
-                        name: mine.name || 'Gruve',
-                        position: Cartesian3.fromDegrees(mine.lon, mine.lat, 0),
-                        billboard: {
-                            image: MINE_SVG,
-                            width: new ConstantProperty(20),
-                            height: new ConstantProperty(20),
-                            heightReference: new ConstantProperty(HeightReference.CLAMP_TO_GROUND),
-                            disableDepthTestDistance: new ConstantProperty(Number.POSITIVE_INFINITY),
-                        },
-                    }));
+                    seen.add(mine.id);
+                    if (!existing.has(mine.id)) {
+                        ds.entities.add(new Entity({
+                            id: mine.id,
+                            name: mine.name || 'Gruve',
+                            position: Cartesian3.fromDegrees(mine.lon, mine.lat, 0),
+                            billboard: {
+                                image: MINE_SVG,
+                                width: new ConstantProperty(20),
+                                height: new ConstantProperty(20),
+                                heightReference: new ConstantProperty(HeightReference.CLAMP_TO_GROUND),
+                                disableDepthTestDistance: new ConstantProperty(Number.POSITIVE_INFINITY),
+                            },
+                        }));
+                    }
                 } catch { /* skip */ }
             }
 
             for (const quarry of data.quarryCentroids) {
                 try {
                     if (!isFinite(quarry.lon) || !isFinite(quarry.lat)) continue;
-                    ds.entities.add(new Entity({
-                        id: quarry.id,
-                        name: quarry.name || 'Steinbrudd',
-                        position: Cartesian3.fromDegrees(quarry.lon, quarry.lat, 0),
-                        billboard: {
-                            image: QUARRY_SVG,
-                            width: new ConstantProperty(20),
-                            height: new ConstantProperty(20),
-                            heightReference: new ConstantProperty(HeightReference.CLAMP_TO_GROUND),
-                            disableDepthTestDistance: new ConstantProperty(Number.POSITIVE_INFINITY),
-                        },
-                    }));
+                    seen.add(quarry.id);
+                    if (!existing.has(quarry.id)) {
+                        ds.entities.add(new Entity({
+                            id: quarry.id,
+                            name: quarry.name || 'Steinbrudd',
+                            position: Cartesian3.fromDegrees(quarry.lon, quarry.lat, 0),
+                            billboard: {
+                                image: QUARRY_SVG,
+                                width: new ConstantProperty(20),
+                                height: new ConstantProperty(20),
+                                heightReference: new ConstantProperty(HeightReference.CLAMP_TO_GROUND),
+                                disableDepthTestDistance: new ConstantProperty(Number.POSITIVE_INFINITY),
+                            },
+                        }));
+                    }
                 } catch { /* skip */ }
+            }
+
+            for (const [id] of existing) {
+                if (!seen.has(id)) ds.entities.removeById(id);
             }
 
             const total = data.mines.length + data.quarryCentroids.length;

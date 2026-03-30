@@ -119,11 +119,16 @@ export function HarborLayer() {
             if (cancelled || !dsRef.current) return;
             dataRef.current = data;
             const ds = dsRef.current;
-            ds.entities.removeAll();
+
+            const existing = new Map<string, Entity>();
+            for (const entity of ds.entities.values) existing.set(entity.id, entity);
+            const seen = new Set<string>();
 
             // Piers (polylines)
             for (const pier of data.piers) {
                 try {
+                    seen.add(pier.id);
+                    if (existing.has(pier.id)) continue;
                     const positions = pier.positions
                         .filter(([lon, lat]) => isFinite(lon) && isFinite(lat))
                         .map(([lon, lat]) => Cartesian3.fromDegrees(lon, lat));
@@ -145,20 +150,27 @@ export function HarborLayer() {
             for (const terminal of data.terminals) {
                 try {
                     if (!isFinite(terminal.lon) || !isFinite(terminal.lat)) continue;
-                    const isFerry = terminal.tags.amenity === 'ferry_terminal';
-                    ds.entities.add(new Entity({
-                        id: terminal.id,
-                        name: terminal.name || (isFerry ? 'Ferjeterminal' : 'Havn'),
-                        position: Cartesian3.fromDegrees(terminal.lon, terminal.lat, 0),
-                        billboard: {
-                            image: isFerry ? FERRY_SVG : HARBOR_SVG,
-                            width: new ConstantProperty(20),
-                            height: new ConstantProperty(20),
-                            heightReference: new ConstantProperty(HeightReference.CLAMP_TO_GROUND),
-                            disableDepthTestDistance: new ConstantProperty(Number.POSITIVE_INFINITY),
-                        },
-                    }));
+                    seen.add(terminal.id);
+                    if (!existing.has(terminal.id)) {
+                        const isFerry = terminal.tags.amenity === 'ferry_terminal';
+                        ds.entities.add(new Entity({
+                            id: terminal.id,
+                            name: terminal.name || (isFerry ? 'Ferjeterminal' : 'Havn'),
+                            position: Cartesian3.fromDegrees(terminal.lon, terminal.lat, 0),
+                            billboard: {
+                                image: isFerry ? FERRY_SVG : HARBOR_SVG,
+                                width: new ConstantProperty(20),
+                                height: new ConstantProperty(20),
+                                heightReference: new ConstantProperty(HeightReference.CLAMP_TO_GROUND),
+                                disableDepthTestDistance: new ConstantProperty(Number.POSITIVE_INFINITY),
+                            },
+                        }));
+                    }
                 } catch { /* skip */ }
+            }
+
+            for (const [id] of existing) {
+                if (!seen.has(id)) ds.entities.removeById(id);
             }
 
             const total = data.terminals.length + data.piers.length;

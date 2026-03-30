@@ -38,63 +38,68 @@ export function getNavStatusText(status: number): string {
 }
 
 /**
- * SVG ship icon per skipstype-kategori
+ * SVG ship icon per skipstype-kategori — topp-ned-silhuett
  * Returnerer en data URI med heading-rotasjon
+ * Canvas 32×32, baug peker OPP ved 0° heading
  */
+const shipIconCache = new Map<string, string>();
+
 export function createShipIcon(heading: number, shipType: number): string {
     const h = Math.round(heading);
-    let path: string;
-    let fill: string;
-    let stroke: string;
+    const cacheKey = `${h}-${shipType}`;
+    const cached = shipIconCache.get(cacheKey);
+    if (cached) return cached;
+    let body: string;
 
     if (shipType >= 60 && shipType <= 69) {
-        // Passasjerskip — bred, rund form
-        fill = '#e040ff';
-        stroke = '#7020aa';
-        path = 'M10 3 L14 8 L14 15 L10 17 L6 15 L6 8 Z';
+        // Passasjerskip — bred og kort, tydelig bredeste type
+        body = `
+            <path d="M16 5 L25 10 L25 24 L7 24 L7 10 Z" fill="#e040ff" stroke="#7020aa" stroke-width="1" stroke-linejoin="round"/>
+            <rect x="11" y="11" width="10" height="9" rx="1" fill="#9020cc" opacity="0.65"/>`;
     } else if (shipType >= 70 && shipType <= 79) {
-        // Lasteskip — bred boks med spiss baug
-        fill = '#44cc44';
-        stroke = '#227722';
-        path = 'M10 3 L14 7 L14 16 L6 16 L6 7 Z';
+        // Lasteskip — langt smalt rektangel med spiss baug og fyrhus akter
+        body = `
+            <path d="M16 3 L20 9 L20 27 L12 27 L12 9 Z" fill="#44cc44" stroke="#227722" stroke-width="1" stroke-linejoin="round"/>
+            <rect x="13" y="22" width="6" height="5" rx="0.5" fill="#2a8a2a"/>
+            <line x1="16" y1="10" x2="16" y2="21" stroke="#227722" stroke-width="0.6" opacity="0.55"/>`;
     } else if (shipType >= 80 && shipType <= 89) {
-        // Tankskip — avrundet, bred
-        fill = '#ff6644';
-        stroke = '#aa3322';
-        path = 'M10 3 L13 7 Q15 12 13 16 L7 16 Q5 12 7 7 Z';
+        // Tankskip — lang organisk sigar-form
+        body = `
+            <path d="M16 3 Q22 8 22 17 Q22 27 16 29 Q10 27 10 17 Q10 8 16 3 Z" fill="#ff6644" stroke="#aa3322" stroke-width="1"/>
+            <line x1="16" y1="5" x2="16" y2="27" stroke="#aa3322" stroke-width="0.6" opacity="0.5"/>`;
     } else if (shipType === 30 || shipType === 7 || (shipType >= 10 && shipType <= 19)) {
         // Fiskebåt — liten, kompakt
-        fill = '#ffcc00';
-        stroke = '#aa8800';
-        path = 'M10 5 L12 10 L12 15 L10 16 L8 15 L8 10 Z';
+        body = `
+            <path d="M16 8 L20 13 L20 23 L12 23 L12 13 Z" fill="#ffcc00" stroke="#aa8800" stroke-width="1" stroke-linejoin="round"/>
+            <rect x="13" y="18" width="6" height="4" rx="0.5" fill="#cc9900" opacity="0.8"/>`;
     } else if (shipType >= 31 && shipType <= 32) {
-        // Slepebåt — firkantet, kraftig
-        fill = '#ff8844';
-        stroke = '#aa5522';
-        path = 'M10 4 L13 7 L13 15 L7 15 L7 7 Z';
+        // Slepebåt — svært kort og bred, nesten sirkulær
+        body = `
+            <path d="M16 9 Q22 12 22 18 Q22 24 16 25 Q10 24 10 18 Q10 12 16 9 Z" fill="#ff8844" stroke="#aa5522" stroke-width="1"/>
+            <circle cx="16" cy="19" r="3" fill="#cc6622" opacity="0.7"/>`;
     } else if (shipType >= 40 && shipType <= 49) {
-        // Hurtigbåt — slank, spiss
-        fill = '#00eeff';
-        stroke = '#0088aa';
-        path = 'M10 2 L12 8 L12 16 L10 17 L8 16 L8 8 Z';
+        // Hurtigbåt — veldig slank og spiss
+        body = `
+            <path d="M16 2 L19 9 L18 27 L14 27 L13 9 Z" fill="#00eeff" stroke="#0088aa" stroke-width="1" stroke-linejoin="round"/>
+            <line x1="16" y1="4" x2="16" y2="25" stroke="#0088aa" stroke-width="0.6" opacity="0.5"/>`;
     } else if (shipType >= 50 && shipType <= 59) {
-        // Spesialfartøy — diamant
-        fill = '#aaaaff';
-        stroke = '#5555aa';
-        path = 'M10 3 L14 10 L10 17 L6 10 Z';
+        // Spesialfartøy — stubb baug, plattform-form
+        body = `
+            <path d="M14 7 L18 7 L22 11 L22 24 L10 24 L10 11 Z" fill="#aaaaff" stroke="#5555aa" stroke-width="1" stroke-linejoin="round"/>
+            <rect x="12" y="12" width="8" height="9" rx="1" fill="#7777cc" opacity="0.6"/>`;
     } else {
-        // Standard — enkel pil
-        fill = '#00d4ff';
-        stroke = '#005577';
-        path = 'M10 3 L13.5 15 L10 13 L6.5 15 Z';
+        // Standard/ukjent — pilform
+        body = `
+            <path d="M16 4 L21 19 L16 16 L11 19 Z" fill="#00d4ff" stroke="#005577" stroke-width="1" stroke-linejoin="round"/>`;
     }
 
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20">
-        <g transform="rotate(${h}, 10, 10)">
-            <path d="${path}" fill="${fill}" stroke="${stroke}" stroke-width="0.7" stroke-linejoin="round"/>
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+        <g transform="rotate(${h}, 16, 16)">${body}
         </g>
     </svg>`;
-    return 'data:image/svg+xml,' + encodeURIComponent(svg);
+    const result = 'data:image/svg+xml,' + encodeURIComponent(svg);
+    shipIconCache.set(cacheKey, result);
+    return result;
 }
 
 /**

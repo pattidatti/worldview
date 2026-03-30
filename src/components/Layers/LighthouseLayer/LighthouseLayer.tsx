@@ -93,24 +93,34 @@ export function LighthouseLayer() {
             if (cancelled || !dsRef.current) return;
             dataRef.current = data;
             const ds = dsRef.current;
-            ds.entities.removeAll();
+
+            const existing = new Map<string, Entity>();
+            for (const entity of ds.entities.values) existing.set(entity.id, entity);
+            const seen = new Set<string>();
 
             for (const lh of data.lighthouses) {
                 try {
                     if (!isFinite(lh.lon) || !isFinite(lh.lat)) continue;
-                    ds.entities.add(new Entity({
-                        id: lh.id,
-                        name: lh.name || 'Fyrtårn',
-                        position: Cartesian3.fromDegrees(lh.lon, lh.lat, 0),
-                        billboard: {
-                            image: LIGHTHOUSE_SVG,
-                            width: new ConstantProperty(20),
-                            height: new ConstantProperty(24),
-                            heightReference: new ConstantProperty(HeightReference.CLAMP_TO_GROUND),
-                            disableDepthTestDistance: new ConstantProperty(Number.POSITIVE_INFINITY),
-                        },
-                    }));
+                    seen.add(lh.id);
+                    if (!existing.has(lh.id)) {
+                        ds.entities.add(new Entity({
+                            id: lh.id,
+                            name: lh.name || 'Fyrtårn',
+                            position: Cartesian3.fromDegrees(lh.lon, lh.lat, 0),
+                            billboard: {
+                                image: LIGHTHOUSE_SVG,
+                                width: new ConstantProperty(20),
+                                height: new ConstantProperty(24),
+                                heightReference: new ConstantProperty(HeightReference.CLAMP_TO_GROUND),
+                                disableDepthTestDistance: new ConstantProperty(Number.POSITIVE_INFINITY),
+                            },
+                        }));
+                    }
                 } catch { /* skip */ }
+            }
+
+            for (const [id] of existing) {
+                if (!seen.has(id)) ds.entities.removeById(id);
             }
 
             setLayerCount('lighthouses', data.lighthouses.length);

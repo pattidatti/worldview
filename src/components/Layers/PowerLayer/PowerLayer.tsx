@@ -137,11 +137,16 @@ export function PowerLayer() {
             if (cancelled || !dsRef.current) return;
             dataRef.current = data;
             const ds = dsRef.current;
-            ds.entities.removeAll();
+
+            const existing = new Map<string, Entity>();
+            for (const entity of ds.entities.values) existing.set(entity.id, entity);
+            const seen = new Set<string>();
 
             // Power lines
             for (const line of data.lines) {
                 try {
+                    seen.add(line.id);
+                    if (existing.has(line.id)) continue;
                     const positions = line.positions
                         .filter(([lon, lat]) => isFinite(lon) && isFinite(lat))
                         .map(([lon, lat]) => Cartesian3.fromDegrees(lon, lat));
@@ -162,17 +167,20 @@ export function PowerLayer() {
             for (const sub of data.substations) {
                 try {
                     if (!isFinite(sub.lon) || !isFinite(sub.lat)) continue;
-                    ds.entities.add(new Entity({
-                        id: sub.id,
-                        name: sub.name || 'Transformatorstasjon',
-                        position: Cartesian3.fromDegrees(sub.lon, sub.lat, 0),
-                        billboard: {
-                            image: SUBSTATION_SVG,
-                            width: new ConstantProperty(18),
-                            height: new ConstantProperty(18),
-                            heightReference: new ConstantProperty(HeightReference.CLAMP_TO_GROUND),
-                        },
-                    }));
+                    seen.add(sub.id);
+                    if (!existing.has(sub.id)) {
+                        ds.entities.add(new Entity({
+                            id: sub.id,
+                            name: sub.name || 'Transformatorstasjon',
+                            position: Cartesian3.fromDegrees(sub.lon, sub.lat, 0),
+                            billboard: {
+                                image: SUBSTATION_SVG,
+                                width: new ConstantProperty(18),
+                                height: new ConstantProperty(18),
+                                heightReference: new ConstantProperty(HeightReference.CLAMP_TO_GROUND),
+                            },
+                        }));
+                    }
                 } catch { /* skip */ }
             }
 
@@ -180,18 +188,25 @@ export function PowerLayer() {
             for (const plant of data.plants) {
                 try {
                     if (!isFinite(plant.lon) || !isFinite(plant.lat)) continue;
-                    ds.entities.add(new Entity({
-                        id: plant.id,
-                        name: plant.name || 'Kraftverk',
-                        position: Cartesian3.fromDegrees(plant.lon, plant.lat, 0),
-                        billboard: {
-                            image: PLANT_SVG,
-                            width: new ConstantProperty(22),
-                            height: new ConstantProperty(22),
-                            heightReference: new ConstantProperty(HeightReference.CLAMP_TO_GROUND),
-                        },
-                    }));
+                    seen.add(plant.id);
+                    if (!existing.has(plant.id)) {
+                        ds.entities.add(new Entity({
+                            id: plant.id,
+                            name: plant.name || 'Kraftverk',
+                            position: Cartesian3.fromDegrees(plant.lon, plant.lat, 0),
+                            billboard: {
+                                image: PLANT_SVG,
+                                width: new ConstantProperty(22),
+                                height: new ConstantProperty(22),
+                                heightReference: new ConstantProperty(HeightReference.CLAMP_TO_GROUND),
+                            },
+                        }));
+                    }
                 } catch { /* skip */ }
+            }
+
+            for (const [id] of existing) {
+                if (!seen.has(id)) ds.entities.removeById(id);
             }
 
             const total = data.lines.length + data.substations.length + data.plants.length;

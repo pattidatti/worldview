@@ -5,6 +5,8 @@ import {
     Cartesian3,
     Color,
     PointGraphics,
+    ConstantPositionProperty,
+    ConstantProperty,
 } from 'cesium';
 import { useViewer } from '@/context/ViewerContext';
 import { useLayers } from '@/context/LayerContext';
@@ -136,17 +138,35 @@ export function TrafficLayer() {
         const ds = dataSourceRef.current;
         if (!ds || !events) return;
         setLayerCount('traffic', events.length);
-        ds.entities.removeAll();
+
+        const existing = new Map<string, Entity>();
+        for (const entity of ds.entities.values) existing.set(entity.id, entity);
+
+        const seen = new Set<string>();
         for (const event of events) {
-            ds.entities.add(new Entity({
-                id: event.id, name: event.type,
-                position: Cartesian3.fromDegrees(event.lon, event.lat, 0),
-                point: new PointGraphics({
-                    pixelSize: 7, color: SEVERITY_COLORS[event.severity],
-                    outlineColor: Color.BLACK, outlineWidth: 1,
-                }),
-            }));
+            seen.add(event.id);
+            const pos = Cartesian3.fromDegrees(event.lon, event.lat, 0);
+            const color = SEVERITY_COLORS[event.severity];
+            const entity = existing.get(event.id);
+            if (entity) {
+                (entity.position as ConstantPositionProperty).setValue(pos);
+                if (entity.point?.color) (entity.point.color as ConstantProperty).setValue(color);
+            } else {
+                ds.entities.add(new Entity({
+                    id: event.id, name: event.type,
+                    position: pos,
+                    point: new PointGraphics({
+                        pixelSize: 7, color,
+                        outlineColor: Color.BLACK, outlineWidth: 1,
+                    }),
+                }));
+            }
         }
+
+        for (const [id] of existing) {
+            if (!seen.has(id)) ds.entities.removeById(id);
+        }
+
         if (viewer && !viewer.isDestroyed()) viewer.scene.requestRender();
     }, [events, viewer, setLayerCount]);
 
