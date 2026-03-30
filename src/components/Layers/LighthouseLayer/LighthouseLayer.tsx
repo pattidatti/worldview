@@ -13,6 +13,7 @@ import { useTooltipRegistry } from '@/context/TooltipRegistry';
 import { useViewport } from '@/hooks/useViewport';
 import { fetchLighthouseData } from '@/services/osmFeatures';
 import { type LighthouseData } from '@/types/osmFeatures';
+import { fetchWikiSummary } from '@/services/wikipedia';
 
 const COLOR = '#FF8F00';
 
@@ -42,8 +43,9 @@ export function LighthouseLayer() {
             const id = entity.id as string;
             const lh = dataRef.current.lighthouses.find((x) => x.id === id);
             if (!lh) return null;
+            const name = lh.name;
             return {
-                title: lh.name || 'Fyrtårn',
+                title: name || 'Fyrtårn',
                 icon: '🔦',
                 color: COLOR,
                 fields: [
@@ -53,6 +55,18 @@ export function LighthouseLayer() {
                     ...(lh.tags.height ? [{ label: 'Høyde', value: `${lh.tags.height} m` }] : []),
                     { label: 'Kilde', value: 'OpenStreetMap' },
                 ],
+                ...(name ? {
+                    enrichAsync: async () => {
+                        const wiki = await fetchWikiSummary(name);
+                        if (!wiki?.extract) return {};
+                        return {
+                            description: wiki.extract.length > 300 ? wiki.extract.slice(0, 297) + '...' : wiki.extract,
+                            ...(wiki.thumbnailUrl ? { imageUrl: wiki.thumbnailUrl } : {}),
+                            linkUrl: wiki.pageUrl,
+                            linkLabel: 'Wikipedia',
+                        };
+                    },
+                } : {}),
             };
         });
         return () => unregister('lighthouses');

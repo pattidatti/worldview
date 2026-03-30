@@ -1,4 +1,4 @@
-export type LayerId = 'flights' | 'ships' | 'satellites' | 'weather' | 'webcams' | 'traffic' | 'trafficFlow' | 'infrastructure' | 'infrastructurePipelines' | 'infrastructureFields' | 'power' | 'wind' | 'harbors' | 'lighthouses' | 'telecom' | 'mines' | 'buildings' | 'submarineCables' | 'earthquakes' | 'disasters' | 'asteroids' | 'news' | 'conflicts' | 'weatherRadar';
+export type LayerId = 'flights' | 'ships' | 'satellites' | 'weather' | 'webcams' | 'traffic' | 'trafficFlow' | 'infrastructure' | 'infrastructurePipelines' | 'infrastructureFields' | 'power' | 'wind' | 'harbors' | 'lighthouses' | 'telecom' | 'mines' | 'buildings' | 'submarineCables' | 'earthquakes' | 'disasters' | 'asteroids' | 'news' | 'conflicts' | 'weatherRadar' | 'sigmet';
 
 export interface LayerConfig {
     id: LayerId;
@@ -36,6 +36,7 @@ export const LAYER_ICONS: Record<LayerId, string> = {
     news: '📰',
     conflicts: '⚔',
     weatherRadar: '🌧',
+    sigmet: '⚠',
 };
 
 export interface LayerCategory {
@@ -46,7 +47,7 @@ export interface LayerCategory {
 }
 
 export const LAYER_CATEGORIES: LayerCategory[] = [
-    { id: 'trafikk', label: 'Trafikk', icon: '✈', layers: ['flights', 'traffic', 'trafficFlow'] },
+    { id: 'trafikk', label: 'Trafikk', icon: '✈', layers: ['flights', 'traffic', 'trafficFlow', 'sigmet'] },
     { id: 'maritim', label: 'Maritim', icon: '⚓', layers: ['ships', 'harbors', 'lighthouses', 'submarineCables'] },
     { id: 'energi', label: 'Energi', icon: '⚡', layers: ['power', 'wind', 'infrastructureFields', 'infrastructurePipelines', 'infrastructure'] },
     { id: 'vaer', label: 'Vær', icon: '☁', layers: ['weather', 'weatherRadar'] },
@@ -80,4 +81,5 @@ export const LAYER_DEFAULTS: LayerConfig[] = [
     { id: 'news', name: 'Nyheter', color: 'var(--color-news)', visible: false, loading: false, count: 0, error: null, lastUpdated: null },
     { id: 'conflicts', name: 'Konflikter', color: 'var(--color-conflicts)', visible: false, loading: false, count: 0, error: null, lastUpdated: null },
     { id: 'weatherRadar', name: 'Værradar', color: 'var(--color-weather-radar)', visible: false, loading: false, count: 0, error: null, lastUpdated: null },
+    { id: 'sigmet', name: 'Luftromsadvarsler', color: '#ff8800', visible: false, loading: false, count: 0, error: null, lastUpdated: null },
 ];

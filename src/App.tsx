@@ -31,6 +31,7 @@ import { AsteroidLayer } from './components/Layers/AsteroidLayer/AsteroidLayer';
 import { NewsLayer } from './components/Layers/NewsLayer/NewsLayer';
 import { ConflictLayer } from './components/Layers/ConflictLayer/ConflictLayer';
 import { WeatherRadarLayer } from './components/Layers/WeatherRadarLayer/WeatherRadarLayer';
+import { SigmetLayer } from './components/Layers/SigmetLayer/SigmetLayer';
 import { PlaceLabels } from './components/Globe/PlaceLabels';
 import { ImageryProvider } from './context/ImageryContext';
 import { ImageryPicker } from './components/UI/ImageryPicker';
@@ -113,6 +114,7 @@ function AppContent({
                 <NewsLayer />
                 <ConflictLayer />
                 <WeatherRadarLayer />
+                <SigmetLayer />
                 <PlaceLabels />
                 <TopBar searchRef={searchRef} />
                 <LayerPanel />

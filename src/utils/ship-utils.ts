@@ -106,15 +106,16 @@ export function createShipIcon(heading: number, shipType: number): string {
  * Standard dimensjoner per skipstype (meter): { length, width, height }
  * Brukes som fallback når AIS statisk data ikke er mottatt ennå
  */
+// height = skrog-høyde over vannlinjen (kun hull, uten overbygning)
 function getDefaultDims(shipType: number): { length: number; width: number; height: number } {
-    if (shipType >= 60 && shipType <= 69) return { length: 160, width: 30, height: 28 };
-    if (shipType >= 70 && shipType <= 79) return { length: 200, width: 28, height: 16 };
-    if (shipType >= 80 && shipType <= 89) return { length: 230, width: 32, height: 14 };
+    if (shipType >= 60 && shipType <= 69) return { length: 160, width: 30, height: 10 };
+    if (shipType >= 70 && shipType <= 79) return { length: 200, width: 28, height: 14 };
+    if (shipType >= 80 && shipType <= 89) return { length: 230, width: 32, height: 10 };
     if (shipType === 30 || shipType === 7 || (shipType >= 10 && shipType <= 19)) return { length: 25, width: 7, height: 4 };
-    if (shipType >= 31 && shipType <= 32) return { length: 40, width: 12, height: 7 };
-    if (shipType >= 40 && shipType <= 49) return { length: 65, width: 12, height: 6 };
-    if (shipType >= 50 && shipType <= 59) return { length: 80, width: 20, height: 10 };
-    return { length: 120, width: 20, height: 13 };
+    if (shipType >= 31 && shipType <= 32) return { length: 40, width: 12, height: 6 };
+    if (shipType >= 40 && shipType <= 49) return { length: 65, width: 12, height: 4 };
+    if (shipType >= 50 && shipType <= 59) return { length: 80, width: 20, height: 8 };
+    return { length: 120, width: 20, height: 10 };
 }
 
 export function getShipDimensions(
@@ -128,6 +129,58 @@ export function getShipDimensions(
         width: rawWidth > 3 ? rawWidth : d.width,
         height: d.height,
     };
+}
+
+export interface ShipSuperConfig {
+    /** Brøkdel av skrogets bredde */
+    widthFrac: number;
+    /** Brøkdel av skrogets lengde */
+    lengthFrac: number;
+    /** Absolutt høyde i meter */
+    height: number;
+    /** Avstand fra akterende som brøkdel av skrogets lengde */
+    sternOffset: number;
+    /** Farge på skroget (realistisk) */
+    hullCss: string;
+    /** Farge på overbygning/broen */
+    superCss: string;
+}
+
+/**
+ * 3D-geometri-konfigurasjon per skipstype:
+ * skrog (hull) + overbygning (bridge/superstructure)
+ */
+export function getShipSuperConfig(shipType: number): ShipSuperConfig {
+    if (shipType >= 60 && shipType <= 69) {
+        // Passasjerskip — bred hvit hull, enorm overbygning midtskips
+        return { widthFrac: 0.90, lengthFrac: 0.68, height: 50, sternOffset: 0.08, hullCss: '#d8dde5', superCss: '#f5f5f5' };
+    }
+    if (shipType >= 70 && shipType <= 79) {
+        // Lasteskip — mørkt grått skrog, smal høy bro akter
+        return { widthFrac: 0.32, lengthFrac: 0.11, height: 28, sternOffset: 0.03, hullCss: '#5a6268', superCss: '#e8e8e0' };
+    }
+    if (shipType >= 80 && shipType <= 89) {
+        // Tankskip — svært mørkt, lav smal bro akter
+        return { widthFrac: 0.28, lengthFrac: 0.07, height: 22, sternOffset: 0.02, hullCss: '#383e44', superCss: '#ddddd0' };
+    }
+    if (shipType === 30 || shipType === 7 || (shipType >= 10 && shipType <= 19)) {
+        // Fiskebåt — blålig skrog, relativt stor kahytt
+        return { widthFrac: 0.55, lengthFrac: 0.38, height: 7, sternOffset: 0.12, hullCss: '#2255aa', superCss: '#f0f0e8' };
+    }
+    if (shipType >= 31 && shipType <= 32) {
+        // Slepebåt — oransje hull, kraftig fremtredende bro
+        return { widthFrac: 0.65, lengthFrac: 0.45, height: 12, sternOffset: 0.08, hullCss: '#cc5500', superCss: '#ffcc00' };
+    }
+    if (shipType >= 40 && shipType <= 49) {
+        // Hurtigbåt — hvit/lyseblå, slank lav profil
+        return { widthFrac: 0.50, lengthFrac: 0.32, height: 6, sternOffset: 0.18, hullCss: '#d8f0f8', superCss: '#f5feff' };
+    }
+    if (shipType >= 50 && shipType <= 59) {
+        // Spesialfartøy — stålgrå, bred arbeidsbro
+        return { widthFrac: 0.60, lengthFrac: 0.32, height: 15, sternOffset: 0.08, hullCss: '#6878a0', superCss: '#c0cce0' };
+    }
+    // Standard/ukjent
+    return { widthFrac: 0.38, lengthFrac: 0.14, height: 18, sternOffset: 0.06, hullCss: '#4a5a6a', superCss: '#d0d8e4' };
 }
 
 /** CSS-farge for 3D-boks per skipstype */

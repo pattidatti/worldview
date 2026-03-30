@@ -16,6 +16,7 @@ import { useTooltipRegistry } from '@/context/TooltipRegistry';
 import { useViewport } from '@/hooks/useViewport';
 import { fetchHarborData } from '@/services/osmFeatures';
 import { type HarborData } from '@/types/osmFeatures';
+import { fetchWikiSummary } from '@/services/wikipedia';
 
 const COLOR = '#1E88E5';
 const C = Color.fromCssColorString(COLOR);
@@ -50,8 +51,9 @@ export function HarborLayer() {
             const terminal = dataRef.current.terminals.find((t) => t.id === id);
             if (terminal) {
                 const isFerry = terminal.tags.amenity === 'ferry_terminal';
+                const name = terminal.name;
                 return {
-                    title: terminal.name || (isFerry ? 'Ferjeterminal' : 'Havn'),
+                    title: name || (isFerry ? 'Ferjeterminal' : 'Havn'),
                     icon: '⚓',
                     color: COLOR,
                     fields: [
@@ -60,6 +62,18 @@ export function HarborLayer() {
                         ...(terminal.tags.website ? [{ label: 'Nettside', value: terminal.tags.website }] : []),
                         { label: 'Kilde', value: 'OpenStreetMap' },
                     ],
+                    ...(name ? {
+                        enrichAsync: async () => {
+                            const wiki = await fetchWikiSummary(name);
+                            if (!wiki?.extract) return {};
+                            return {
+                                description: wiki.extract.length > 300 ? wiki.extract.slice(0, 297) + '...' : wiki.extract,
+                                ...(wiki.thumbnailUrl ? { imageUrl: wiki.thumbnailUrl } : {}),
+                                linkUrl: wiki.pageUrl,
+                                linkLabel: 'Wikipedia',
+                            };
+                        },
+                    } : {}),
                 };
             }
             const pier = dataRef.current.piers.find((p) => p.id === id);

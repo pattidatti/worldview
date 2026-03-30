@@ -15,6 +15,7 @@ import { useTooltipRegistry } from '@/context/TooltipRegistry';
 import { usePollingData } from '@/hooks/usePollingData';
 import { fetchEarthquakes } from '@/services/usgs';
 import { type Earthquake } from '@/types/earthquake';
+import { fetchWikiSummary } from '@/services/wikipedia';
 
 const POLL_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -28,6 +29,12 @@ function depthColor(depth: number): Color {
 // Radius in meters — grows with magnitude (M2.5=25km ... M8=800km)
 function magnitudeRadius(mag: number): number {
     return Math.max(20_000, Math.pow(10, mag * 0.6) * 800);
+}
+
+// Extract city/region name from USGS place string, e.g. "10km NE of San Francisco, CA" → "San Francisco, CA"
+function extractPlace(place: string): string {
+    const ofIdx = place.lastIndexOf(' of ');
+    return ofIdx >= 0 ? place.slice(ofIdx + 4) : place;
 }
 
 function formatTime(ms: number): string {
@@ -59,6 +66,7 @@ export function EarthquakeLayer() {
             if (!dataSourceRef.current?.entities.contains(entity)) return null;
             const quake = quakesRef.current.find((q) => `eq-${q.id}` === entity.id);
             if (!quake) return null;
+            const searchPlace = extractPlace(quake.place);
             return {
                 title: quake.title,
                 icon: '🌍',
@@ -70,6 +78,14 @@ export function EarthquakeLayer() {
                     { label: 'Dybde', value: quake.depth.toFixed(1), unit: 'km' },
                     { label: 'Tid', value: formatTime(quake.time) },
                 ],
+                enrichAsync: async () => {
+                    const wiki = await fetchWikiSummary(searchPlace);
+                    if (!wiki?.extract) return {};
+                    return {
+                        description: wiki.extract.length > 300 ? wiki.extract.slice(0, 297) + '...' : wiki.extract,
+                        ...(wiki.thumbnailUrl ? { imageUrl: wiki.thumbnailUrl } : {}),
+                    };
+                },
             };
         });
         return () => unregister('earthquakes');

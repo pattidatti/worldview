@@ -228,9 +228,21 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
                 if (entity?.position) {
                     const pos = entity.position.getValue(JulianDate.now(julianDateScratch));
                     if (pos) {
-                        trackHprScratch.heading = v.camera.heading;
-                        trackHprScratch.range = trackDistRef.current;
-                        v.camera.lookAt(pos, trackHprScratch);
+                        if (orbitActiveRef.current) {
+                            // Orbit around the moving entity
+                            const now = performance.now();
+                            const dt = orbitLastTimeMs === 0 ? 1 : Math.min((now - orbitLastTimeMs) / 16.67, 3);
+                            orbitLastTimeMs = now;
+                            orbitHeadingRef.current += ORBIT_SPEED * dt;
+                            orbitHprScratch.heading = orbitHeadingRef.current;
+                            orbitHprScratch.range = trackDistRef.current;
+                            v.camera.lookAt(pos, orbitHprScratch);
+                        } else {
+                            // Static-angle follow
+                            trackHprScratch.heading = v.camera.heading;
+                            trackHprScratch.range = trackDistRef.current;
+                            v.camera.lookAt(pos, trackHprScratch);
+                        }
                         scene.requestRender();
                     }
                     return;
@@ -240,9 +252,9 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
             setTrackedIdRef.current(null);
         });
 
-        // Orbit render loop runs via scene.preRender only while orbitActive
+        // Orbit render loop runs via scene.preRender only while orbitActive (and not tracking)
         scene.preRender.addEventListener(() => {
-            if (!orbitActiveRef.current || !orbitTargetRef.current) return;
+            if (!orbitActiveRef.current || !orbitTargetRef.current || trackedIdRef.current) return;
             const now = performance.now();
             const dt = orbitLastTimeMs === 0 ? 1 : Math.min((now - orbitLastTimeMs) / 16.67, 3);
             orbitLastTimeMs = now;
@@ -355,9 +367,11 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
         if (!viewer || viewer.isDestroyed()) return;
         if (!trackedEntityId) {
             viewer.camera.lookAtTransform(Matrix4.IDENTITY);
-        } else {
-            trackDistRef.current = Math.max(500, Math.min(5_000, viewer.camera.positionCartographic.height * 0.5));
             setOrbitActive(false);
+        } else {
+            trackDistRef.current = Math.max(500, viewer.camera.positionCartographic.height * 0.5);
+            orbitHeadingRef.current = viewer.camera.heading;
+            setOrbitActive(true);
         }
         viewer.scene.requestRender();
     }, [trackedEntityId, viewer]);
@@ -366,18 +380,22 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
     useEffect(() => {
         if (!viewer || viewer.isDestroyed()) return;
         if (orbitActive) {
-            const canvas = viewer.scene.canvas;
-            const center = new Cartesian2(canvas.width / 2, canvas.height / 2);
-            const target =
-                viewer.scene.pickPosition(center) ??
-                viewer.camera.pickEllipsoid(center) ??
-                viewer.scene.globe.ellipsoid.cartographicToCartesian(
-                    viewer.camera.positionCartographic
-                );
-            orbitTargetRef.current = target ?? null;
-            orbitDistRef.current = target
-                ? Cartesian3.distance(viewer.camera.position, target)
-                : viewer.camera.positionCartographic.height;
+            if (!trackedIdRef.current) {
+                // Normal orbit: capture screen-center as fixed target
+                const canvas = viewer.scene.canvas;
+                const center = new Cartesian2(canvas.width / 2, canvas.height / 2);
+                const target =
+                    viewer.scene.pickPosition(center) ??
+                    viewer.camera.pickEllipsoid(center) ??
+                    viewer.scene.globe.ellipsoid.cartographicToCartesian(
+                        viewer.camera.positionCartographic
+                    );
+                orbitTargetRef.current = target ?? null;
+                orbitDistRef.current = target
+                    ? Cartesian3.distance(viewer.camera.position, target)
+                    : viewer.camera.positionCartographic.height;
+            }
+            // Always seed heading from current camera
             orbitHeadingRef.current = viewer.camera.heading;
         } else {
             viewer.camera.lookAtTransform(Matrix4.IDENTITY);

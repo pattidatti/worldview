@@ -11,6 +11,7 @@ import {
     Transforms,
     HeadingPitchRoll,
     Math as CesiumMath,
+    Matrix4,
     PolylineGlowMaterialProperty,
     VerticalOrigin,
     HorizontalOrigin,
@@ -32,7 +33,7 @@ import {
     getFlagState,
     createShipIcon,
     getShipDimensions,
-    getShipColorCss,
+    getShipSuperConfig,
 } from '@/utils/ship-utils';
 
 const API_KEY = import.meta.env.VITE_AISSTREAM_API_KEY || '';
@@ -54,6 +55,34 @@ function buildOrientation(pos: Cartesian3, heading: number) {
     );
 }
 
+/** Gjenbrukbar matrise — unngår allokering per skip per oppdatering */
+const _enuMatrix = new Matrix4();
+
+/**
+ * Beregner en ECEF-posisjon forskjøvet fra origin:
+ * - forwardDist: meter fremover langs skipets heading (negativt = akter)
+ * - upDist: meter over vannlinjen
+ */
+function computeShipOffset(
+    origin: Cartesian3,
+    heading: number,
+    forwardDist: number,
+    upDist: number,
+): Cartesian3 {
+    const h = CesiumMath.toRadians(heading >= 0 && heading <= 360 ? heading : 0);
+    Transforms.eastNorthUpToFixedFrame(origin, undefined, _enuMatrix);
+    // Kolonner i Matrix4 (column-major): [0-2]=øst, [4-6]=nord, [8-10]=opp
+    const ex = _enuMatrix[0], ey = _enuMatrix[1], ez = _enuMatrix[2];
+    const nx = _enuMatrix[4], ny = _enuMatrix[5], nz = _enuMatrix[6];
+    const ux = _enuMatrix[8], uy = _enuMatrix[9], uz = _enuMatrix[10];
+    const sinH = Math.sin(h), cosH = Math.cos(h);
+    return new Cartesian3(
+        origin.x + (sinH * ex + cosH * nx) * forwardDist + ux * upDist,
+        origin.y + (sinH * ey + cosH * ny) * forwardDist + uy * upDist,
+        origin.z + (sinH * ez + cosH * nz) * forwardDist + uz * upDist,
+    );
+}
+
 export function ShipLayer() {
     const viewer = useViewer();
     const { isVisible, setLayerLoading, setLayerCount, setLayerError, setLayerLastUpdated } = useLayers();
@@ -65,6 +94,7 @@ export function ShipLayer() {
     viewportRef.current = viewport;
     const hasViewport = viewport !== null;
     const dataSourceRef = useRef<CustomDataSource | null>(null);
+    const superDsRef = useRef<CustomDataSource | null>(null);
     const trailDsRef = useRef<CustomDataSource | null>(null);
     const trailHistoryRef = useRef<Map<string, Cartesian3[]>>(new Map());
     const connRef = useRef<AISStreamConnection | null>(null);
@@ -73,11 +103,16 @@ export function ShipLayer() {
     const shipsRef = useRef<Map<number, Ship>>(new Map());
     shipsRef.current = ships;
 
-    // Register popup builder
+    // Register popup builder (håndterer klikk på hull OG overbygning)
     useEffect(() => {
-        register('ships', (entity: Entity) => {
-            if (!dataSourceRef.current?.entities.contains(entity)) return null;
-            const ship = shipsRef.current.get(Number(entity.id));
+        const builder = (entity: Entity) => {
+            const inHull = dataSourceRef.current?.entities.contains(entity);
+            const inSuper = superDsRef.current?.entities.contains(entity);
+            if (!inHull && !inSuper) return null;
+            // ID er enten "${mmsi}" (hull) eller "${mmsi}-s" (overbygning)
+            const rawId = entity.id;
+            const mmsiStr = rawId.endsWith('-s') ? rawId.slice(0, -2) : rawId;
+            const ship = shipsRef.current.get(Number(mmsiStr));
             if (!ship) return null;
             const navText = getNavStatusText(ship.navStatus);
             const dims = ship.length && ship.width
@@ -139,6 +174,17 @@ export function ShipLayer() {
 
     useEffect(() => {
         if (!viewer || viewer.isDestroyed()) return;
+        const superDs = new CustomDataSource('ships-super');
+        viewer.dataSources.add(superDs);
+        superDsRef.current = superDs;
+        return () => {
+            if (!viewer.isDestroyed()) viewer.dataSources.remove(superDs, true);
+            superDsRef.current = null;
+        };
+    }, [viewer]);
+
+    useEffect(() => {
+        if (!viewer || viewer.isDestroyed()) return;
         const trailDs = new CustomDataSource('ships-trails');
         viewer.dataSources.add(trailDs);
         trailDsRef.current = trailDs;
@@ -151,6 +197,7 @@ export function ShipLayer() {
 
     useEffect(() => {
         if (dataSourceRef.current) dataSourceRef.current.show = visible;
+        if (superDsRef.current) superDsRef.current.show = visible;
         if (trailDsRef.current) trailDsRef.current.show = visible;
     }, [visible]);
 
@@ -211,6 +258,7 @@ export function ShipLayer() {
     // Sync entities to Cesium
     const updateEntities = useCallback(() => {
         const ds = dataSourceRef.current;
+        const superDs = superDsRef.current;
         const trailDs = trailDsRef.current;
         if (!ds) return;
         setLayerCount('ships', ships.size);
@@ -221,44 +269,67 @@ export function ShipLayer() {
         for (const [mmsi, ship] of ships) {
             const id = String(mmsi);
             seen.add(id);
-            const pos = Cartesian3.fromDegrees(ship.lon, ship.lat, 0);
-            const orientation = buildOrientation(pos, ship.heading);
-            const entity = existing.get(id);
 
+            const dims = getShipDimensions(ship.shipType, ship.length, ship.width);
+            const cfg = getShipSuperConfig(ship.shipType);
+            const effectiveH = ship.heading >= 0 && ship.heading <= 360 ? ship.heading : ship.course;
+
+            // Havnivå-posisjon (basis for offset-beregninger)
+            const seaPos = Cartesian3.fromDegrees(ship.lon, ship.lat, 0);
+            // Skrogets sentrum: halvparten av skroghøyden over vannlinjen
+            const hullPos = Cartesian3.fromDegrees(ship.lon, ship.lat, dims.height / 2);
+            const orientation = buildOrientation(seaPos, effectiveH);
+
+            // Overbygningens posisjon: langs heading mot akter + opp over skroget
+            const superLength = dims.length * cfg.lengthFrac;
+            const superFwd = -(dims.length / 2) + cfg.sternOffset * dims.length + superLength / 2;
+            const superUpCenter = dims.height + cfg.height / 2;
+            const superPos = computeShipOffset(seaPos, effectiveH, superFwd, superUpCenter);
+            const superId = `${id}-s`;
+
+            const entity = existing.get(id);
             if (entity) {
-                (entity.position as ConstantPositionProperty).setValue(pos);
+                (entity.position as ConstantPositionProperty).setValue(hullPos);
                 (entity.orientation as ConstantProperty).setValue(orientation);
                 if (entity.billboard?.image) {
-                    entity.billboard.image = createShipIcon(ship.heading, ship.shipType) as unknown as import('cesium').Property;
+                    entity.billboard.image = createShipIcon(effectiveH, ship.shipType) as unknown as import('cesium').Property;
                 }
                 if (entity.label?.text) {
                     (entity.label.text as ConstantProperty).setValue(ship.name || `MMSI ${mmsi}`);
                 }
-                // Oppdater boks-dimensjoner dersom AIS-statikk nå er tilgjengelig
                 if (entity.box?.dimensions) {
-                    const dims = getShipDimensions(ship.shipType, ship.length, ship.width);
                     (entity.box.dimensions as ConstantProperty).setValue(
                         new Cartesian3(dims.width, dims.length, dims.height),
                     );
                 }
+                // Oppdater overbygning
+                const superEntity = superDs?.entities.getById(superId);
+                if (superEntity) {
+                    (superEntity.position as ConstantPositionProperty).setValue(superPos);
+                    (superEntity.orientation as ConstantProperty).setValue(orientation);
+                    if (superEntity.box?.dimensions) {
+                        (superEntity.box.dimensions as ConstantProperty).setValue(
+                            new Cartesian3(dims.width * cfg.widthFrac, superLength, cfg.height),
+                        );
+                    }
+                }
             } else {
-                const dims = getShipDimensions(ship.shipType, ship.length, ship.width);
-                const shipColor = Color.fromCssColorString(getShipColorCss(ship.shipType));
+                const hullColor = Color.fromCssColorString(cfg.hullCss);
+                const superColor = Color.fromCssColorString(cfg.superCss);
+                // Skrog-entitet (med billboard, label og trail-tilknytning)
                 ds.entities.add(new Entity({
                     id,
                     name: ship.name || `MMSI ${mmsi}`,
-                    position: pos,
+                    position: hullPos,
                     orientation,
-                    // 3D-boks (alltid synlig — skalerer naturlig med avstand)
                     box: {
                         dimensions: new Cartesian3(dims.width, dims.length, dims.height),
-                        material: shipColor.withAlpha(0.9),
+                        material: hullColor.withAlpha(0.95),
                         outline: true,
-                        outlineColor: Color.BLACK.withAlpha(0.35),
+                        outlineColor: Color.BLACK.withAlpha(0.3),
                     },
-                    // Billboard — alltid 22 px, alltid synlig og klikkbar uansett avstand
                     billboard: {
-                        image: createShipIcon(ship.heading, ship.shipType),
+                        image: createShipIcon(effectiveH, ship.shipType),
                         width: 22,
                         height: 22,
                         verticalOrigin: VerticalOrigin.CENTER,
@@ -266,7 +337,6 @@ export function ShipLayer() {
                         heightReference: HeightReference.NONE,
                         disableDepthTestDistance: Number.POSITIVE_INFINITY,
                     },
-                    // Navn vises rett over båten
                     label: {
                         text: ship.name || `MMSI ${mmsi}`,
                         font: '11px Inter, sans-serif',
@@ -282,11 +352,25 @@ export function ShipLayer() {
                         disableDepthTestDistance: Number.POSITIVE_INFINITY,
                     },
                 }));
+                // Overbygning (bro/kahytt) — separat entitet uten billboard
+                if (superDs) {
+                    superDs.entities.add(new Entity({
+                        id: superId,
+                        position: superPos,
+                        orientation,
+                        box: {
+                            dimensions: new Cartesian3(dims.width * cfg.widthFrac, superLength, cfg.height),
+                            material: superColor.withAlpha(0.95),
+                            outline: true,
+                            outlineColor: Color.BLACK.withAlpha(0.2),
+                        },
+                    }));
+                }
             }
 
             if (trailDs) {
                 const history = trailHistoryRef.current.get(id) ?? [];
-                history.push(pos.clone());
+                history.push(seaPos.clone());
                 if (history.length > MAX_SHIP_TRAIL) history.shift();
                 trailHistoryRef.current.set(id, history);
                 const trailId = `trail-${id}`;
@@ -313,6 +397,7 @@ export function ShipLayer() {
         for (const [id] of existing) {
             if (!seen.has(id)) {
                 ds.entities.removeById(id);
+                superDs?.entities.removeById(`${id}-s`);
                 if (trailDs) trailDs.entities.removeById(`trail-${id}`);
                 trailHistoryRef.current.delete(id);
             }
