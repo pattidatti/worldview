@@ -17,21 +17,24 @@ import { usePopupRegistry } from '@/context/PopupRegistry';
 import { useTooltipRegistry } from '@/context/TooltipRegistry';
 import { useViewport } from '@/hooks/useViewport';
 import { configureCluster } from '@/utils/cluster';
-import { fetchFlights, fetchFlightRoute, getCachedRoute, RateLimitError } from '@/services/opensky';
+import { fetchFlights } from '@/services/airplaneslive';
+import { fetchFlightRoute, getCachedRoute } from '@/services/opensky';
 import { type Flight } from '@/types/flight';
 
 const FLIGHT_COLOR = Color.fromCssColorString('#ffa500');
-const BASE_POLL_MS = 60_000;
+const POLL_MS = 15_000;
 const MAX_FLIGHT_TRAIL = 20;
-const MAX_POLL_MS = 5 * 60_000;
-const MAX_FLIGHTS = 500;
+const MAX_FLIGHTS = 2000;
+const DR_MAX_AGE_MS = POLL_MS * 2; // stop extrapolating after 2 missed polls
+const EARTH_RADIUS_M = 6_371_000;
 
-// Color by position source: ADS-B=orange, ASTERIX=cyan, MLAT=yellow, FLARM=lime, unknown=gray
+const MILITARY_COLOR = '#ff2244';
+
 const SOURCE_COLORS: Record<number, string> = {
-    0: '#ffa500', // ADS-B (GPS) — normal
-    1: '#00d4ff', // ASTERIX (radar)
-    2: '#ffcc00', // MLAT (multilateration — potential GPS jamming zone)
-    3: '#00ff88', // FLARM (collision avoidance)
+    0: '#ffa500',
+    1: '#00d4ff',
+    2: '#ffcc00',
+    3: '#00ff88',
 };
 const SOURCE_LABELS: Record<number, string> = {
     0: 'ADS-B (GPS)',
@@ -40,8 +43,9 @@ const SOURCE_LABELS: Record<number, string> = {
     3: 'FLARM',
 };
 
-function getSourceColor(src: number): string {
-    return SOURCE_COLORS[src] ?? '#888888';
+function getFlightColor(flight: Flight): string {
+    if (flight.isMilitary) return MILITARY_COLOR;
+    return SOURCE_COLORS[flight.positionSource] ?? '#888888';
 }
 
 const planeIconCache = new Map<string, string>();
@@ -62,6 +66,30 @@ function createPlaneIcon(heading: number, color: string): string {
     return result;
 }
 
+// Dead-reckoning state stored per flight
+interface DrState {
+    lon: number;          // degrees — actual last-known position
+    lat: number;          // degrees
+    altitude: number;     // meters
+    velocity: number;     // m/s
+    heading: number;      // degrees from north
+    lastUpdateMs: number; // Date.now() at last real API update
+}
+
+// Great-circle dead-reckoning: project (lon,lat) forward by (velocity × elapsed)
+function extrapolatePosition(s: DrState, elapsedS: number): Cartesian3 {
+    const headingRad = (s.heading * Math.PI) / 180;
+    const distM = s.velocity * elapsedS;
+    const latRad = (s.lat * Math.PI) / 180;
+    const dLatRad = (distM * Math.cos(headingRad)) / EARTH_RADIUS_M;
+    const dLonRad = (distM * Math.sin(headingRad)) / (EARTH_RADIUS_M * Math.cos(latRad));
+    return Cartesian3.fromDegrees(
+        s.lon + dLonRad * (180 / Math.PI),
+        s.lat + dLatRad * (180 / Math.PI),
+        s.altitude,
+    );
+}
+
 export function FlightLayer() {
     const viewer = useViewer();
     const { isVisible, setLayerLoading, setLayerCount, setLayerError, setLayerLastUpdated } = useLayers();
@@ -78,8 +106,10 @@ export function FlightLayer() {
     const flightsRef = useRef<Flight[]>([]);
     flightsRef.current = flights;
     const routePendingRef = useRef(new Set<string>());
+    // Dead-reckoning state map
+    const drStateRef = useRef<Map<string, DrState>>(new Map());
 
-    // Register popup builder
+    // Popup builder
     useEffect(() => {
         register('flights', (entity: Entity) => {
             if (!dataSourceRef.current?.entities.contains(entity)) return null;
@@ -87,15 +117,12 @@ export function FlightLayer() {
             if (!flight) return null;
             const altFt = Math.round(flight.altitude * 3.28084);
             const speedKts = Math.round(flight.velocity * 1.94384);
-
             const callsign = flight.callsign;
             const cachedRoute = callsign ? getCachedRoute(callsign) : undefined;
 
-            // Trigger async fetch if not yet cached
             if (callsign && cachedRoute === undefined && !routePendingRef.current.has(callsign)) {
                 routePendingRef.current.add(callsign);
                 fetchFlightRoute(callsign).then(() => {
-                    // Re-trigger popup if this flight is still selected
                     if (viewer?.selectedEntity?.id === flight.icao24) {
                         const selected = viewer.selectedEntity;
                         viewer.selectedEntity = undefined;
@@ -104,19 +131,20 @@ export function FlightLayer() {
                 });
             }
 
-            const sourceColor = getSourceColor(flight.positionSource);
+            const color = getFlightColor(flight);
             return {
                 title: flight.callsign || flight.icao24,
-                icon: '✈',
-                color: sourceColor,
+                icon: flight.isMilitary ? '🪖' : '✈',
+                color,
                 followEntityId: flight.icao24,
                 fields: [
+                    ...(flight.isMilitary ? [{ label: 'Type', value: 'Militærfly' }] : []),
                     ...(cachedRoute ? [
                         { label: 'Fra', value: cachedRoute.origin },
                         { label: 'Til', value: cachedRoute.destination },
                     ] : []),
                     { label: 'ICAO24', value: flight.icao24 },
-                    { label: 'Land', value: flight.originCountry },
+                    ...(flight.originCountry ? [{ label: 'Land', value: flight.originCountry }] : []),
                     { label: 'Høyde', value: altFt.toLocaleString('nb-NO'), unit: 'ft' },
                     { label: 'Hastighet', value: speedKts, unit: 'kts' },
                     { label: 'Kurs', value: `${Math.round(flight.heading)}°` },
@@ -128,7 +156,7 @@ export function FlightLayer() {
         return () => unregister('flights');
     }, [register, unregister, viewer]);
 
-    // Register tooltip builder
+    // Tooltip builder
     useEffect(() => {
         tooltipRegister('flights', (entity: Entity) => {
             if (!dataSourceRef.current?.entities.contains(entity)) return null;
@@ -137,18 +165,17 @@ export function FlightLayer() {
             return {
                 title: flight.callsign || flight.icao24,
                 subtitle: `${Math.round(flight.altitude * 3.28084).toLocaleString('nb-NO')} ft · ${Math.round(flight.velocity * 1.94384)} kts`,
-                icon: '✈',
-                color: getSourceColor(flight.positionSource),
+                icon: flight.isMilitary ? '🪖' : '✈',
+                color: getFlightColor(flight),
             };
         });
         return () => tooltipUnregister('flights');
     }, [tooltipRegister, tooltipUnregister]);
 
-    // Polling with exponential backoff on rate limit
+    // Polling
     useEffect(() => {
         if (!visible) return;
         let cancelled = false;
-        let pollMs = BASE_POLL_MS;
         let timerId: ReturnType<typeof setTimeout>;
 
         const doFetch = async () => {
@@ -159,27 +186,22 @@ export function FlightLayer() {
                     setFlights(data.slice(0, MAX_FLIGHTS));
                     setLayerError('flights', null);
                     setLayerLastUpdated('flights', Date.now());
-                    pollMs = BASE_POLL_MS; // Reset on success
                 }
             } catch (err) {
                 if (!cancelled) {
                     setLayerError('flights', err instanceof Error ? err.message : 'Ukjent feil');
                 }
-                if (err instanceof RateLimitError) {
-                    pollMs = Math.min(pollMs * 2, MAX_POLL_MS);
-                    console.warn(`[FlightLayer] rate limit, backing off to ${pollMs / 1000}s`);
-                }
             } finally {
                 if (!cancelled) {
                     setLayerLoading('flights', false);
-                    timerId = setTimeout(doFetch, pollMs);
+                    timerId = setTimeout(doFetch, POLL_MS);
                 }
             }
         };
 
         doFetch();
         return () => { cancelled = true; clearTimeout(timerId); };
-    }, [visible, setLayerLoading]);
+    }, [visible, setLayerLoading, setLayerError, setLayerLastUpdated]);
 
     useEffect(() => {
         if (!viewer || viewer.isDestroyed()) return;
@@ -210,6 +232,42 @@ export function FlightLayer() {
         if (trailDsRef.current) trailDsRef.current.show = visible;
     }, [visible]);
 
+    // --- Dead-reckoning: preRender listener ---
+    // Each frame: extrapolate every airborne flight forward from its last known position.
+    // We only extrapolate up to DR_MAX_AGE_MS to avoid runaway drift on stale data.
+    useEffect(() => {
+        if (!viewer || viewer.isDestroyed()) return;
+        const handle = viewer.scene.preRender.addEventListener(() => {
+            const ds = dataSourceRef.current;
+            if (!ds?.show) return;
+            const nowMs = Date.now();
+            for (const [id, state] of drStateRef.current) {
+                const ageMs = nowMs - state.lastUpdateMs;
+                if (ageMs < 100 || ageMs > DR_MAX_AGE_MS) continue; // skip brand-new or stale
+                const entity = ds.entities.getById(id);
+                if (!entity?.position) continue;
+                const extrapolated = extrapolatePosition(state, ageMs / 1000);
+                (entity.position as ConstantPositionProperty).setValue(extrapolated);
+            }
+        });
+        return () => handle();
+    }, [viewer]);
+
+    // --- rAF loop: drives rendering at ~60fps while flights are visible ---
+    // This is what makes dead-reckoning actually smooth — requestRenderMode
+    // won't re-render unless asked, so we ask every animation frame.
+    useEffect(() => {
+        if (!visible || !viewer) return;
+        let rafId: number;
+        const tick = () => {
+            if (viewer && !viewer.isDestroyed()) viewer.scene.requestRender();
+            rafId = requestAnimationFrame(tick);
+        };
+        rafId = requestAnimationFrame(tick);
+        return () => cancelAnimationFrame(rafId);
+    }, [visible, viewer]);
+
+    // Entity sync + DR state update
     const updateEntities = useCallback(() => {
         const ds = dataSourceRef.current;
         const trailDs = trailDsRef.current;
@@ -218,25 +276,35 @@ export function FlightLayer() {
         const existing = new Map<string, Entity>();
         for (const entity of ds.entities.values) existing.set(entity.id, entity);
         const seen = new Set<string>();
+        const nowMs = Date.now();
+
         for (const flight of flights) {
             if (flight.onGround) continue;
             const id = flight.icao24;
             seen.add(id);
             const pos = Cartesian3.fromDegrees(flight.lon, flight.lat, flight.altitude);
-            const srcColor = getSourceColor(flight.positionSource);
-            const cesiumColor = Color.fromCssColorString(srcColor);
+            const color = getFlightColor(flight);
+            const cesiumColor = Color.fromCssColorString(color);
+
+            // Refresh dead-reckoning state with fresh API data
+            drStateRef.current.set(id, {
+                lon: flight.lon, lat: flight.lat, altitude: flight.altitude,
+                velocity: flight.velocity, heading: flight.heading,
+                lastUpdateMs: nowMs,
+            });
+
             const entity = existing.get(id);
             if (entity) {
                 (entity.position as ConstantPositionProperty).setValue(pos);
                 if (entity.billboard) {
-                    entity.billboard.image = createPlaneIcon(flight.heading, srcColor) as unknown as import('cesium').Property;
+                    entity.billboard.image = createPlaneIcon(flight.heading, color) as unknown as import('cesium').Property;
                     (entity.billboard.color as ConstantProperty).setValue(cesiumColor);
                 }
             } else {
                 ds.entities.add(new Entity({
                     id, name: flight.callsign || flight.icao24, position: pos,
                     billboard: {
-                        image: createPlaneIcon(flight.heading, srcColor),
+                        image: createPlaneIcon(flight.heading, color),
                         width: 20, height: 20, color: cesiumColor,
                         verticalOrigin: VerticalOrigin.CENTER,
                         horizontalOrigin: HorizontalOrigin.CENTER,
@@ -244,6 +312,7 @@ export function FlightLayer() {
                     },
                 }));
             }
+
             if (trailDs) {
                 const history = trailHistoryRef.current.get(id) ?? [];
                 history.push(pos.clone());
@@ -261,7 +330,9 @@ export function FlightLayer() {
                             width: 1.5,
                             material: new PolylineGlowMaterialProperty({
                                 glowPower: 0.2,
-                                color: FLIGHT_COLOR.withAlpha(0.7),
+                                color: flight.isMilitary
+                                    ? Color.fromCssColorString(MILITARY_COLOR).withAlpha(0.7)
+                                    : FLIGHT_COLOR.withAlpha(0.7),
                             }),
                             clampToGround: false,
                         },
@@ -269,11 +340,13 @@ export function FlightLayer() {
                 }
             }
         }
+
         for (const [id] of existing) {
             if (!seen.has(id)) {
                 ds.entities.removeById(id);
                 if (trailDs) trailDs.entities.removeById(`trail-${id}`);
                 trailHistoryRef.current.delete(id);
+                drStateRef.current.delete(id);
             }
         }
         if (viewer && !viewer.isDestroyed()) viewer.scene.requestRender();

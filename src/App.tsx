@@ -26,16 +26,24 @@ import { MineLayer } from './components/Layers/MineLayer/MineLayer';
 import { BuildingsLayer } from './components/Layers/BuildingsLayer/BuildingsLayer';
 import { SubmarineCableLayer } from './components/Layers/SubmarineCableLayer/SubmarineCableLayer';
 import { EarthquakeLayer } from './components/Layers/EarthquakeLayer/EarthquakeLayer';
+import { DisasterLayer } from './components/Layers/DisasterLayer/DisasterLayer';
+import { AsteroidLayer } from './components/Layers/AsteroidLayer/AsteroidLayer';
+import { NewsLayer } from './components/Layers/NewsLayer/NewsLayer';
+import { ConflictLayer } from './components/Layers/ConflictLayer/ConflictLayer';
+import { WeatherRadarLayer } from './components/Layers/WeatherRadarLayer/WeatherRadarLayer';
 import { PlaceLabels } from './components/Globe/PlaceLabels';
 import { ImageryProvider } from './context/ImageryContext';
 import { ImageryPicker } from './components/UI/ImageryPicker';
 import { ShaderOverlayProvider } from './context/ShaderOverlayContext';
 import { ShaderOverlayPicker } from './components/UI/ShaderOverlayPicker';
 import { HudOverlay } from './components/UI/HudOverlay';
+import { PortholeOverlay } from './components/UI/PortholeOverlay';
 import { CameraHud } from './components/UI/CameraHud';
 import { StatusTicker } from './components/UI/StatusTicker';
 import { EventLog } from './components/UI/EventLog';
 import { TrackingProvider, useTracking } from './context/TrackingContext';
+import { OrbitProvider } from './context/OrbitContext';
+import { OrbitButton } from './components/UI/OrbitButton';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useHoverTooltip } from './hooks/useHoverTooltip';
 import { useViewer } from './context/ViewerContext';
@@ -100,14 +108,21 @@ function AppContent({
                 <BuildingsLayer />
                 <SubmarineCableLayer />
                 <EarthquakeLayer />
+                <DisasterLayer />
+                <AsteroidLayer />
+                <NewsLayer />
+                <ConflictLayer />
+                <WeatherRadarLayer />
                 <PlaceLabels />
                 <TopBar searchRef={searchRef} />
                 <LayerPanel />
                 <ImageryPicker />
                 <ShaderOverlayPicker />
+                <PortholeOverlay />
                 <HudOverlay />
                 <EventLog />
                 <CameraHud />
+                <OrbitButton />
                 <StatusTicker />
                 <LayerErrorWatcher />
                 {popup && (
@@ -135,6 +150,7 @@ export default function App() {
         <ImageryProvider>
         <LayerProvider>
         <TrackingProvider>
+        <OrbitProvider>
             <PopupRegistryProvider>
             <TooltipRegistryProvider>
                 <AppContent
@@ -145,6 +161,7 @@ export default function App() {
                 />
             </TooltipRegistryProvider>
             </PopupRegistryProvider>
+        </OrbitProvider>
         </TrackingProvider>
         </LayerProvider>
         </ImageryProvider>

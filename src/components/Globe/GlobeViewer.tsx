@@ -10,11 +10,16 @@ import { ViewerProvider } from '@/context/ViewerContext';
 import { usePopupRegistry } from '@/context/PopupRegistry';
 import { useImagery } from '@/context/ImageryContext';
 import { useTracking } from '@/context/TrackingContext';
+import { useOrbit } from '@/context/OrbitContext';
 import { useShaderOverlay } from '@/context/ShaderOverlayContext';
 import { NIGHT_VISION_SHADER } from '@/shaders/nightVision';
 import { CRT_SHADER } from '@/shaders/crt';
 import { THERMAL_SHADER } from '@/shaders/thermal';
+import { ANIME_SHADER } from '@/shaders/anime';
 import { type PopupContent } from '@/types/popup';
+
+const ORBIT_SPEED = 0.003;  // rad/frame ≈ 3.5 min per omgang
+const ORBIT_PITCH = -0.7;   // rad ≈ -40°, spionfly-vinkel
 
 // Fjerner kun GlobeViewers egne baselayers — overlay-lag (trafikkflyt osv.) overlever
 function clearBaseLayers(v: Viewer, tracked: ImageryLayer[]) {
@@ -83,6 +88,7 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
     const { activeMode } = useImagery();
     const { activeOverlay } = useShaderOverlay();
     const { trackedEntityId, setTrackedEntityId } = useTracking();
+    const { orbitActive, setOrbitActive } = useOrbit();
     const tilesetRef = useRef<Cesium3DTileset | null>(null);
     const baseLayersRef = useRef<ImageryLayer[]>([]);
     const shaderStageRef = useRef<PostProcessStage | null>(null);
@@ -95,6 +101,11 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
     const setTrackedIdRef = useRef(setTrackedEntityId);
     setTrackedIdRef.current = setTrackedEntityId;
     const trackDistRef = useRef(500_000);
+    const orbitActiveRef = useRef(false);
+    const orbitTargetRef = useRef<Cartesian3 | null>(null);
+    const orbitDistRef = useRef(500_000);
+    const orbitHeadingRef = useRef(0);
+    orbitActiveRef.current = orbitActive;
 
     useEffect(() => {
         if (!containerRef.current || initRef.current) return;
@@ -148,6 +159,10 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
         let cursorWorldPos: Cartesian3 | undefined;
         const pickScratch = new Cartesian2();
         const dirScratch = new Cartesian3();
+        const orbitHprScratch = new HeadingPitchRange(0, ORBIT_PITCH, 500_000);
+        const trackHprScratch = new HeadingPitchRange(0, CesiumMath.toRadians(-30), 500_000);
+        const julianDateScratch = new JulianDate();
+        let orbitLastTimeMs = 0;
 
         v.canvas.addEventListener('wheel', (e) => {
             e.preventDefault();
@@ -169,6 +184,12 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
                     // While following: scroll adjusts distance instead of moving camera
                     trackDistRef.current *= (1 - pendingDelta * 0.0008);
                     trackDistRef.current = Math.max(500, Math.min(20_000_000, trackDistRef.current));
+                    pendingDelta = 0;
+                    zoomVelocity = 0;
+                } else if (orbitActiveRef.current) {
+                    // While orbiting: scroll adjusts orbit radius
+                    orbitDistRef.current *= (1 - pendingDelta * 0.0008);
+                    orbitDistRef.current = Math.max(500, Math.min(20_000_000, orbitDistRef.current));
                     pendingDelta = 0;
                     zoomVelocity = 0;
                 } else {
@@ -205,13 +226,11 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
             for (let i = 0; i < v.dataSources.length; i++) {
                 const entity = v.dataSources.get(i).entities.getById(tracking);
                 if (entity?.position) {
-                    const pos = entity.position.getValue(JulianDate.now());
+                    const pos = entity.position.getValue(JulianDate.now(julianDateScratch));
                     if (pos) {
-                        v.camera.lookAt(pos, new HeadingPitchRange(
-                            v.camera.heading,
-                            CesiumMath.toRadians(-30),
-                            trackDistRef.current,
-                        ));
+                        trackHprScratch.heading = v.camera.heading;
+                        trackHprScratch.range = trackDistRef.current;
+                        v.camera.lookAt(pos, trackHprScratch);
                         scene.requestRender();
                     }
                     return;
@@ -219,6 +238,19 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
             }
             // Entity not found — stop tracking
             setTrackedIdRef.current(null);
+        });
+
+        // Orbit render loop runs via scene.preRender only while orbitActive
+        scene.preRender.addEventListener(() => {
+            if (!orbitActiveRef.current || !orbitTargetRef.current) return;
+            const now = performance.now();
+            const dt = orbitLastTimeMs === 0 ? 1 : Math.min((now - orbitLastTimeMs) / 16.67, 3);
+            orbitLastTimeMs = now;
+            orbitHeadingRef.current += ORBIT_SPEED * dt;
+            orbitHprScratch.heading = orbitHeadingRef.current;
+            orbitHprScratch.range = orbitDistRef.current;
+            v.camera.lookAt(orbitTargetRef.current, orbitHprScratch);
+            scene.requestRender();
         });
 
         // Single centralized click handler
@@ -304,7 +336,7 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
             { timeout: 5000 }
         );
 
-        applySatelliteImagery(v, baseLayersRef.current);
+        v.scene.globe.show = false;
         setViewer(v);
 
         return () => {
@@ -324,10 +356,35 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
         if (!trackedEntityId) {
             viewer.camera.lookAtTransform(Matrix4.IDENTITY);
         } else {
-            trackDistRef.current = Math.max(10_000, viewer.camera.positionCartographic.height * 0.3);
+            trackDistRef.current = Math.max(500, Math.min(5_000, viewer.camera.positionCartographic.height * 0.5));
+            setOrbitActive(false);
         }
         viewer.scene.requestRender();
     }, [trackedEntityId, viewer]);
+
+    // Orbit aktivering/deaktivering
+    useEffect(() => {
+        if (!viewer || viewer.isDestroyed()) return;
+        if (orbitActive) {
+            const canvas = viewer.scene.canvas;
+            const center = new Cartesian2(canvas.width / 2, canvas.height / 2);
+            const target =
+                viewer.scene.pickPosition(center) ??
+                viewer.camera.pickEllipsoid(center) ??
+                viewer.scene.globe.ellipsoid.cartographicToCartesian(
+                    viewer.camera.positionCartographic
+                );
+            orbitTargetRef.current = target ?? null;
+            orbitDistRef.current = target
+                ? Cartesian3.distance(viewer.camera.position, target)
+                : viewer.camera.positionCartographic.height;
+            orbitHeadingRef.current = viewer.camera.heading;
+        } else {
+            viewer.camera.lookAtTransform(Matrix4.IDENTITY);
+            orbitTargetRef.current = null;
+        }
+        viewer.scene.requestRender();
+    }, [orbitActive, viewer]);
 
     // Imagery-switching effect
     useEffect(() => {
@@ -389,6 +446,7 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
         if (activeOverlay !== 'none') {
             const src = activeOverlay === 'nightvision' ? NIGHT_VISION_SHADER
                       : activeOverlay === 'crt'         ? CRT_SHADER
+                      : activeOverlay === 'anime'        ? ANIME_SHADER
                       : THERMAL_SHADER;
             const stage = new PostProcessStage({ fragmentShader: src });
             scene.postProcessStages.add(stage);

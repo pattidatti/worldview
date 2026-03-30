@@ -7,10 +7,16 @@ import {
     ConstantPositionProperty,
     ConstantProperty,
     NearFarScalar,
+    DistanceDisplayCondition,
+    Transforms,
+    HeadingPitchRoll,
+    Math as CesiumMath,
     PolylineGlowMaterialProperty,
     VerticalOrigin,
     HorizontalOrigin,
     HeightReference,
+    LabelStyle,
+    Cartesian2,
 } from 'cesium';
 import { useViewer } from '@/context/ViewerContext';
 import { useLayers } from '@/context/LayerContext';
@@ -20,14 +26,33 @@ import { useViewport } from '@/hooks/useViewport';
 import { configureCluster } from '@/utils/cluster';
 import { AISStreamConnection } from '@/services/aisstream';
 import { type Ship } from '@/types/ship';
-import { getShipTypeName, getNavStatusText, getFlagState, createShipIcon } from '@/utils/ship-utils';
+import {
+    getShipTypeName,
+    getNavStatusText,
+    getFlagState,
+    createShipIcon,
+    getShipDimensions,
+    getShipColorCss,
+} from '@/utils/ship-utils';
 
 const API_KEY = import.meta.env.VITE_AISSTREAM_API_KEY || '';
 const MAX_SHIPS = 1000;
 const MAX_SHIP_TRAIL = 60;
+const SHIP_STALE_MS = 15 * 60 * 1000; // fjern skip som ikke har rapportert på 15 min
 const SHIP_TRAIL_COLOR = Color.fromCssColorString('#00d4ff');
-// Zoom-basert skalering: stor nær (havn), liten på avstand (kontinent)
-const SHIP_SCALE = new NearFarScalar(500, 4.0, 3_000_000, 0.4);
+
+// Navn-label vises 0–150 km, krymper gradvis
+const LABEL_RANGE = new DistanceDisplayCondition(0, 150_000);
+const LABEL_SCALE = new NearFarScalar(5_000, 1.0, 150_000, 0.45);
+
+/** Beregner orienterings-quaternion fra AIS-heading */
+function buildOrientation(pos: Cartesian3, heading: number) {
+    const h = heading >= 0 && heading <= 360 ? heading : 0;
+    return Transforms.headingPitchRollQuaternion(
+        pos,
+        new HeadingPitchRoll(CesiumMath.toRadians(h), 0, 0),
+    );
+}
 
 export function ShipLayer() {
     const viewer = useViewer();
@@ -43,6 +68,7 @@ export function ShipLayer() {
     const trailDsRef = useRef<CustomDataSource | null>(null);
     const trailHistoryRef = useRef<Map<string, Cartesian3[]>>(new Map());
     const connRef = useRef<AISStreamConnection | null>(null);
+    const shipTimestampsRef = useRef<Map<number, number>>(new Map());
     const [ships, setShips] = useState<Map<number, Ship>>(new Map());
     const shipsRef = useRef<Map<number, Ship>>(new Map());
     shipsRef.current = ships;
@@ -133,12 +159,34 @@ export function ShipLayer() {
         if (!visible || !API_KEY || !hasViewport) return;
         setLayerLoading('ships', true);
         const conn = new AISStreamConnection(API_KEY, viewportRef.current!, (updatedShips) => {
-            if (updatedShips.size > MAX_SHIPS) {
-                const entries = [...updatedShips.entries()];
-                setShips(new Map(entries.slice(-MAX_SHIPS)));
-            } else {
-                setShips(updatedShips);
+            const now = Date.now();
+            // Oppdater sist-sett-tidsstempel for alle skip i batchen
+            for (const [mmsi] of updatedShips) {
+                shipTimestampsRef.current.set(mmsi, now);
             }
+            setShips(prev => {
+                const merged = new Map(prev);
+                // Legg til / oppdater nye skip
+                for (const [mmsi, ship] of updatedShips) {
+                    merged.set(mmsi, ship);
+                }
+                // Fjern skip som ikke har rapportert posisjon på 15 min
+                const staleThreshold = now - SHIP_STALE_MS;
+                for (const [mmsi] of merged) {
+                    if ((shipTimestampsRef.current.get(mmsi) ?? 0) < staleThreshold) {
+                        merged.delete(mmsi);
+                        shipTimestampsRef.current.delete(mmsi);
+                    }
+                }
+                // Behold maks MAX_SHIPS — prioriter nyest sett
+                if (merged.size > MAX_SHIPS) {
+                    const sorted = [...merged.entries()].sort(
+                        (a, b) => (shipTimestampsRef.current.get(b[0]) ?? 0) - (shipTimestampsRef.current.get(a[0]) ?? 0)
+                    );
+                    return new Map(sorted.slice(0, MAX_SHIPS));
+                }
+                return merged;
+            });
             setLayerLoading('ships', false);
             setLayerError('ships', null);
             setLayerLastUpdated('ships', Date.now());
@@ -169,29 +217,73 @@ export function ShipLayer() {
         const existing = new Map<string, Entity>();
         for (const entity of ds.entities.values) existing.set(entity.id, entity);
         const seen = new Set<string>();
+
         for (const [mmsi, ship] of ships) {
             const id = String(mmsi);
             seen.add(id);
             const pos = Cartesian3.fromDegrees(ship.lon, ship.lat, 0);
+            const orientation = buildOrientation(pos, ship.heading);
             const entity = existing.get(id);
+
             if (entity) {
                 (entity.position as ConstantPositionProperty).setValue(pos);
-                if (entity.billboard) {
+                (entity.orientation as ConstantProperty).setValue(orientation);
+                if (entity.billboard?.image) {
                     entity.billboard.image = createShipIcon(ship.heading, ship.shipType) as unknown as import('cesium').Property;
                 }
+                if (entity.label?.text) {
+                    (entity.label.text as ConstantProperty).setValue(ship.name || `MMSI ${mmsi}`);
+                }
+                // Oppdater boks-dimensjoner dersom AIS-statikk nå er tilgjengelig
+                if (entity.box?.dimensions) {
+                    const dims = getShipDimensions(ship.shipType, ship.length, ship.width);
+                    (entity.box.dimensions as ConstantProperty).setValue(
+                        new Cartesian3(dims.width, dims.length, dims.height),
+                    );
+                }
             } else {
+                const dims = getShipDimensions(ship.shipType, ship.length, ship.width);
+                const shipColor = Color.fromCssColorString(getShipColorCss(ship.shipType));
                 ds.entities.add(new Entity({
-                    id, name: ship.name || `MMSI ${mmsi}`, position: pos,
+                    id,
+                    name: ship.name || `MMSI ${mmsi}`,
+                    position: pos,
+                    orientation,
+                    // 3D-boks (alltid synlig — skalerer naturlig med avstand)
+                    box: {
+                        dimensions: new Cartesian3(dims.width, dims.length, dims.height),
+                        material: shipColor.withAlpha(0.9),
+                        outline: true,
+                        outlineColor: Color.BLACK.withAlpha(0.35),
+                    },
+                    // Billboard — alltid 22 px, alltid synlig og klikkbar uansett avstand
                     billboard: {
                         image: createShipIcon(ship.heading, ship.shipType),
-                        width: 32, height: 32,
-                        scaleByDistance: SHIP_SCALE,
+                        width: 22,
+                        height: 22,
                         verticalOrigin: VerticalOrigin.CENTER,
                         horizontalOrigin: HorizontalOrigin.CENTER,
-                        heightReference: HeightReference.NONE, rotation: 0,
+                        heightReference: HeightReference.NONE,
+                        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+                    },
+                    // Navn vises rett over båten
+                    label: {
+                        text: ship.name || `MMSI ${mmsi}`,
+                        font: '11px Inter, sans-serif',
+                        fillColor: Color.WHITE,
+                        outlineColor: Color.BLACK.withAlpha(0.8),
+                        outlineWidth: 2,
+                        style: LabelStyle.FILL_AND_OUTLINE,
+                        verticalOrigin: VerticalOrigin.BOTTOM,
+                        horizontalOrigin: HorizontalOrigin.CENTER,
+                        pixelOffset: new Cartesian2(0, -18),
+                        scaleByDistance: LABEL_SCALE,
+                        distanceDisplayCondition: LABEL_RANGE,
+                        disableDepthTestDistance: Number.POSITIVE_INFINITY,
                     },
                 }));
             }
+
             if (trailDs) {
                 const history = trailHistoryRef.current.get(id) ?? [];
                 history.push(pos.clone());
@@ -217,6 +309,7 @@ export function ShipLayer() {
                 }
             }
         }
+
         for (const [id] of existing) {
             if (!seen.has(id)) {
                 ds.entities.removeById(id);

@@ -13,13 +13,35 @@ interface LayerContextValue {
 
 const LayerContext = createContext<LayerContextValue | null>(null);
 
+const STORAGE_KEY = 'worldview-layer-visibility';
+
+function loadVisibility(): Partial<Record<LayerId, boolean>> {
+    try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        return raw ? JSON.parse(raw) : {};
+    } catch {
+        return {};
+    }
+}
+
+function saveVisibility(layers: LayerConfig[]) {
+    const vis: Partial<Record<LayerId, boolean>> = {};
+    layers.forEach((l) => { if (l.visible) vis[l.id] = true; });
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(vis));
+}
+
 export function LayerProvider({ children }: { children: ReactNode }) {
-    const [layers, setLayers] = useState<LayerConfig[]>(LAYER_DEFAULTS);
+    const [layers, setLayers] = useState<LayerConfig[]>(() => {
+        const saved = loadVisibility();
+        return LAYER_DEFAULTS.map((l) => ({ ...l, visible: saved[l.id] ?? l.visible }));
+    });
 
     const toggleLayer = useCallback((id: LayerId) => {
-        setLayers((prev) =>
-            prev.map((l) => (l.id === id ? { ...l, visible: !l.visible } : l))
-        );
+        setLayers((prev) => {
+            const next = prev.map((l) => (l.id === id ? { ...l, visible: !l.visible } : l));
+            saveVisibility(next);
+            return next;
+        });
     }, []);
 
     const setLayerLoading = useCallback((id: LayerId, loading: boolean) => {

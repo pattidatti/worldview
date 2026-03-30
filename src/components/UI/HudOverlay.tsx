@@ -15,6 +15,7 @@ const MODE_COLOR: Record<string, string> = {
     nightvision: 'rgba(0, 255, 80, 0.55)',
     crt:         'rgba(140, 255, 140, 0.45)',
     thermal:     'rgba(255, 140, 0, 0.50)',
+    anime:       'rgba(255, 100, 200, 0.60)',
 };
 
 const COMPASS = [

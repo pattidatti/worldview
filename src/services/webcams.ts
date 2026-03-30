@@ -5,6 +5,41 @@ const WINDY_API = 'https://api.windy.com/webcams/api/v3/webcams';
 const API_KEY = import.meta.env.VITE_WINDY_WEBCAMS_API_KEY || '';
 const PER_PAGE = 50;
 const MAX_PAGES = 4; // 200 kameraer maks
+const CACHE_TTL_MS = 9 * 60 * 1000; // 9 min (bilde-URLer utløper etter 10 min)
+const SS_PREFIX = 'webcam:vp:';
+
+interface WebcamCache {
+    data: Webcam[];
+    cachedAt: number;
+}
+
+function viewportCacheKey(viewport: Viewport | null | undefined): string {
+    if (!viewport) return 'global';
+    const r = (n: number) => Math.round(n * 2) / 2; // round to 0.5°
+    return `${r(viewport.west)},${r(viewport.south)},${r(viewport.east)},${r(viewport.north)}`;
+}
+
+function loadWebcamCache(key: string): Webcam[] | null {
+    try {
+        const raw = sessionStorage.getItem(SS_PREFIX + key);
+        if (!raw) return null;
+        const entry: WebcamCache = JSON.parse(raw);
+        if (Date.now() - entry.cachedAt > CACHE_TTL_MS) {
+            sessionStorage.removeItem(SS_PREFIX + key);
+            return null;
+        }
+        return entry.data;
+    } catch {
+        return null;
+    }
+}
+
+function saveWebcamCache(key: string, data: Webcam[]): void {
+    try {
+        const entry: WebcamCache = { data, cachedAt: Date.now() };
+        sessionStorage.setItem(SS_PREFIX + key, JSON.stringify(entry));
+    } catch { /* quota exceeded — ignore */ }
+}
 
 interface WindyWebcam {
     webcamId: string;
@@ -44,6 +79,10 @@ function parseWebcam(w: WindyWebcam): Webcam | null {
 export async function fetchWebcams(viewport?: Viewport | null, signal?: AbortSignal): Promise<Webcam[]> {
     if (!API_KEY) return [];
 
+    const cacheKey = viewportCacheKey(viewport);
+    const cached = loadWebcamCache(cacheKey);
+    if (cached) return cached;
+
     let baseUrl = `${WINDY_API}?include=images,location&limit=${PER_PAGE}`;
 
     // Bare bruk nearby-filter når brukeren har zoomet inn (< 90° breddegrad-spenn).
@@ -82,5 +121,6 @@ export async function fetchWebcams(viewport?: Viewport | null, signal?: AbortSig
         if (webcams.length < PER_PAGE) break;
     }
 
+    saveWebcamCache(cacheKey, all);
     return all;
 }

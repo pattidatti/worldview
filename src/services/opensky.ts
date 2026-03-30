@@ -43,6 +43,7 @@ export async function fetchFlights(viewport?: Viewport | null): Promise<Flight[]
             verticalRate: (s[11] as number) ?? 0,
             onGround: s[8] as boolean,
             positionSource: (s[16] as PositionSource) ?? 0,
+            isMilitary: false,
         }));
 }
 

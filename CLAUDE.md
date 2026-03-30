@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-WorldView is an interactive 3D globe showing real-time data (flights, ships, satellites, weather, webcams, road traffic) from open APIs. Built with React 19 + TypeScript + Vite + Tailwind CSS 4 + CesiumJS. All UI text is in Norwegian (bokmal).
+WorldView is an interactive 3D globe showing real-time data (flights, ships, satellites, weather, webcams, road traffic, asteroids, armed conflicts, natural disasters, news events) from open APIs. Built with React 19 + TypeScript + Vite + Tailwind CSS 4 + CesiumJS. All UI text is in Norwegian (bokmal).
 
 See `DESIGN.md` for full vision, API sources, color palette, and implementation roadmap.
 
@@ -28,15 +28,23 @@ Copy `.env.example` to `.env`. Required:
 - `VITE_TOMTOM_API_KEY` — TomTom Traffic API key (traffic incident layer)
 - `VITE_API_BASE_URL` — Base URL for Firebase Functions proxy (unused in current layers)
 
+Optional (layers degrade gracefully without them):
+- `VITE_NASA_API_KEY` — NASA NeoWs asteroid API; falls back to DEMO_KEY (public, rate-limited)
+- `VITE_ACLED_API_KEY` — ACLED conflict data (requires account at acleddata.com)
+- `VITE_ACLED_EMAIL` — Email tied to ACLED account registration (required alongside API key)
+
 All env vars use Vite's `import.meta.env.VITE_*` convention.
 
 ## Critical Gotchas
 
 - **IKKE bruk resium** — har CJS `require("react")` bug med Vite. Vi bruker CesiumJS direkte.
 - **satellite.js: bruk v5** — v7 har WASM/top-level-await som krasjer Vite build.
-- **TomTom Traffic API** — krever gratis API-nøkkel (2500 req/dag). Trafikk-laget er viewport-avhengig med ~30° breddegrad-grense.
+- **TomTom Traffic API** — krever gratis API-nøkkel (2500 req/dag). Trafikk-laget er viewport-avhengig; returnerer tomt array hvis viewport > 10 000 km².
 - **StrictMode er fjernet** — dobbeltmonterer Cesium Viewer og forårsaker krasj.
 - **ALDRI legg til `selectedEntityChanged` listeners i lag** — bruk PopupRegistry-mønsteret (se under). Listener-stacking var hovedårsak til krasj.
+- **airplaneslive.ts erstatter opensky.ts** for flightlaget — viewport-aware via center-point + radius i nautiske mil (maks 250nm).
+- **WeatherRadarLayer er unntaket** — det eneste laget som returnerer JSX (animasjonskontroller) og bruker CesiumJS `ImageryLayer` i stedet for `CustomDataSource`. Fjern gammelt lag fra viewer før nytt legges til (unngå stacking).
+- **ACLED krever nøkkel + e-post** — begge `VITE_ACLED_API_KEY` og `VITE_ACLED_EMAIL` må være satt. Mangler én av dem returneres tomt array stille.
 
 ## Architecture
 
@@ -56,6 +64,8 @@ Each data layer (`src/components/Layers/*/`) is a React component that **returns
 
 To add a new layer: create a type in `src/types/`, a service in `src/services/`, a layer component following the existing pattern, register the layer ID in `src/types/layers.ts`, add default config in `LayerContext`, and mount in `App.tsx`.
 
+**Exception:** WeatherRadarLayer returns JSX and uses `ImageryLayer` — see gotchas above.
+
 ### Entity update pattern (performance-critical)
 
 All layers use the same pattern for updating Cesium entities without recreating them:
@@ -63,27 +73,70 @@ All layers use the same pattern for updating Cesium entities without recreating 
 - Iterate new data: update position via `ConstantPositionProperty.setValue()` for existing, `ds.entities.add()` for new
 - Remove entities not seen in current data batch
 
-### Three React contexts
+### Clustering pattern
+
+ConflictLayer and NewsLayer use clustering via `configureCluster(ds, { pixelRange, minimumClusterSize, color })`:
+- Cluster icons are dynamically generated SVG circles with a count label
+- Size by count: <10 = 32px, <50 = 40px, ≥50 = 48px
+- Cache keyed by `count-color` to avoid redundant SVG generation
+
+### React contexts
 
 - **ViewerContext** (`src/context/ViewerContext.tsx`) — provides the Cesium `Viewer` instance after initialization
-- **LayerContext** (`src/context/LayerContext.tsx`) — manages layer visibility, loading, and count state; provides `toggleLayer()`, `isVisible()`, `setLayerLoading()`, `setLayerCount()`
+- **LayerContext** (`src/context/LayerContext.tsx`) — manages layer visibility, loading, count, error, and lastUpdated state; provides `toggleLayer()`, `isVisible()`, `setLayerLoading()`, `setLayerCount()`, `setLayerError()`, `setLayerLastUpdated()`; visibility persisted to localStorage
 - **PopupRegistry** (`src/context/PopupRegistry.tsx`) — centralized entity click handling. Each layer calls `register(dataSourceName, builderFn)` with a function that takes an Entity and returns PopupContent or null. GlobeViewer has ONE `selectedEntityChanged` listener that calls `resolve(entity)`. Builders use refs for data to avoid re-render dependencies.
+- **TooltipRegistry** — centralized hover handling, same pattern as PopupRegistry
+- **OrbitContext** (`src/context/OrbitContext.tsx`) — boolean flag `orbitActive` + `setOrbitActive`; camera orbit implementation lives in GlobeViewer (not yet implemented)
 
 ### Key hooks
 
 - **`usePollingData<T>(fetchFn, intervalMs, enabled)`** — generic polling with auto-cleanup; only polls when `enabled` is true (tied to layer visibility)
-- **`useViewport(viewer, debounceMs)`** — tracks camera bounding box (`{west, south, east, north}` in degrees); used by OpenSky/AIS to request only visible-area data
+- **`useViewport(viewer, debounceMs)`** — tracks camera bounding box (`{west, south, east, north}` in degrees); used by AIS/flights to request only visible-area data
 
 ### Services
 
 Services are pure async functions (except `AISStreamConnection` which is a stateful WebSocket class with auto-reconnect). Most accept an optional `Viewport` parameter for geographic filtering. Notable:
 - `celestrak.ts` — fetches TLE data, parsed with `satellite.js` for orbit calculation
-- `opensky.ts` — viewport-aware REST polling (15s)
+- `airplaneslive.ts` — airplanes.live v2 API, viewport-aware (center + radius in nautical miles, capped at 250nm), 15s poll
 - `aisstream.ts` — WebSocket connection class, batches updates every 5s
 - `metno.ts` — fixed set of 18 Norwegian cities (no viewport filtering)
-- `webcams.ts` — Windy Webcams API, paginated (4x50=200 per viewport), returns direct JPEG URLs
-- `tomtom-traffic.ts` — TomTom Incident Details v5, viewport-aware bbox queries, returns localized Norwegian descriptions
+- `webcams.ts` — Windy Webcams API, paginated (4×50=200 per viewport), sessionStorage cache (9min TTL, image URLs expire after 10min), skips Null Island on global view
+- `tomtom-traffic.ts` — TomTom Incident Details v5, viewport-aware bbox queries, 90s cache, 8s timeout, returns Norwegian descriptions; skips if viewport > 10 000 km²
 - `geocoding.ts` — OSM Nominatim search for SearchBar fly-to
+- `acled.ts` — ACLED API, last 7 days, up to 2000 conflict events, requires API key + email
+- `eonet.ts` — NASA EONET v3, open natural disaster events, no key; skips earthquakes (handled separately by USGS)
+- `gdelt.ts` — GDELT GeoJSON, last 60 min of geolocated news, no key, up to 2000 events
+- `nasa-neo.ts` — NASA NeoWs, asteroid close approaches next 7 days, optional key (DEMO_KEY fallback)
+- `rainviewer.ts` — RainViewer weather radar, fetches frame timestamps + tile URL helper, no key
+- `wikipedia.ts` — OSM Nominatim + Wikipedia summary for popups; tries Norwegian first, falls back to English; two-tier cache (memory + sessionStorage, 1h TTL)
+
+### Layers reference
+
+| Layer | Service | Polling | API key | Display |
+|-------|---------|---------|---------|---------|
+| Flights | airplaneslive.ts | 15s | None | SVG plane icons + trails, clustering |
+| Ships | aisstream.ts | WS/5s | Required | 3D boxes + billboard icons + trails |
+| Asteroids | nasa-neo.ts | 24h | Optional | Point ring above globe (altitude ∝ miss dist) |
+| Conflicts | acled.ts | 30m | Required | Ground points, clustering, size ∝ fatalities |
+| Disasters | eonet.ts | 30m | None | Billboard SVG emoji icons (11 categories) |
+| News | gdelt.ts | 10m | None | Billboard icons, clustering |
+| WeatherRadar | rainviewer.ts | 5m | None | ImageryLayer tile animation (JSX controls) |
+
+### UI components
+
+- **ShaderOverlayPicker** (`src/components/UI/ShaderOverlayPicker.tsx`) — switches between 5 visual effects: `none`, `nightvision`, `crt`, `thermal`, `anime`. Clicking active mode turns it off.
+- **HudOverlay** (`src/components/UI/HudOverlay.tsx`) — decorative HUD corner brackets always visible; tactical scope/crosshair overlay appears when any shader is active (color matches shader mode)
+- **StatusTicker** (`src/components/UI/StatusTicker.tsx`) — fixed bottom bar showing visible layers + entity counts (`◈ FLIGHTS 427 · SHIPS 156`)
+- **EventLog** (`src/components/UI/EventLog.tsx`) — collapsible live event stream (top-right), shows data changes per layer as they occur (max 8 events, LIFO)
+- **CameraHud** (`src/components/UI/CameraHud.tsx`) — LAT/LON/ALT/HDG display, updates every 800ms; smart altitude formatting (m/km/Mm)
+- **OrbitButton** (`src/components/UI/OrbitButton.tsx`) — toggle for orbit camera mode; reads/writes OrbitContext
+
+### Shaders
+
+GLSL fragment shaders applied as post-process stages to the entire Cesium viewport:
+- `src/shaders/anime.ts` — Sobel edge detection (3×3 kernel) + saturation boost + pastelization + 5-band cel quantization + black outlines
+- Other modes (nightvision, crt, thermal) are inline GLSL strings in their context/picker files
+- Active shader managed via ShaderOverlayContext
 
 ### UI layering (z-index)
 

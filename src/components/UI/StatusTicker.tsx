@@ -10,12 +10,12 @@ export function StatusTicker() {
         <div
             className="absolute bottom-0 left-0 right-0 z-10 flex items-center overflow-hidden"
             style={{
-                height: '24px',
+                height: '36px',
                 background: 'rgba(10, 10, 20, 0.75)',
                 backdropFilter: 'blur(8px)',
                 borderTop: '1px solid rgba(255,255,255,0.07)',
                 fontFamily: 'var(--font-mono)',
-                fontSize: '10px',
+                fontSize: '11px',
                 letterSpacing: '0.06em',
                 paddingLeft: '1rem',
                 paddingRight: '1rem',

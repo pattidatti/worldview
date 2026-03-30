@@ -5,7 +5,7 @@ export function ShaderOverlayPicker() {
     const { activeOverlay, setOverlay } = useShaderOverlay();
 
     return (
-        <div className="absolute bottom-20 right-6 z-10">
+        <div className="absolute bottom-24 right-6 z-10">
             <div className="flex items-center gap-1 bg-[var(--bg-ui)] backdrop-blur-md border border-white/10 rounded-full px-1.5 py-1.5 shadow-2xl">
                 {SHADER_OVERLAY_MODES.map((mode) => (
                     <button

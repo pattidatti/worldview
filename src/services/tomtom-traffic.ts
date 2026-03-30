@@ -6,6 +6,20 @@ const BASE_URL = 'https://api.tomtom.com/traffic/services/5/incidentDetails';
 const FIELDS = '{incidents{type,geometry{type,coordinates},properties{id,iconCategory,magnitudeOfDelay,events{description},startTime,endTime,from,to,roadNumbers,delay,length}}}';
 const MAX_AREA_KM2 = 10_000;
 
+const CACHE_TTL_MS = 90_000; // 90 sek
+
+interface TrafficCache {
+    data: TrafficEvent[];
+    cachedAt: number;
+}
+
+const trafficCache = new Map<string, TrafficCache>();
+
+function viewportCacheKey(vp: Viewport): string {
+    const r = (n: number) => Math.round(n * 2) / 2; // round to 0.5°
+    return `${r(vp.west)},${r(vp.south)},${r(vp.east)},${r(vp.north)}`;
+}
+
 const CATEGORY_LABELS: Record<number, string> = {
     0: 'Ukjent',
     1: 'Ulykke',
@@ -79,6 +93,10 @@ export async function fetchTrafficEvents(
 
     if (viewportAreaKm2(viewport) > MAX_AREA_KM2) return [];
 
+    const cacheKey = viewportCacheKey(viewport);
+    const cached = trafficCache.get(cacheKey);
+    if (cached && Date.now() - cached.cachedAt < CACHE_TTL_MS) return cached.data;
+
     const bbox = `${viewport.west},${viewport.south},${viewport.east},${viewport.north}`;
     const url = `${BASE_URL}?key=${API_KEY}&bbox=${bbox}&fields=${encodeURIComponent(FIELDS)}&language=nb-NO&timeValidityFilter=present`;
 
@@ -132,6 +150,7 @@ export async function fetchTrafficEvents(
             });
         }
 
+        trafficCache.set(cacheKey, { data: events, cachedAt: Date.now() });
         return events;
     } catch (err) {
         clearTimeout(timeoutId);

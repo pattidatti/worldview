@@ -43,6 +43,11 @@ const LAYER_COLORS: Record<LayerId, string> = {
     buildings: '#aaccff',
     submarineCables: '#00d4ff',
     earthquakes: '#ff3333',
+    disasters: '#ff4400',
+    asteroids: '#aaaaaa',
+    news: '#e040fb',
+    conflicts: '#ff1744',
+    weatherRadar: '#00e5ff',
 };
 
 function searchEntities(viewer: import('cesium').Viewer | null, query: string, visibleLayerIds: Set<LayerId>): EntityResult[] {

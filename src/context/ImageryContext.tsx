@@ -7,12 +7,12 @@ interface ImageryContextValue {
 }
 
 const ImageryContext = createContext<ImageryContextValue>({
-    activeMode: 'satellite',
+    activeMode: 'photorealistic3d',
     setMode: () => {},
 });
 
 export function ImageryProvider({ children }: { children: ReactNode }) {
-    const [activeMode, setMode] = useState<ImageryMode>('satellite');
+    const [activeMode, setMode] = useState<ImageryMode>('photorealistic3d');
     return (
         <ImageryContext.Provider value={{ activeMode, setMode }}>
             {children}

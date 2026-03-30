@@ -3,13 +3,24 @@ import { type Viewport } from '@/hooks/useViewport';
 
 type ShipCallback = (ships: Map<number, Ship>) => void;
 
+const SUBSCRIPTION_BUFFER = 1.5; // grader padding på hver kant av kamera-viewporten
+
+function expandViewport(vp: Viewport): Viewport {
+    return {
+        west:  Math.max(-180, vp.west  - SUBSCRIPTION_BUFFER),
+        east:  Math.min( 180, vp.east  + SUBSCRIPTION_BUFFER),
+        south: Math.max( -90, vp.south - SUBSCRIPTION_BUFFER),
+        north: Math.min(  90, vp.north + SUBSCRIPTION_BUFFER),
+    };
+}
+
 export class AISStreamConnection {
     private ws: WebSocket | null = null;
     private ships = new Map<number, Ship>();
     private onUpdate: ShipCallback;
     private onError?: (msg: string) => void;
     private apiKey: string;
-    private viewport: Viewport;
+    private subscribedViewport: Viewport; // det buffrete området vi faktisk abonnerer på
     private updateTimer: ReturnType<typeof setInterval> | null = null;
     private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     private connectTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -17,7 +28,7 @@ export class AISStreamConnection {
 
     constructor(apiKey: string, viewport: Viewport, onUpdate: ShipCallback, onError?: (msg: string) => void) {
         this.apiKey = apiKey;
-        this.viewport = viewport;
+        this.subscribedViewport = expandViewport(viewport);
         this.onUpdate = onUpdate;
         this.onError = onError;
     }
@@ -47,8 +58,8 @@ export class AISStreamConnection {
                     APIKey: this.apiKey,
                     BoundingBoxes: [
                         [
-                            [this.viewport.south, this.viewport.west],
-                            [this.viewport.north, this.viewport.east],
+                            [this.subscribedViewport.south, this.subscribedViewport.west],
+                            [this.subscribedViewport.north, this.subscribedViewport.east],
                         ],
                     ],
                 })
@@ -151,21 +162,30 @@ export class AISStreamConnection {
     }
 
     updateViewport(viewport: Viewport) {
-        this.viewport = viewport;
-        if (this.ws?.readyState === WebSocket.OPEN) {
-            this.ships.clear();
-            // Disconnect and reconnect with new bounding box
-            if (this.ws) {
-                this.ws.onclose = null;
-                this.ws.close();
-                this.ws = null;
-            }
-            if (this.updateTimer) {
-                clearInterval(this.updateTimer);
-                this.updateTimer = null;
-            }
-            this.connect();
+        const s = this.subscribedViewport;
+        const outside =
+            viewport.west  < s.west  ||
+            viewport.east  > s.east  ||
+            viewport.south < s.south ||
+            viewport.north > s.north;
+        if (!outside) return; // kameraet er fortsatt innenfor det buffrete abonnements-området
+
+        this.subscribedViewport = expandViewport(viewport);
+        // Reconnect UTEN ships.clear() — skip forblir synlige under reconnect
+        if (this.reconnectTimer) {
+            clearTimeout(this.reconnectTimer);
+            this.reconnectTimer = null;
         }
+        if (this.ws) {
+            this.ws.onclose = null;
+            this.ws.close();
+            this.ws = null;
+        }
+        if (this.updateTimer) {
+            clearInterval(this.updateTimer);
+            this.updateTimer = null;
+        }
+        this.connect();
     }
 
     disconnect() {

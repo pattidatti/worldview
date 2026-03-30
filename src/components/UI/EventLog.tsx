@@ -64,7 +64,7 @@ export function EventLog() {
     return (
         <div
             className="absolute z-10"
-            style={{ top: '56px', left: '1.5rem', width: '220px' }}
+            style={{ top: '56px', right: '1.5rem', width: '220px' }}
         >
             <div
                 style={{

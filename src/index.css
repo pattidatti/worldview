@@ -39,6 +39,9 @@
     --color-lighthouses: #FF8F00;
     --color-telecom: #AB47BC;
     --color-mines: #8D6E63;
+    --color-news: #e040fb;
+    --color-conflicts: #ff1744;
+    --color-weather-radar: #00e5ff;
 }
 
 html,

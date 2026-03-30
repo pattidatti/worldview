@@ -13,4 +13,5 @@ export interface Flight {
     verticalRate: number; // m/s
     onGround: boolean;
     positionSource: PositionSource;
+    isMilitary: boolean;
 }

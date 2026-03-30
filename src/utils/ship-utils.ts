@@ -103,6 +103,46 @@ export function createShipIcon(heading: number, shipType: number): string {
 }
 
 /**
+ * Standard dimensjoner per skipstype (meter): { length, width, height }
+ * Brukes som fallback når AIS statisk data ikke er mottatt ennå
+ */
+function getDefaultDims(shipType: number): { length: number; width: number; height: number } {
+    if (shipType >= 60 && shipType <= 69) return { length: 160, width: 30, height: 28 };
+    if (shipType >= 70 && shipType <= 79) return { length: 200, width: 28, height: 16 };
+    if (shipType >= 80 && shipType <= 89) return { length: 230, width: 32, height: 14 };
+    if (shipType === 30 || shipType === 7 || (shipType >= 10 && shipType <= 19)) return { length: 25, width: 7, height: 4 };
+    if (shipType >= 31 && shipType <= 32) return { length: 40, width: 12, height: 7 };
+    if (shipType >= 40 && shipType <= 49) return { length: 65, width: 12, height: 6 };
+    if (shipType >= 50 && shipType <= 59) return { length: 80, width: 20, height: 10 };
+    return { length: 120, width: 20, height: 13 };
+}
+
+export function getShipDimensions(
+    shipType: number,
+    rawLength: number,
+    rawWidth: number,
+): { length: number; width: number; height: number } {
+    const d = getDefaultDims(shipType);
+    return {
+        length: rawLength > 10 ? rawLength : d.length,
+        width: rawWidth > 3 ? rawWidth : d.width,
+        height: d.height,
+    };
+}
+
+/** CSS-farge for 3D-boks per skipstype */
+export function getShipColorCss(shipType: number): string {
+    if (shipType >= 60 && shipType <= 69) return '#e040ff';
+    if (shipType >= 70 && shipType <= 79) return '#44cc44';
+    if (shipType >= 80 && shipType <= 89) return '#ff6644';
+    if (shipType === 30 || shipType === 7 || (shipType >= 10 && shipType <= 19)) return '#ffcc00';
+    if (shipType >= 31 && shipType <= 32) return '#ff8844';
+    if (shipType >= 40 && shipType <= 49) return '#00eeff';
+    if (shipType >= 50 && shipType <= 59) return '#aaaaff';
+    return '#00d4ff';
+}
+
+/**
  * MMSI → flaggstat via MID-kode (3 første siffer)
  */
 const MID: Record<number, string> = {
