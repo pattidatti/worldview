@@ -52,7 +52,7 @@ function aisProxy(): Plugin {
 }
 
 export default defineConfig({
-    base: process.env.GITHUB_ACTIONS ? '/worldview/' : '/',
+    base: '/',
     plugins: [react(), tailwindcss(), cesium(), aisProxy()],
     resolve: {
         alias: {
