@@ -11,6 +11,7 @@ import { useLayers } from '@/context/LayerContext';
 import { usePopupRegistry } from '@/context/PopupRegistry';
 import { useTooltipRegistry } from '@/context/TooltipRegistry';
 import { useViewport } from '@/hooks/useViewport';
+import { syncEntities } from '@/utils/syncEntities';
 import { fetchLighthouseData } from '@/services/osmFeatures';
 import { type LighthouseData } from '@/types/osmFeatures';
 import { fetchWikiSummary } from '@/services/wikipedia';
@@ -108,38 +109,27 @@ export function LighthouseLayer() {
             dataRef.current = data;
             const ds = dsRef.current;
 
-            const existing = new Map<string, Entity>();
-            for (const entity of ds.entities.values) existing.set(entity.id, entity);
-            const seen = new Set<string>();
-
-            for (const lh of data.lighthouses) {
-                try {
-                    if (!isFinite(lh.lon) || !isFinite(lh.lat)) continue;
-                    seen.add(lh.id);
-                    if (!existing.has(lh.id)) {
-                        ds.entities.add(new Entity({
-                            id: lh.id,
-                            name: lh.name || 'Fyrtårn',
-                            position: Cartesian3.fromDegrees(lh.lon, lh.lat, 0),
-                            billboard: {
-                                image: LIGHTHOUSE_SVG,
-                                width: new ConstantProperty(20),
-                                height: new ConstantProperty(24),
-                                heightReference: new ConstantProperty(HeightReference.CLAMP_TO_GROUND),
-                                disableDepthTestDistance: new ConstantProperty(Number.POSITIVE_INFINITY),
-                            },
-                        }));
-                    }
-                } catch { /* skip */ }
-            }
-
-            for (const [id] of existing) {
-                if (!seen.has(id)) ds.entities.removeById(id);
-            }
-
+            const valid = data.lighthouses.filter((lh) => isFinite(lh.lon) && isFinite(lh.lat));
+            syncEntities({
+                ds,
+                items: valid,
+                getId: (lh) => lh.id,
+                onCreate: (lh) => new Entity({
+                    id: lh.id,
+                    name: lh.name || 'Fyrtårn',
+                    position: Cartesian3.fromDegrees(lh.lon, lh.lat, 0),
+                    billboard: {
+                        image: LIGHTHOUSE_SVG,
+                        width: new ConstantProperty(20),
+                        height: new ConstantProperty(24),
+                        heightReference: new ConstantProperty(HeightReference.CLAMP_TO_GROUND),
+                        disableDepthTestDistance: new ConstantProperty(Number.POSITIVE_INFINITY),
+                    },
+                }),
+                viewer,
+            });
             setLayerCount('lighthouses', data.lighthouses.length);
             setLayerLoading('lighthouses', false);
-            if (viewer && !viewer.isDestroyed()) viewer.scene.requestRender();
         }).catch(() => setLayerLoading('lighthouses', false));
 
         return () => { cancelled = true; };

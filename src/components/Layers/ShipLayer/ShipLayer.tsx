@@ -33,7 +33,8 @@ import {
     getFlagState,
     createShipIcon,
     getShipDimensions,
-    getShipSuperConfig,
+    getShipComponents,
+    getShipColorCss,
 } from '@/utils/ship-utils';
 
 const API_KEY = import.meta.env.VITE_AISSTREAM_API_KEY || '';
@@ -109,9 +110,10 @@ export function ShipLayer() {
             const inHull = dataSourceRef.current?.entities.contains(entity);
             const inSuper = superDsRef.current?.entities.contains(entity);
             if (!inHull && !inSuper) return null;
-            // ID er enten "${mmsi}" (hull) eller "${mmsi}-s" (overbygning)
+            // ID er enten "${mmsi}" (hull) eller "${mmsi}-c${n}" (overbygningskomponent)
+            // MMSI er alltid 9 sifre, aldri bokstaver, så splitteren ::c er unik
             const rawId = entity.id;
-            const mmsiStr = rawId.endsWith('-s') ? rawId.slice(0, -2) : rawId;
+            const mmsiStr = rawId.includes('::c') ? rawId.split('::c')[0] : rawId;
             const ship = shipsRef.current.get(Number(mmsiStr));
             if (!ship) return null;
             const navText = getNavStatusText(ship.navStatus);
@@ -152,7 +154,7 @@ export function ShipLayer() {
             const inSuper = superDsRef.current?.entities.contains(entity);
             if (!inHull && !inSuper) return null;
             const rawId = entity.id;
-            const mmsiStr = rawId.endsWith('-s') ? rawId.slice(0, -2) : rawId;
+            const mmsiStr = rawId.includes('::c') ? rawId.split('::c')[0] : rawId;
             const ship = shipsRef.current.get(Number(mmsiStr));
             if (!ship) return null;
             return {
@@ -279,7 +281,7 @@ export function ShipLayer() {
             seen.add(id);
 
             const dims = getShipDimensions(ship.shipType, ship.length, ship.width);
-            const cfg = getShipSuperConfig(ship.shipType);
+            const components = getShipComponents(ship.shipType, dims);
             const effectiveH = ship.heading >= 0 && ship.heading <= 360 ? ship.heading : ship.course;
 
             // Havnivå-posisjon (basis for offset-beregninger)
@@ -288,19 +290,12 @@ export function ShipLayer() {
             const hullPos = Cartesian3.fromDegrees(ship.lon, ship.lat, dims.height / 2);
             const orientation = buildOrientation(seaPos, effectiveH);
 
-            // Overbygningens posisjon: langs heading mot akter + opp over skroget
-            const superLength = dims.length * cfg.lengthFrac;
-            const superFwd = -(dims.length / 2) + cfg.sternOffset * dims.length + superLength / 2;
-            const superUpCenter = dims.height + cfg.height / 2;
-            const superPos = computeShipOffset(seaPos, effectiveH, superFwd, superUpCenter);
-            const superId = `${id}-s`;
-
             const entity = existing.get(id);
             if (entity) {
                 (entity.position as ConstantPositionProperty).setValue(hullPos);
                 (entity.orientation as ConstantProperty).setValue(orientation);
                 if (entity.billboard?.image) {
-                    entity.billboard.image = createShipIcon(effectiveH, ship.shipType) as unknown as import('cesium').Property;
+                    (entity.billboard.image as ConstantProperty).setValue(createShipIcon(effectiveH, ship.shipType));
                 }
                 if (entity.label?.text) {
                     (entity.label.text as ConstantProperty).setValue(ship.name || `MMSI ${mmsi}`);
@@ -310,20 +305,28 @@ export function ShipLayer() {
                         new Cartesian3(dims.width, dims.length, dims.height),
                     );
                 }
-                // Oppdater overbygning
-                const superEntity = superDs?.entities.getById(superId);
-                if (superEntity) {
-                    (superEntity.position as ConstantPositionProperty).setValue(superPos);
-                    (superEntity.orientation as ConstantProperty).setValue(orientation);
-                    if (superEntity.box?.dimensions) {
-                        (superEntity.box.dimensions as ConstantProperty).setValue(
-                            new Cartesian3(dims.width * cfg.widthFrac, superLength, cfg.height),
-                        );
+                // Oppdater overbygningskomponenter
+                for (let i = 0; i < components.length; i++) {
+                    const comp = components[i];
+                    const compId = `${id}::c${i + 1}`;
+                    const compPos = computeShipOffset(
+                        seaPos, effectiveH,
+                        comp.fwdFrac * dims.length,
+                        comp.vertBase + comp.height / 2,
+                    );
+                    const compEntity = superDs?.entities.getById(compId);
+                    if (compEntity) {
+                        (compEntity.position as ConstantPositionProperty).setValue(compPos);
+                        (compEntity.orientation as ConstantProperty).setValue(orientation);
+                        if (compEntity.box?.dimensions) {
+                            (compEntity.box.dimensions as ConstantProperty).setValue(
+                                new Cartesian3(dims.width * comp.wFrac, dims.length * comp.lFrac, comp.height),
+                            );
+                        }
                     }
                 }
             } else {
-                const hullColor = Color.fromCssColorString(cfg.hullCss);
-                const superColor = Color.fromCssColorString(cfg.superCss);
+                const hullColor = Color.fromCssColorString(getShipColorCss(ship.shipType));
                 // Skrog-entitet (med billboard, label og trail-tilknytning)
                 ds.entities.add(new Entity({
                     id,
@@ -360,19 +363,27 @@ export function ShipLayer() {
                         disableDepthTestDistance: Number.POSITIVE_INFINITY,
                     },
                 }));
-                // Overbygning (bro/kahytt) — separat entitet uten billboard
+                // Overbygningskomponenter — lagvise bokser i 'ships-super'
                 if (superDs) {
-                    superDs.entities.add(new Entity({
-                        id: superId,
-                        position: superPos,
-                        orientation,
-                        box: {
-                            dimensions: new Cartesian3(dims.width * cfg.widthFrac, superLength, cfg.height),
-                            material: superColor.withAlpha(0.95),
-                            outline: true,
-                            outlineColor: Color.BLACK.withAlpha(0.2),
-                        },
-                    }));
+                    for (let i = 0; i < components.length; i++) {
+                        const comp = components[i];
+                        const compPos = computeShipOffset(
+                            seaPos, effectiveH,
+                            comp.fwdFrac * dims.length,
+                            comp.vertBase + comp.height / 2,
+                        );
+                        superDs.entities.add(new Entity({
+                            id: `${id}::c${i + 1}`,
+                            position: compPos,
+                            orientation,
+                            box: {
+                                dimensions: new Cartesian3(dims.width * comp.wFrac, dims.length * comp.lFrac, comp.height),
+                                material: Color.fromCssColorString(comp.css).withAlpha(0.97),
+                                outline: true,
+                                outlineColor: Color.BLACK.withAlpha(0.22),
+                            },
+                        }));
+                    }
                 }
             }
 
@@ -405,7 +416,7 @@ export function ShipLayer() {
         for (const [id] of existing) {
             if (!seen.has(id)) {
                 ds.entities.removeById(id);
-                superDs?.entities.removeById(`${id}-s`);
+                for (let i = 1; i <= 7; i++) superDs?.entities.removeById(`${id}::c${i}`);
                 if (trailDs) trailDs.entities.removeById(`trail-${id}`);
                 trailHistoryRef.current.delete(id);
             }

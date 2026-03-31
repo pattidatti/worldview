@@ -53,44 +53,52 @@ export function createShipIcon(heading: number, shipType: number): string {
 
     if (shipType >= 60 && shipType <= 69) {
         // Passasjerskip — bred og kort, tydelig bredeste type
+        // Ikon: lys blågrå — matcher hvit overbygning over mørk marineblå skrog (#1e232e)
         body = `
-            <path d="M16 5 L25 10 L25 24 L7 24 L7 10 Z" fill="#e040ff" stroke="#7020aa" stroke-width="1" stroke-linejoin="round"/>
-            <rect x="11" y="11" width="10" height="9" rx="1" fill="#9020cc" opacity="0.65"/>`;
+            <path d="M16 5 L25 10 L25 24 L7 24 L7 10 Z" fill="#8899cc" stroke="#5566aa" stroke-width="1" stroke-linejoin="round"/>
+            <rect x="11" y="11" width="10" height="9" rx="1" fill="#aab8dd" opacity="0.65"/>`;
     } else if (shipType >= 70 && shipType <= 79) {
         // Lasteskip — langt smalt rektangel med spiss baug og fyrhus akter
+        // Ikon: grå-blå — matcher mørk grå-blå skrog (#2e3840)
         body = `
-            <path d="M16 3 L20 9 L20 27 L12 27 L12 9 Z" fill="#44cc44" stroke="#227722" stroke-width="1" stroke-linejoin="round"/>
-            <rect x="13" y="22" width="6" height="5" rx="0.5" fill="#2a8a2a"/>
-            <line x1="16" y1="10" x2="16" y2="21" stroke="#227722" stroke-width="0.6" opacity="0.55"/>`;
+            <path d="M16 3 L20 9 L20 27 L12 27 L12 9 Z" fill="#6699aa" stroke="#406080" stroke-width="1" stroke-linejoin="round"/>
+            <rect x="13" y="22" width="6" height="5" rx="0.5" fill="#4a7888"/>
+            <line x1="16" y1="10" x2="16" y2="21" stroke="#406080" stroke-width="0.6" opacity="0.55"/>`;
     } else if (shipType >= 80 && shipType <= 89) {
         // Tankskip — lang organisk sigar-form
+        // Ikon: nøytral grå-lilla — matcher svært mørk skrog (#282e34)
         body = `
-            <path d="M16 3 Q22 8 22 17 Q22 27 16 29 Q10 27 10 17 Q10 8 16 3 Z" fill="#ff6644" stroke="#aa3322" stroke-width="1"/>
-            <line x1="16" y1="5" x2="16" y2="27" stroke="#aa3322" stroke-width="0.6" opacity="0.5"/>`;
+            <path d="M16 3 Q22 8 22 17 Q22 27 16 29 Q10 27 10 17 Q10 8 16 3 Z" fill="#8899bb" stroke="#556688" stroke-width="1"/>
+            <line x1="16" y1="5" x2="16" y2="27" stroke="#667799" stroke-width="0.6" opacity="0.5"/>`;
     } else if (shipType === 30 || shipType === 7 || (shipType >= 10 && shipType <= 19)) {
         // Fiskebåt — liten, kompakt
+        // Ikon: lys blå — matcher blå skrog (#1e4488), lysere for synlighet
         body = `
-            <path d="M16 8 L20 13 L20 23 L12 23 L12 13 Z" fill="#ffcc00" stroke="#aa8800" stroke-width="1" stroke-linejoin="round"/>
-            <rect x="13" y="18" width="6" height="4" rx="0.5" fill="#cc9900" opacity="0.8"/>`;
+            <path d="M16 8 L20 13 L20 23 L12 23 L12 13 Z" fill="#4488cc" stroke="#2255aa" stroke-width="1" stroke-linejoin="round"/>
+            <rect x="13" y="18" width="6" height="4" rx="0.5" fill="#3377bb" opacity="0.8"/>`;
     } else if (shipType >= 31 && shipType <= 32) {
         // Slepebåt — svært kort og bred, nesten sirkulær
+        // Ikon: oransje — matcher oransje skrog (#cc5500), litt lysere
         body = `
-            <path d="M16 9 Q22 12 22 18 Q22 24 16 25 Q10 24 10 18 Q10 12 16 9 Z" fill="#ff8844" stroke="#aa5522" stroke-width="1"/>
-            <circle cx="16" cy="19" r="3" fill="#cc6622" opacity="0.7"/>`;
+            <path d="M16 9 Q22 12 22 18 Q22 24 16 25 Q10 24 10 18 Q10 12 16 9 Z" fill="#ee7722" stroke="#bb4400" stroke-width="1"/>
+            <circle cx="16" cy="19" r="3" fill="#cc5500" opacity="0.7"/>`;
     } else if (shipType >= 40 && shipType <= 49) {
         // Hurtigbåt — veldig slank og spiss
+        // Ikon: lys blå — matcher lys blå skrog (#80c8e0), litt mørkere kant
         body = `
-            <path d="M16 2 L19 9 L18 27 L14 27 L13 9 Z" fill="#00eeff" stroke="#0088aa" stroke-width="1" stroke-linejoin="round"/>
-            <line x1="16" y1="4" x2="16" y2="25" stroke="#0088aa" stroke-width="0.6" opacity="0.5"/>`;
+            <path d="M16 2 L19 9 L18 27 L14 27 L13 9 Z" fill="#66ccee" stroke="#4090b0" stroke-width="1" stroke-linejoin="round"/>
+            <line x1="16" y1="4" x2="16" y2="25" stroke="#4090b0" stroke-width="0.6" opacity="0.5"/>`;
     } else if (shipType >= 50 && shipType <= 59) {
         // Spesialfartøy — stubb baug, plattform-form
+        // Ikon: grå-blå — matcher grå-blå skrog (#5a6880), lysere
         body = `
-            <path d="M14 7 L18 7 L22 11 L22 24 L10 24 L10 11 Z" fill="#aaaaff" stroke="#5555aa" stroke-width="1" stroke-linejoin="round"/>
-            <rect x="12" y="12" width="8" height="9" rx="1" fill="#7777cc" opacity="0.6"/>`;
+            <path d="M14 7 L18 7 L22 11 L22 24 L10 24 L10 11 Z" fill="#7788aa" stroke="#506080" stroke-width="1" stroke-linejoin="round"/>
+            <rect x="12" y="12" width="8" height="9" rx="1" fill="#8899bb" opacity="0.6"/>`;
     } else {
         // Standard/ukjent — pilform
+        // Ikon: medium blå — matcher mørk grå-blå standardskrog (#3a4a5a)
         body = `
-            <path d="M16 4 L21 19 L16 16 L11 19 Z" fill="#00d4ff" stroke="#005577" stroke-width="1" stroke-linejoin="round"/>`;
+            <path d="M16 4 L21 19 L16 16 L11 19 Z" fill="#5577aa" stroke="#304060" stroke-width="1" stroke-linejoin="round"/>`;
     }
 
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
@@ -131,68 +139,101 @@ export function getShipDimensions(
     };
 }
 
-export interface ShipSuperConfig {
-    /** Brøkdel av skrogets bredde */
-    widthFrac: number;
-    /** Brøkdel av skrogets lengde */
-    lengthFrac: number;
+export interface ShipComponent {
+    /** Bredde som andel av skrogbredde */
+    wFrac: number;
+    /** Lengde som andel av skroglengde */
+    lFrac: number;
     /** Absolutt høyde i meter */
     height: number;
-    /** Avstand fra akterende som brøkdel av skrogets lengde */
-    sternOffset: number;
-    /** Farge på skroget (realistisk) */
-    hullCss: string;
-    /** Farge på overbygning/broen */
-    superCss: string;
+    /** Fremover-offset fra skrogets midtpunkt (andel av skroglengde; negativt = akter) */
+    fwdFrac: number;
+    /** Vertikal base over vannlinjen i meter */
+    vertBase: number;
+    /** CSS-farge */
+    css: string;
 }
 
 /**
- * 3D-geometri-konfigurasjon per skipstype:
- * skrog (hull) + overbygning (bridge/superstructure)
+ * Returnerer overbygningskomponenter per skipstype (hull er separat i 'ships' ds).
+ * Hver komponent er en 3D-boks i 'ships-super' ds med ID `${mmsi}-c${i+1}`.
+ * Komponentene stables lagvis for realistisk silhuett.
  */
-export function getShipSuperConfig(shipType: number): ShipSuperConfig {
+export function getShipComponents(
+    shipType: number,
+    dims: { length: number; width: number; height: number },
+): ShipComponent[] {
+    const h = dims.height;
+
     if (shipType >= 60 && shipType <= 69) {
-        // Passasjerskip — bred hvit hull, enorm overbygning midtskips
-        return { widthFrac: 0.90, lengthFrac: 0.68, height: 50, sternOffset: 0.08, hullCss: '#d8dde5', superCss: '#f5f5f5' };
+        // Passasjerskip — 5-lags "bryllupskake": hvite dekklag trappes inn mot akter
+        return [
+            { wFrac: 0.92, lFrac: 0.94, height:  9, fwdFrac:  0.00, vertBase: h,    css: '#f0f0ec' },
+            { wFrac: 0.85, lFrac: 0.86, height:  9, fwdFrac:  0.00, vertBase: h+ 9, css: '#f2f2ee' },
+            { wFrac: 0.77, lFrac: 0.76, height:  8, fwdFrac: -0.02, vertBase: h+18, css: '#eeeeea' },
+            { wFrac: 0.67, lFrac: 0.64, height:  7, fwdFrac: -0.05, vertBase: h+26, css: '#eaeaf0' },
+            { wFrac: 0.22, lFrac: 0.18, height: 18, fwdFrac: -0.14, vertBase: h+33, css: '#e0d4b0' },
+        ];
     }
     if (shipType >= 70 && shipType <= 79) {
-        // Lasteskip — mørkt grått skrog, smal høy bro akter
-        return { widthFrac: 0.32, lengthFrac: 0.11, height: 28, sternOffset: 0.03, hullCss: '#5a6268', superCss: '#e8e8e0' };
+        // Lasteskip — høyt brotårn akter, baug-mast
+        return [
+            { wFrac: 0.62, lFrac: 0.10, height: 18, fwdFrac: -0.40, vertBase: h,    css: '#d0c8b0' },
+            { wFrac: 0.45, lFrac: 0.06, height: 10, fwdFrac: -0.40, vertBase: h+18, css: '#c8c0a8' },
+            { wFrac: 0.15, lFrac: 0.01, height: 22, fwdFrac:  0.38, vertBase: h,    css: '#aab090' },
+        ];
     }
     if (shipType >= 80 && shipType <= 89) {
-        // Tankskip — svært mørkt, lav smal bro akter
-        return { widthFrac: 0.28, lengthFrac: 0.07, height: 22, sternOffset: 0.02, hullCss: '#383e44', superCss: '#ddddd0' };
+        // Tankskip — slank og lav bro akter
+        return [
+            { wFrac: 0.55, lFrac: 0.08, height: 16, fwdFrac: -0.44, vertBase: h,    css: '#d8d0c0' },
+            { wFrac: 0.38, lFrac: 0.04, height:  8, fwdFrac: -0.44, vertBase: h+16, css: '#ccc8b8' },
+        ];
     }
     if (shipType === 30 || shipType === 7 || (shipType >= 10 && shipType <= 19)) {
-        // Fiskebåt — blålig skrog, relativt stor kahytt
-        return { widthFrac: 0.55, lengthFrac: 0.38, height: 7, sternOffset: 0.12, hullCss: '#2255aa', superCss: '#f0f0e8' };
+        // Fiskebåt — stor kahytt midtskips-fremover
+        return [
+            { wFrac: 0.72, lFrac: 0.40, height: 5, fwdFrac: 0.10, vertBase: h,   css: '#f0ede0' },
+            { wFrac: 0.40, lFrac: 0.15, height: 3, fwdFrac: 0.10, vertBase: h+5, css: '#e8e5d8' },
+        ];
     }
     if (shipType >= 31 && shipType <= 32) {
-        // Slepebåt — oransje hull, kraftig fremtredende bro
-        return { widthFrac: 0.65, lengthFrac: 0.45, height: 12, sternOffset: 0.08, hullCss: '#cc5500', superCss: '#ffcc00' };
+        // Slepebåt — bred og fremtredende bro
+        return [
+            { wFrac: 0.75, lFrac: 0.45, height: 7, fwdFrac: 0.05, vertBase: h,   css: '#fff0a0' },
+            { wFrac: 0.50, lFrac: 0.25, height: 4, fwdFrac: 0.05, vertBase: h+7, css: '#ffeea0' },
+        ];
     }
     if (shipType >= 40 && shipType <= 49) {
-        // Hurtigbåt — hvit/lyseblå, slank lav profil
-        return { widthFrac: 0.50, lengthFrac: 0.32, height: 6, sternOffset: 0.18, hullCss: '#d8f0f8', superCss: '#f5feff' };
+        // Hurtigbåt — slank kabinstruktur
+        return [
+            { wFrac: 0.55, lFrac: 0.32, height: 4, fwdFrac: 0.12, vertBase: h, css: '#e8f8ff' },
+        ];
     }
     if (shipType >= 50 && shipType <= 59) {
-        // Spesialfartøy — stålgrå, bred arbeidsbro
-        return { widthFrac: 0.60, lengthFrac: 0.32, height: 15, sternOffset: 0.08, hullCss: '#6878a0', superCss: '#c0cce0' };
+        // Spesialfartøy — arbeidsoverbygning + tårn/kran akter
+        return [
+            { wFrac: 0.68, lFrac: 0.30, height: 10, fwdFrac: -0.05, vertBase: h,    css: '#c4d0e0' },
+            { wFrac: 0.45, lFrac: 0.15, height:  7, fwdFrac: -0.05, vertBase: h+10, css: '#b8c8dc' },
+            { wFrac: 0.25, lFrac: 0.06, height: 15, fwdFrac: -0.28, vertBase: h,    css: '#a0b8c8' },
+        ];
     }
     // Standard/ukjent
-    return { widthFrac: 0.38, lengthFrac: 0.14, height: 18, sternOffset: 0.06, hullCss: '#4a5a6a', superCss: '#d0d8e4' };
+    return [
+        { wFrac: 0.50, lFrac: 0.15, height: 14, fwdFrac: -0.20, vertBase: h, css: '#c8d0d8' },
+    ];
 }
 
 /** CSS-farge for 3D-boks per skipstype */
 export function getShipColorCss(shipType: number): string {
-    if (shipType >= 60 && shipType <= 69) return '#e040ff';
-    if (shipType >= 70 && shipType <= 79) return '#44cc44';
-    if (shipType >= 80 && shipType <= 89) return '#ff6644';
-    if (shipType === 30 || shipType === 7 || (shipType >= 10 && shipType <= 19)) return '#ffcc00';
-    if (shipType >= 31 && shipType <= 32) return '#ff8844';
-    if (shipType >= 40 && shipType <= 49) return '#00eeff';
-    if (shipType >= 50 && shipType <= 59) return '#aaaaff';
-    return '#00d4ff';
+    if (shipType >= 60 && shipType <= 69) return '#1e232e';
+    if (shipType >= 70 && shipType <= 79) return '#2e3840';
+    if (shipType >= 80 && shipType <= 89) return '#282e34';
+    if (shipType === 30 || shipType === 7 || (shipType >= 10 && shipType <= 19)) return '#1e4488';
+    if (shipType >= 31 && shipType <= 32) return '#cc5500';
+    if (shipType >= 40 && shipType <= 49) return '#80c8e0';
+    if (shipType >= 50 && shipType <= 59) return '#5a6880';
+    return '#3a4a5a';
 }
 
 /**

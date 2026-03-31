@@ -13,6 +13,7 @@ import { useLayers } from '@/context/LayerContext';
 import { usePopupRegistry } from '@/context/PopupRegistry';
 import { useTooltipRegistry } from '@/context/TooltipRegistry';
 import { useViewport } from '@/hooks/useViewport';
+import { syncEntities } from '@/utils/syncEntities';
 import { fetchTrafficEvents } from '@/services/tomtom-traffic';
 import { type TrafficEvent } from '@/types/traffic';
 
@@ -53,7 +54,7 @@ export function TrafficLayer() {
                 }
             } catch (err) {
                 if (!cancelled && !(err instanceof DOMException && err.name === 'AbortError')) {
-                    console.error('[TrafficLayer] fetch error:', err);
+                    if (import.meta.env.DEV) console.error('[TrafficLayer] fetch error:', err);
                     setLayerError('traffic', err instanceof Error ? err.message : 'Ukjent feil');
                 }
             } finally {
@@ -138,36 +139,29 @@ export function TrafficLayer() {
         const ds = dataSourceRef.current;
         if (!ds || !events) return;
         setLayerCount('traffic', events.length);
-
-        const existing = new Map<string, Entity>();
-        for (const entity of ds.entities.values) existing.set(entity.id, entity);
-
-        const seen = new Set<string>();
-        for (const event of events) {
-            seen.add(event.id);
-            const pos = Cartesian3.fromDegrees(event.lon, event.lat, 0);
-            const color = SEVERITY_COLORS[event.severity];
-            const entity = existing.get(event.id);
-            if (entity) {
+        syncEntities({
+            ds,
+            items: events,
+            getId: (ev) => ev.id,
+            onUpdate: (entity, ev) => {
+                const pos = Cartesian3.fromDegrees(ev.lon, ev.lat, 0);
+                const color = SEVERITY_COLORS[ev.severity];
                 (entity.position as ConstantPositionProperty).setValue(pos);
                 if (entity.point?.color) (entity.point.color as ConstantProperty).setValue(color);
-            } else {
-                ds.entities.add(new Entity({
-                    id: event.id, name: event.type,
-                    position: pos,
-                    point: new PointGraphics({
-                        pixelSize: 7, color,
-                        outlineColor: Color.BLACK, outlineWidth: 1,
-                    }),
-                }));
-            }
-        }
-
-        for (const [id] of existing) {
-            if (!seen.has(id)) ds.entities.removeById(id);
-        }
-
-        if (viewer && !viewer.isDestroyed()) viewer.scene.requestRender();
+            },
+            onCreate: (ev) => new Entity({
+                id: ev.id,
+                name: ev.type,
+                position: Cartesian3.fromDegrees(ev.lon, ev.lat, 0),
+                point: new PointGraphics({
+                    pixelSize: 7,
+                    color: SEVERITY_COLORS[ev.severity],
+                    outlineColor: Color.BLACK,
+                    outlineWidth: 1,
+                }),
+            }),
+            viewer,
+        });
     }, [events, viewer, setLayerCount]);
 
     useEffect(() => { updateEntities(); }, [updateEntities]);

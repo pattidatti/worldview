@@ -17,6 +17,7 @@ import { CRT_SHADER } from '@/shaders/crt';
 import { THERMAL_SHADER } from '@/shaders/thermal';
 import { ANIME_SHADER } from '@/shaders/anime';
 import { type PopupContent } from '@/types/popup';
+import { useWASDNavigation } from '@/hooks/useWASDNavigation';
 
 const ORBIT_SPEED = 0.003;  // rad/frame ≈ 3.5 min per omgang
 const ORBIT_PITCH = -0.7;   // rad ≈ -40°, spionfly-vinkel
@@ -89,6 +90,7 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
     const { activeOverlay } = useShaderOverlay();
     const { trackedEntityId, setTrackedEntityId } = useTracking();
     const { orbitActive, setOrbitActive } = useOrbit();
+    useWASDNavigation(viewer, orbitActive);
     const tilesetRef = useRef<Cesium3DTileset | null>(null);
     const baseLayersRef = useRef<ImageryLayer[]>([]);
     const shaderStageRef = useRef<PostProcessStage | null>(null);
@@ -421,7 +423,7 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
                         tilesetRef.current = tileset;
                         scene.primitives.add(tileset);
                     } catch (e) {
-                        console.warn(
+                        if (import.meta.env.DEV) console.warn(
                             '[WorldView] Google Photorealistic 3D Tiles utilgjengelig.\n' +
                             'Legg til asset ID 2275207 i Cesium Ion-kontoen din på ion.cesium.com/assetdepot\n',
                             e

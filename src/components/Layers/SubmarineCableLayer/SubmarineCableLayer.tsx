@@ -90,7 +90,7 @@ export function SubmarineCableLayer() {
                 }
             } catch (e) {
                 if (cancelled) return;
-                console.error('[SubmarineCableLayer]', e);
+                if (import.meta.env.DEV) console.error('[SubmarineCableLayer]', e);
                 setLayerError('submarineCables', 'Feil ved lasting av sjøkabler');
             } finally {
                 if (!cancelled) setLayerLoading('submarineCables', false);

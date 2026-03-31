@@ -13,6 +13,7 @@ import { useLayers } from '@/context/LayerContext';
 import { usePopupRegistry } from '@/context/PopupRegistry';
 import { useTooltipRegistry } from '@/context/TooltipRegistry';
 import { usePollingData } from '@/hooks/usePollingData';
+import { syncEntities } from '@/utils/syncEntities';
 import { fetchEarthquakes } from '@/services/usgs';
 import { type Earthquake } from '@/types/earthquake';
 import { fetchWikiSummary } from '@/services/wikipedia';
@@ -125,17 +126,14 @@ export function EarthquakeLayer() {
         const ds = dataSourceRef.current;
         if (!ds || !quakes) return;
         setLayerCount('earthquakes', quakes.length);
-        const existing = new Map<string, Entity>();
-        for (const entity of ds.entities.values) existing.set(entity.id, entity);
-        const seen = new Set<string>();
-        for (const quake of quakes) {
-            const id = `eq-${quake.id}`;
-            seen.add(id);
-            const pos = Cartesian3.fromDegrees(quake.lon, quake.lat);
-            const color = depthColor(quake.depth);
-            const radius = magnitudeRadius(quake.magnitude);
-            const entity = existing.get(id);
-            if (entity) {
+        syncEntities({
+            ds,
+            items: quakes,
+            getId: (q) => `eq-${q.id}`,
+            onUpdate: (entity, q) => {
+                const pos = Cartesian3.fromDegrees(q.lon, q.lat);
+                const color = depthColor(q.depth);
+                const radius = magnitudeRadius(q.magnitude);
                 (entity.position as ConstantPositionProperty).setValue(pos);
                 if (entity.ellipse) {
                     (entity.ellipse.semiMajorAxis as ConstantProperty).setValue(radius);
@@ -143,10 +141,14 @@ export function EarthquakeLayer() {
                     (entity.ellipse.material as unknown as ConstantProperty).setValue(color);
                     (entity.ellipse.outlineColor as unknown as ConstantProperty).setValue(color.withAlpha(1.0));
                 }
-            } else {
-                ds.entities.add(new Entity({
-                    id,
-                    name: quake.title,
+            },
+            onCreate: (q) => {
+                const pos = Cartesian3.fromDegrees(q.lon, q.lat);
+                const color = depthColor(q.depth);
+                const radius = magnitudeRadius(q.magnitude);
+                return new Entity({
+                    id: `eq-${q.id}`,
+                    name: q.title,
                     position: pos,
                     ellipse: new EllipseGraphics({
                         semiMajorAxis: radius,
@@ -157,13 +159,10 @@ export function EarthquakeLayer() {
                         outlineWidth: 2,
                         heightReference: 1, // CLAMP_TO_GROUND
                     }),
-                }));
-            }
-        }
-        for (const [id] of existing) {
-            if (!seen.has(id)) ds.entities.removeById(id);
-        }
-        if (viewer && !viewer.isDestroyed()) viewer.scene.requestRender();
+                });
+            },
+            viewer,
+        });
     }, [quakes, viewer, setLayerCount]);
 
     useEffect(() => { updateEntities(); }, [updateEntities]);

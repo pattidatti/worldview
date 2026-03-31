@@ -31,7 +31,7 @@ export function BuildingsLayer() {
                 tilesetRef.current.show = true;
             } catch (e) {
                 if (cancelled) return;
-                console.warn(
+                if (import.meta.env.DEV) console.warn(
                     '[WorldView] OSM Buildings (asset 96188) utilgjengelig.\n' +
                     'Legg til asset ID 96188 i Cesium Ion-kontoen din på ion.cesium.com/assetdepot\n',
                     e

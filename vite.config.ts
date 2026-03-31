@@ -16,14 +16,22 @@ function aisProxy(): Plugin {
 
                 wss.handleUpgrade(req, socket, head, (clientWs) => {
                     const remote = new NodeWS('wss://stream.aisstream.io/v0/stream');
+                    let pending: string | null = null;
 
                     remote.on('open', () => {
                         console.log('[ais-proxy] connected to AISStream');
+                        if (pending) {
+                            remote.send(pending);
+                            pending = null;
+                        }
                     });
 
                     clientWs.on('message', (data) => {
+                        const msg = data.toString();
                         if (remote.readyState === NodeWS.OPEN) {
-                            remote.send(data.toString());
+                            remote.send(msg);
+                        } else {
+                            pending = msg;
                         }
                     });
 

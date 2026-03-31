@@ -11,6 +11,7 @@ import { useLayers } from '@/context/LayerContext';
 import { usePopupRegistry } from '@/context/PopupRegistry';
 import { useTooltipRegistry } from '@/context/TooltipRegistry';
 import { useViewport } from '@/hooks/useViewport';
+import { syncEntities } from '@/utils/syncEntities';
 import { fetchWindData } from '@/services/osmFeatures';
 import { type WindData } from '@/types/osmFeatures';
 
@@ -92,37 +93,26 @@ export function WindLayer() {
             dataRef.current = data;
             const ds = dsRef.current;
 
-            const existing = new Map<string, Entity>();
-            for (const entity of ds.entities.values) existing.set(entity.id, entity);
-            const seen = new Set<string>();
-
-            for (const t of data.turbines) {
-                try {
-                    if (!isFinite(t.lon) || !isFinite(t.lat)) continue;
-                    seen.add(t.id);
-                    if (!existing.has(t.id)) {
-                        ds.entities.add(new Entity({
-                            id: t.id,
-                            name: t.name || 'Vindturbin',
-                            position: Cartesian3.fromDegrees(t.lon, t.lat, 0),
-                            billboard: {
-                                image: TURBINE_SVG,
-                                width: new ConstantProperty(20),
-                                height: new ConstantProperty(20),
-                                heightReference: new ConstantProperty(HeightReference.CLAMP_TO_GROUND),
-                            },
-                        }));
-                    }
-                } catch { /* skip */ }
-            }
-
-            for (const [id] of existing) {
-                if (!seen.has(id)) ds.entities.removeById(id);
-            }
-
+            const valid = data.turbines.filter((t) => isFinite(t.lon) && isFinite(t.lat));
+            syncEntities({
+                ds,
+                items: valid,
+                getId: (t) => t.id,
+                onCreate: (t) => new Entity({
+                    id: t.id,
+                    name: t.name || 'Vindturbin',
+                    position: Cartesian3.fromDegrees(t.lon, t.lat, 0),
+                    billboard: {
+                        image: TURBINE_SVG,
+                        width: new ConstantProperty(20),
+                        height: new ConstantProperty(20),
+                        heightReference: new ConstantProperty(HeightReference.CLAMP_TO_GROUND),
+                    },
+                }),
+                viewer,
+            });
             setLayerCount('wind', data.turbines.length);
             setLayerLoading('wind', false);
-            if (viewer && !viewer.isDestroyed()) viewer.scene.requestRender();
         }).catch(() => setLayerLoading('wind', false));
 
         return () => { cancelled = true; };

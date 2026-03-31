@@ -31,7 +31,10 @@ import { AsteroidLayer } from './components/Layers/AsteroidLayer/AsteroidLayer';
 import { NewsLayer } from './components/Layers/NewsLayer/NewsLayer';
 import { ConflictLayer } from './components/Layers/ConflictLayer/ConflictLayer';
 import { WeatherRadarLayer } from './components/Layers/WeatherRadarLayer/WeatherRadarLayer';
+import { WeatherRadarControls } from './components/UI/WeatherRadarControls';
+import { WeatherRadarProvider } from './context/WeatherRadarContext';
 import { SigmetLayer } from './components/Layers/SigmetLayer/SigmetLayer';
+import { RoadCameraLayer } from './components/Layers/RoadCameraLayer/RoadCameraLayer';
 import { PlaceLabels } from './components/Globe/PlaceLabels';
 import { ImageryProvider } from './context/ImageryContext';
 import { ImageryPicker } from './components/UI/ImageryPicker';
@@ -115,7 +118,9 @@ function AppContent({
                 <NewsLayer />
                 <ConflictLayer />
                 <WeatherRadarLayer />
+                <WeatherRadarControls />
                 <SigmetLayer />
+                <RoadCameraLayer />
                 <PlaceLabels />
                 <TopBar searchRef={searchRef} />
                 <LayerPanel />
@@ -155,6 +160,7 @@ export default function App() {
         <LayerProvider>
         <TrackingProvider>
         <OrbitProvider>
+        <WeatherRadarProvider>
             <PopupRegistryProvider>
             <TooltipRegistryProvider>
                 <AppContent
@@ -165,6 +171,7 @@ export default function App() {
                 />
             </TooltipRegistryProvider>
             </PopupRegistryProvider>
+        </WeatherRadarProvider>
         </OrbitProvider>
         </TrackingProvider>
         </LayerProvider>

@@ -69,7 +69,7 @@ export function WebcamLayer() {
                 }
             } catch (err) {
                 if (!cancelled && !(err instanceof DOMException && err.name === 'AbortError')) {
-                    console.error('[WebcamLayer] fetch error:', err);
+                    if (import.meta.env.DEV) console.error('[WebcamLayer] fetch error:', err);
                     setLayerError('webcams', err instanceof Error ? err.message : 'Ukjent feil');
                 }
             } finally {

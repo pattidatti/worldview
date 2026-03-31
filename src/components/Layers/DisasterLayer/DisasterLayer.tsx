@@ -14,6 +14,7 @@ import { useLayers } from '@/context/LayerContext';
 import { usePopupRegistry } from '@/context/PopupRegistry';
 import { useTooltipRegistry } from '@/context/TooltipRegistry';
 import { usePollingData } from '@/hooks/usePollingData';
+import { syncEntities } from '@/utils/syncEntities';
 import { fetchDisasters } from '@/services/eonet';
 import { type Disaster } from '@/types/disaster';
 
@@ -122,38 +123,33 @@ export function DisasterLayer() {
         const ds = dataSourceRef.current;
         if (!ds || !disasters) return;
         setLayerCount('disasters', disasters.length);
-        const existing = new Map<string, Entity>();
-        for (const entity of ds.entities.values) existing.set(entity.id, entity);
-        const seen = new Set<string>();
-        for (const d of disasters) {
-            const id = `disaster-${d.id}`;
-            seen.add(id);
-            const pos = Cartesian3.fromDegrees(d.lon, d.lat);
-            const { icon, color } = getStyle(d.category);
-            const cesiumColor = Color.fromCssColorString(color);
-            const entity = existing.get(id);
-            if (entity) {
-                (entity.position as ConstantPositionProperty).setValue(pos);
-            } else {
-                ds.entities.add(new Entity({
-                    id,
+        syncEntities({
+            ds,
+            items: disasters,
+            getId: (d) => `disaster-${d.id}`,
+            onUpdate: (entity, d) => {
+                (entity.position as ConstantPositionProperty).setValue(
+                    Cartesian3.fromDegrees(d.lon, d.lat)
+                );
+            },
+            onCreate: (d) => {
+                const { icon, color } = getStyle(d.category);
+                return new Entity({
+                    id: `disaster-${d.id}`,
                     name: d.title,
-                    position: pos,
+                    position: Cartesian3.fromDegrees(d.lon, d.lat),
                     billboard: {
                         image: createDisasterIcon(icon, color),
                         width: 32, height: 32,
-                        color: cesiumColor,
+                        color: Color.fromCssColorString(color),
                         verticalOrigin: VerticalOrigin.CENTER,
                         horizontalOrigin: HorizontalOrigin.CENTER,
                         heightReference: HeightReference.CLAMP_TO_GROUND,
                     },
-                }));
-            }
-        }
-        for (const [id] of existing) {
-            if (!seen.has(id)) ds.entities.removeById(id);
-        }
-        if (viewer && !viewer.isDestroyed()) viewer.scene.requestRender();
+                });
+            },
+            viewer,
+        });
     }, [disasters, viewer, setLayerCount]);
 
     useEffect(() => { updateEntities(); }, [updateEntities]);

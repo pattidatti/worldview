@@ -69,34 +69,59 @@ function ItemChip({
     onStar: () => void;
     isStarred: boolean;
 }) {
-    const [hovered, setHovered] = useState(false);
-
     return (
-        <div
-            className="relative group"
-            onMouseEnter={() => setHovered(true)}
-            onMouseLeave={() => setHovered(false)}
-        >
+        <div className="relative group">
             <button
                 onClick={onClick}
-                className="px-3 py-1.5 rounded-lg text-sm font-mono whitespace-nowrap
+                className="w-full px-3 py-2 rounded-lg text-sm font-mono text-left
                            bg-white/5 hover:bg-white/15 border border-white/10 hover:border-white/25
                            text-white/80 hover:text-white transition-all duration-150"
             >
                 {item.name}
             </button>
-            {hovered && (
-                <button
-                    onClick={(e) => { e.stopPropagation(); onStar(); }}
-                    className={`absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full text-[9px]
-                                flex items-center justify-center transition-colors
-                                ${isStarred ? 'bg-amber-400 text-black' : 'bg-white/20 text-white/60 hover:bg-amber-400/60'}`}
-                    title={isStarred ? 'Fjern favoritt' : 'Legg til favoritt'}
-                >
-                    ★
-                </button>
-            )}
+            <button
+                onClick={(e) => { e.stopPropagation(); onStar(); }}
+                className={`absolute top-0.5 right-0.5 w-4 h-4 rounded text-[9px]
+                            items-center justify-center transition-all hidden group-hover:flex
+                            ${isStarred ? 'bg-amber-400 text-black' : 'bg-black/60 text-white/40 hover:text-amber-400'}`}
+                title={isStarred ? 'Fjern favoritt' : 'Legg til favoritt'}
+            >
+                ★
+            </button>
         </div>
+    );
+}
+
+function NavColumn({
+    label,
+    value,
+    active,
+    onClick,
+}: {
+    label: string;
+    value?: string;
+    active: boolean;
+    onClick: () => void;
+}) {
+    return (
+        <button
+            onClick={onClick}
+            className={`flex-1 flex flex-col items-center justify-center gap-0.5 px-4 py-2.5
+                        transition-colors group relative
+                        ${active ? 'bg-white/8' : 'hover:bg-white/5'}`}
+        >
+            <span className={`text-[10px] font-mono uppercase tracking-widest transition-colors
+                              ${active ? 'text-cyan-400/80' : 'text-white/30 group-hover:text-white/50'}`}>
+                {label}
+            </span>
+            <span className={`text-sm font-mono font-medium transition-colors
+                              ${active ? 'text-cyan-300' : value ? 'text-white/80 group-hover:text-white' : 'text-white/25 group-hover:text-white/40'}`}>
+                {value ?? '—'}
+            </span>
+            {active && (
+                <span className="absolute bottom-0 left-2 right-2 h-px bg-cyan-400/60 rounded-full" />
+            )}
+        </button>
     );
 }
 
@@ -144,15 +169,14 @@ export function GeoNavigator() {
 
         reverseGeocode(info.lat, info.lon).then((result) => {
             if (!result) return;
+            // result.country is a full name (e.g. "Norge") — match by name
             const country = COUNTRIES.find(
-                (c) => c.countryCode === result.country.toLowerCase() ||
-                       c.name.toLowerCase() === result.country.toLowerCase()
+                (c) => c.name.toLowerCase() === result.country.toLowerCase()
             );
             if (!country) return;
             const region = WORLD_REGIONS.find((r) => r.id === country.region);
             setBreadcrumb({ region: region ?? undefined, country });
         });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [viewer]);
 
     // ── Level population ──────────────────────────────────────────────────
@@ -169,11 +193,9 @@ export function GeoNavigator() {
             const info = getCameraInfo(viewer);
             const lat = info?.lat ?? 0;
             const lon = info?.lon ?? 0;
-            const alt = info?.alt ?? 0;
 
             if (level === 'region') {
-                const sorted = sortByDistance(WORLD_REGIONS, lat, lon);
-                setItems(alt > HIGH_ALTITUDE ? sorted : sorted);
+                setItems(sortByDistance(WORLD_REGIONS, lat, lon));
                 setLoading(false);
                 return;
             }
@@ -353,21 +375,24 @@ export function GeoNavigator() {
     return (
         <div
             ref={panelRef}
-            className="absolute bottom-9 right-4 z-20 flex flex-col items-end gap-1"
+            className="absolute bottom-9 left-1/2 -translate-x-1/2 z-20 flex flex-col items-stretch gap-1"
+            style={{ width: 'clamp(400px, 50vw, 640px)' }}
         >
-            {/* ── Floating panel ───────────────────────────────────────── */}
+            {/* ── Panel (slides up from nav bar) ───────────────────────── */}
             {panelOpen && (
-                <div className="backdrop-blur-md bg-black/70 border border-white/10 rounded-xl
-                                shadow-2xl w-80 max-h-96 overflow-hidden flex flex-col">
+                <div className="backdrop-blur-md bg-black/80 border border-white/10 rounded-xl
+                                shadow-2xl overflow-hidden flex flex-col"
+                     style={{ maxHeight: '260px' }}>
+
                     {/* Panel header */}
                     {openLevel && (
-                        <div className="flex items-center justify-between px-3 py-2 border-b border-white/10">
-                            <span className="text-white/50 text-xs font-mono uppercase tracking-widest">
+                        <div className="flex items-center justify-between px-4 py-2.5 border-b border-white/8">
+                            <span className="text-[11px] font-mono uppercase tracking-widest text-white/40">
                                 {panelTitle()}
                             </span>
                             <button
                                 onClick={() => { setOpenLevel(null); setShowFavorites(false); }}
-                                className="text-white/40 hover:text-white/80 text-sm leading-none"
+                                className="text-white/30 hover:text-white/70 text-sm leading-none transition-colors"
                             >
                                 ✕
                             </button>
@@ -376,18 +401,19 @@ export function GeoNavigator() {
 
                     {/* Items grid */}
                     {openLevel && (
-                        <div className="flex-1 overflow-y-auto p-2">
+                        <div className="flex-1 overflow-y-auto p-3">
                             {loading ? (
-                                <div className="flex items-center justify-center py-6">
-                                    <div className="w-4 h-4 border border-white/30 border-t-white/80
+                                <div className="flex items-center justify-center py-8">
+                                    <div className="w-5 h-5 border border-white/20 border-t-white/70
                                                     rounded-full animate-spin" />
                                 </div>
                             ) : items.length === 0 ? (
-                                <p className="text-white/30 text-xs font-mono text-center py-4">
+                                <p className="text-white/25 text-xs font-mono text-center py-6">
                                     Ingen steder funnet
                                 </p>
                             ) : (
-                                <div className="flex flex-wrap gap-1.5">
+                                <div className="grid gap-1.5"
+                                     style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))' }}>
                                     {items.map((item) => (
                                         <ItemChip
                                             key={item.id}
@@ -402,37 +428,38 @@ export function GeoNavigator() {
                         </div>
                     )}
 
-                    {/* Favorites section */}
+                    {/* Favorites panel */}
                     {showFavorites && (
-                        <div className="border-t border-white/10">
-                            <div className="flex items-center justify-between px-3 py-2">
-                                <span className="text-amber-400/80 text-xs font-mono uppercase tracking-widest">
+                        <div className={openLevel ? 'border-t border-white/10' : ''}>
+                            <div className="flex items-center justify-between px-4 py-2.5 border-b border-white/8">
+                                <span className="text-[11px] font-mono uppercase tracking-widest text-amber-400/70">
                                     ★ Favoritter
                                 </span>
                                 <button
                                     onClick={addCurrentPosition}
                                     className="text-[10px] font-mono text-white/40 hover:text-white/70
-                                               border border-white/10 hover:border-white/20 rounded px-1.5 py-0.5
+                                               border border-white/10 hover:border-white/25 rounded px-2 py-0.5
                                                transition-colors"
                                     title="Lagre nåværende kameraposisjon"
                                 >
-                                    + Legg til
+                                    + Legg til her
                                 </button>
                             </div>
-                            <div className="px-2 pb-2 max-h-36 overflow-y-auto">
+                            <div className="p-3 overflow-y-auto" style={{ maxHeight: '120px' }}>
                                 {favorites.length === 0 ? (
-                                    <p className="text-white/20 text-xs font-mono text-center py-2">
-                                        Ingen favoritter ennå
+                                    <p className="text-white/20 text-xs font-mono text-center py-3">
+                                        Ingen favoritter ennå — klikk ★ på et sted
                                     </p>
                                 ) : (
-                                    <div className="flex flex-wrap gap-1.5">
+                                    <div className="grid gap-1.5"
+                                         style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))' }}>
                                         {favorites.map((fav) => (
                                             <div key={fav.id} className="relative group">
                                                 <button
                                                     onClick={() => navigateTo(fav)}
-                                                    className="px-3 py-1.5 rounded-lg text-sm font-mono
-                                                               bg-amber-400/10 hover:bg-amber-400/20
-                                                               border border-amber-400/20 hover:border-amber-400/40
+                                                    className="w-full px-3 py-2 rounded-lg text-sm font-mono text-left
+                                                               bg-amber-400/8 hover:bg-amber-400/18
+                                                               border border-amber-400/15 hover:border-amber-400/35
                                                                text-amber-300/80 hover:text-amber-200
                                                                transition-all duration-150"
                                                 >
@@ -440,10 +467,11 @@ export function GeoNavigator() {
                                                 </button>
                                                 <button
                                                     onClick={() => removeFavorite(fav.id)}
-                                                    className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full
-                                                               bg-red-500/70 text-white text-[9px] hidden group-hover:flex
-                                                               items-center justify-center"
-                                                    title="Fjern"
+                                                    className="absolute top-0.5 right-0.5 w-4 h-4 rounded text-[9px]
+                                                               bg-black/60 text-white/30 hover:text-red-400
+                                                               hidden group-hover:flex items-center justify-center
+                                                               transition-colors"
+                                                    title="Fjern favoritt"
                                                 >
                                                     ×
                                                 </button>
@@ -457,93 +485,53 @@ export function GeoNavigator() {
                 </div>
             )}
 
-            {/* ── Compact bar (always visible) ──────────────────────────── */}
-            <div className="flex items-center gap-1 backdrop-blur-md bg-black/60 border border-white/10
-                            rounded-lg px-2 py-1 shadow-lg">
-                {/* Globe icon — opens region picker */}
-                <button
+            {/* ── Always-visible nav bar (3 columns) ───────────────────── */}
+            <div className="flex backdrop-blur-md border border-white/10 rounded-xl overflow-hidden shadow-2xl divide-x divide-white/8"
+                 style={{ background: 'rgba(8, 8, 18, 0.85)' }}>
+
+                <NavColumn
+                    label="Region"
+                    value={breadcrumb.region?.name}
+                    active={openLevel === 'region'}
                     onClick={() => openPanel('region')}
-                    className={`text-base leading-none px-1 transition-colors
-                                ${openLevel === 'region' ? 'text-cyan-400' : 'text-white/40 hover:text-white/80'}`}
-                    title="Velg region"
-                >
-                    ◎
-                </button>
+                />
 
-                <span className="text-white/20 text-xs">│</span>
+                <NavColumn
+                    label="Land"
+                    value={breadcrumb.country?.name}
+                    active={openLevel === 'country'}
+                    onClick={() => openPanel('country')}
+                />
 
-                {/* Breadcrumb chips */}
-                <div className="flex items-center gap-1 font-mono text-xs">
-                    {breadcrumb.region ? (
-                        <button
-                            onClick={() => openPanel('region')}
-                            className={`text-white/60 hover:text-white transition-colors
-                                        ${openLevel === 'region' ? 'text-cyan-400' : ''}`}
-                        >
-                            {breadcrumb.region.name}
-                        </button>
-                    ) : (
-                        <button
-                            onClick={() => openPanel('region')}
-                            className="text-white/25 hover:text-white/50 transition-colors"
-                        >
-                            Region
-                        </button>
-                    )}
+                <NavColumn
+                    label="By"
+                    value={breadcrumb.city?.name}
+                    active={openLevel === 'city'}
+                    onClick={() => openPanel('city')}
+                />
 
-                    {breadcrumb.region && (
-                        <>
-                            <span className="text-white/20">›</span>
-                            <button
-                                onClick={() => openPanel('country')}
-                                className={`transition-colors
-                                            ${openLevel === 'country' ? 'text-cyan-400' : 'text-white/60 hover:text-white'}`}
-                            >
-                                {breadcrumb.country?.name ?? <span className="text-white/25">Land</span>}
-                            </button>
-                        </>
-                    )}
+                <NavColumn
+                    label="Steder"
+                    value={breadcrumb.city ? '...' : undefined}
+                    active={openLevel === 'place'}
+                    onClick={() => openPanel('place')}
+                />
 
-                    {breadcrumb.country && (
-                        <>
-                            <span className="text-white/20">›</span>
-                            <button
-                                onClick={() => openPanel('city')}
-                                className={`transition-colors
-                                            ${openLevel === 'city' ? 'text-cyan-400' : 'text-white/60 hover:text-white'}`}
-                            >
-                                {breadcrumb.city?.name ?? <span className="text-white/25">By</span>}
-                            </button>
-                        </>
-                    )}
-
-                    {breadcrumb.city && (
-                        <>
-                            <span className="text-white/20">›</span>
-                            <button
-                                onClick={() => openPanel('place')}
-                                className={`transition-colors
-                                            ${openLevel === 'place' ? 'text-cyan-400' : 'text-white/40 hover:text-white/70'}`}
-                            >
-                                Steder
-                            </button>
-                        </>
-                    )}
-                </div>
-
-                <span className="text-white/20 text-xs">│</span>
-
-                {/* Favorites toggle */}
+                {/* Divider + Favorites */}
                 <button
                     onClick={() => {
                         setShowFavorites((v) => !v);
                         if (!showFavorites) setOpenLevel(null);
                     }}
-                    className={`text-xs font-mono px-1 transition-colors
-                                ${showFavorites ? 'text-amber-400' : 'text-white/40 hover:text-amber-400/70'}`}
+                    className={`flex flex-col items-center justify-center gap-0.5 px-4 py-2.5
+                                transition-colors
+                                ${showFavorites ? 'bg-amber-400/10 text-amber-400' : 'hover:bg-white/5 text-white/30 hover:text-amber-400/70'}`}
                     title="Favoritter"
                 >
-                    ★{favorites.length > 0 && <span className="ml-0.5">{favorites.length}</span>}
+                    <span className="text-base leading-none">★</span>
+                    {favorites.length > 0 && (
+                        <span className="text-[10px] font-mono">{favorites.length}</span>
+                    )}
                 </button>
             </div>
         </div>

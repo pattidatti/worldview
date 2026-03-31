@@ -12,6 +12,7 @@ import { useLayers } from '@/context/LayerContext';
 import { usePopupRegistry } from '@/context/PopupRegistry';
 import { useTooltipRegistry } from '@/context/TooltipRegistry';
 import { usePollingData } from '@/hooks/usePollingData';
+import { syncEntities } from '@/utils/syncEntities';
 import { configureCluster } from '@/utils/cluster';
 import { fetchTLEData } from '@/services/celestrak';
 import { computePositions } from '@/utils/satellite';
@@ -111,29 +112,26 @@ export function SatelliteLayer() {
         if (!ds || !tleData.length) return;
         const positions = computePositions(tleData);
         setLayerCount('satellites', positions.length);
-        const existing = new Map<string, Entity>();
-        for (const entity of ds.entities.values) existing.set(entity.id, entity);
-        const seen = new Set<string>();
-        for (const sat of positions) {
-            seen.add(sat.noradId);
-            const pos = Cartesian3.fromDegrees(sat.lon, sat.lat, sat.alt * 1000);
-            const entity = existing.get(sat.noradId);
-            if (entity) {
-                (entity.position as ConstantPositionProperty).setValue(pos);
-            } else {
-                ds.entities.add(new Entity({
-                    id: sat.noradId, name: sat.name, position: pos,
-                    point: new PointGraphics({
-                        pixelSize: 4, color: SAT_COLOR,
-                        outlineColor: Color.fromCssColorString('#00ff8866'), outlineWidth: 1,
-                    }),
-                }));
-            }
-        }
-        for (const [id] of existing) {
-            if (!seen.has(id)) ds.entities.removeById(id);
-        }
-        if (viewer && !viewer.isDestroyed()) viewer.scene.requestRender();
+        syncEntities({
+            ds,
+            items: positions,
+            getId: (sat) => sat.noradId,
+            onUpdate: (entity, sat) => {
+                (entity.position as ConstantPositionProperty).setValue(
+                    Cartesian3.fromDegrees(sat.lon, sat.lat, sat.alt * 1000)
+                );
+            },
+            onCreate: (sat) => new Entity({
+                id: sat.noradId,
+                name: sat.name,
+                position: Cartesian3.fromDegrees(sat.lon, sat.lat, sat.alt * 1000),
+                point: new PointGraphics({
+                    pixelSize: 4, color: SAT_COLOR,
+                    outlineColor: Color.fromCssColorString('#00ff8866'), outlineWidth: 1,
+                }),
+            }),
+            viewer,
+        });
     }, [tleData, viewer, setLayerCount]);
 
     useEffect(() => {

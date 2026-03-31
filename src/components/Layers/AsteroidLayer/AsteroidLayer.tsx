@@ -11,6 +11,7 @@ import { useLayers } from '@/context/LayerContext';
 import { usePopupRegistry } from '@/context/PopupRegistry';
 import { useTooltipRegistry } from '@/context/TooltipRegistry';
 import { usePollingData } from '@/hooks/usePollingData';
+import { syncEntities } from '@/utils/syncEntities';
 import { fetchAsteroids } from '@/services/nasa-neo';
 import { type Asteroid } from '@/types/asteroid';
 
@@ -128,45 +129,33 @@ export function AsteroidLayer() {
         const ds = dataSourceRef.current;
         if (!ds || !asteroids) return;
         setLayerCount('asteroids', asteroids.length);
-        const existing = new Map<string, Entity>();
-        for (const entity of ds.entities.values) existing.set(entity.id, entity);
-        const seen = new Set<string>();
+        // Distribuerer rundt ekvatorial-ring — indeks avgjør longitude
         const total = asteroids.length;
-
-        for (let i = 0; i < total; i++) {
-            const a = asteroids[i];
-            const id = `asteroid-${a.id}`;
-            seen.add(id);
-
-            // Distribute around equatorial ring, altitude = miss distance (scaled)
-            const lon = (i / total) * 360 - 180;
-            const lat = 0;
-            const alt = asteroidAltitude(a.missDistanceKm);
-            const pos = Cartesian3.fromDegrees(lon, lat, alt);
-            const color = asteroidColor(a.isHazardous);
-            const size = pixelSize((a.diameterMinM + a.diameterMaxM) / 2);
-
-            const entity = existing.get(id);
-            if (entity) {
-                (entity.position as ConstantPositionProperty).setValue(pos);
-            } else {
-                ds.entities.add(new Entity({
-                    id,
+        const indexed = asteroids.map((a, i) => ({ a, i }));
+        syncEntities({
+            ds,
+            items: indexed,
+            getId: ({ a }) => `asteroid-${a.id}`,
+            onUpdate: (entity, { a, i }) => {
+                const lon = (i / total) * 360 - 180;
+                (entity.position as ConstantPositionProperty).setValue(
+                    Cartesian3.fromDegrees(lon, 0, asteroidAltitude(a.missDistanceKm))
+                );
+            },
+            onCreate: ({ a, i }) => {
+                const lon = (i / total) * 360 - 180;
+                const pos = Cartesian3.fromDegrees(lon, 0, asteroidAltitude(a.missDistanceKm));
+                const color = asteroidColor(a.isHazardous);
+                const size = pixelSize((a.diameterMinM + a.diameterMaxM) / 2);
+                return new Entity({
+                    id: `asteroid-${a.id}`,
                     name: a.name,
                     position: pos,
-                    point: {
-                        pixelSize: size,
-                        color,
-                        outlineColor: color.withAlpha(1.0),
-                        outlineWidth: 1,
-                    },
-                }));
-            }
-        }
-        for (const [id] of existing) {
-            if (!seen.has(id)) ds.entities.removeById(id);
-        }
-        if (viewer && !viewer.isDestroyed()) viewer.scene.requestRender();
+                    point: { pixelSize: size, color, outlineColor: color.withAlpha(1.0), outlineWidth: 1 },
+                });
+            },
+            viewer,
+        });
     }, [asteroids, viewer, setLayerCount]);
 
     useEffect(() => { updateEntities(); }, [updateEntities]);

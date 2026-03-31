@@ -13,6 +13,7 @@ import { useLayers } from '@/context/LayerContext';
 import { usePopupRegistry } from '@/context/PopupRegistry';
 import { useTooltipRegistry } from '@/context/TooltipRegistry';
 import { usePollingData } from '@/hooks/usePollingData';
+import { syncEntities } from '@/utils/syncEntities';
 import { configureCluster } from '@/utils/cluster';
 import { fetchConflicts } from '@/services/acled';
 import { type ConflictEvent, type ConflictEventType } from '@/types/conflict';
@@ -129,29 +130,27 @@ export function ConflictLayer() {
         const ds = dataSourceRef.current;
         if (!ds || !conflicts) return;
         setLayerCount('conflicts', conflicts.length);
-
-        const existing = new Map<string, Entity>();
-        for (const entity of ds.entities.values) existing.set(entity.id, entity);
-        const seen = new Set<string>();
-
-        for (const ev of conflicts) {
-            const id = `conflict-${ev.id}`;
-            seen.add(id);
-            const pos = Cartesian3.fromDegrees(ev.lon, ev.lat);
-            const color = eventColor(ev.eventType);
-            const size = Math.min(12 + ev.fatalities * 0.5, 24);
-
-            const entity = existing.get(id);
-            if (entity) {
+        syncEntities({
+            ds,
+            items: conflicts,
+            getId: (ev) => `conflict-${ev.id}`,
+            onUpdate: (entity, ev) => {
+                const pos = Cartesian3.fromDegrees(ev.lon, ev.lat);
+                const color = eventColor(ev.eventType);
+                const size = Math.min(12 + ev.fatalities * 0.5, 24);
                 (entity.position as ConstantPositionProperty).setValue(pos);
                 if (entity.point) {
                     (entity.point.pixelSize as ConstantProperty).setValue(size);
                     (entity.point.color as unknown as ConstantProperty).setValue(color);
                     (entity.point.outlineColor as unknown as ConstantProperty).setValue(color.withAlpha(1.0));
                 }
-            } else {
-                ds.entities.add(new Entity({
-                    id,
+            },
+            onCreate: (ev) => {
+                const pos = Cartesian3.fromDegrees(ev.lon, ev.lat);
+                const color = eventColor(ev.eventType);
+                const size = Math.min(12 + ev.fatalities * 0.5, 24);
+                return new Entity({
+                    id: `conflict-${ev.id}`,
                     name: EVENT_TYPE_NB[ev.eventType] ?? ev.eventType,
                     position: pos,
                     point: new PointGraphics({
@@ -161,15 +160,10 @@ export function ConflictLayer() {
                         outlineWidth: 1,
                         heightReference: 1, // CLAMP_TO_GROUND
                     }),
-                }));
-            }
-        }
-
-        for (const [id] of existing) {
-            if (!seen.has(id)) ds.entities.removeById(id);
-        }
-
-        if (viewer && !viewer.isDestroyed()) viewer.scene.requestRender();
+                });
+            },
+            viewer,
+        });
     }, [conflicts, viewer, setLayerCount]);
 
     useEffect(() => { updateEntities(); }, [updateEntities]);

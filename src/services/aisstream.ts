@@ -45,13 +45,13 @@ export class AISStreamConnection {
         // Timeout: if not connected within 10s, close and let onclose retry
         this.connectTimeout = setTimeout(() => {
             if (this.ws?.readyState === WebSocket.CONNECTING) {
-                console.warn('[AIS] Connection timeout, retrying...');
+                if (import.meta.env.DEV) console.warn('[AIS] Connection timeout, retrying...');
                 this.ws.close();
             }
         }, 10_000);
 
         this.ws.onopen = () => {
-            console.log('[AIS] Connected via', wsUrl);
+            if (import.meta.env.DEV) console.log('[AIS] Connected via', wsUrl);
             if (this.connectTimeout) clearTimeout(this.connectTimeout);
             this.ws?.send(
                 JSON.stringify({
@@ -125,8 +125,8 @@ export class AISStreamConnection {
                             name: (sd.Name ?? meta.ShipName ?? '').trim(),
                             callSign: (sd.CallSign ?? '').trim(),
                             imo: sd.ImoNumber ?? 0,
-                            lat: meta.latitude ?? 0,
-                            lon: meta.longitude ?? 0,
+                            lat: meta.Latitude ?? 0,
+                            lon: meta.Longitude ?? 0,
                             speed: 0, course: 0, heading: 0,
                             rateOfTurn: 0, navStatus: 15,
                             shipType: sd.Type ?? 0,
