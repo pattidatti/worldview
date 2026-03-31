@@ -47,8 +47,11 @@ import { StatusTicker } from './components/UI/StatusTicker';
 import { EventLog } from './components/UI/EventLog';
 import { TrackingProvider, useTracking } from './context/TrackingContext';
 import { OrbitProvider } from './context/OrbitContext';
+import { GeointProvider } from './context/GeointContext';
+import { MissionControl } from './components/UI/MissionControl';
 import { OrbitButton } from './components/UI/OrbitButton';
 import { GeoNavigator } from './components/UI/GeoNavigator';
+import { KeyboardHelpModal } from './components/UI/KeyboardHelpModal';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useHoverTooltip } from './hooks/useHoverTooltip';
 import { useViewer } from './context/ViewerContext';
@@ -70,11 +73,15 @@ function AppContent({
     setPopup,
     onSelect,
     searchRef,
+    showHelp,
+    setShowHelp,
 }: {
     popup: PopupContent | null;
     setPopup: (p: PopupContent | null) => void;
     onSelect: (p: PopupContent | null) => void;
     searchRef: React.RefObject<SearchBarHandle | null>;
+    showHelp: boolean;
+    setShowHelp: (v: boolean) => void;
 }) {
     const { toggleLayer } = useLayers();
     const { trackedEntityId, setTrackedEntityId } = useTracking();
@@ -84,12 +91,14 @@ function AppContent({
         setTrackedEntityId(null);
     }, [setPopup, setTrackedEntityId]);
     const focusSearch = useCallback(() => searchRef.current?.focus(), [searchRef]);
+    const toggleHelp = useCallback(() => setShowHelp(!showHelp), [showHelp, setShowHelp]);
     const layerIds = useMemo(() => LAYER_IDS, []);
 
     useKeyboardShortcuts({
         toggleLayer,
         closePopup,
         focusSearch,
+        toggleHelp,
         layerIds,
     });
 
@@ -131,6 +140,7 @@ function AppContent({
                 <EventLog />
                 <CameraHud />
                 <OrbitButton />
+                <MissionControl />
                 <GeoNavigator />
                 <StatusTicker />
                 <LayerErrorWatcher />
@@ -144,6 +154,7 @@ function AppContent({
                 )}
                 <TooltipHandler />
             </GlobeViewer>
+            {showHelp && <KeyboardHelpModal onClose={() => setShowHelp(false)} />}
             <ToastContainer />
         </div>
     );
@@ -151,6 +162,7 @@ function AppContent({
 
 export default function App() {
     const [popup, setPopup] = useState<PopupContent | null>(null);
+    const [showHelp, setShowHelp] = useState(false);
     const onSelect = useCallback((p: PopupContent | null) => setPopup(p), []);
     const searchRef = useRef<SearchBarHandle>(null);
 
@@ -160,6 +172,7 @@ export default function App() {
         <LayerProvider>
         <TrackingProvider>
         <OrbitProvider>
+        <GeointProvider>
         <WeatherRadarProvider>
             <PopupRegistryProvider>
             <TooltipRegistryProvider>
@@ -168,10 +181,13 @@ export default function App() {
                     setPopup={setPopup}
                     onSelect={onSelect}
                     searchRef={searchRef}
+                    showHelp={showHelp}
+                    setShowHelp={setShowHelp}
                 />
             </TooltipRegistryProvider>
             </PopupRegistryProvider>
         </WeatherRadarProvider>
+        </GeointProvider>
         </OrbitProvider>
         </TrackingProvider>
         </LayerProvider>

@@ -63,12 +63,28 @@ export function AsteroidLayer() {
     const { isVisible, setLayerLoading, setLayerCount, setLayerError, setLayerLastUpdated } = useLayers();
     const { register, unregister } = usePopupRegistry();
     const { register: tooltipRegister, unregister: tooltipUnregister } = useTooltipRegistry();
+    const { register: geointRegister, unregister: geointUnregister } = useGeointRegistry();
     const visible = isVisible('asteroids');
     const dataSourceRef = useRef<CustomDataSource | null>(null);
     const asteroidsRef = useRef<Asteroid[]>([]);
+    const visibleRef = useRef(visible);
+    visibleRef.current = visible;
 
     const { data: asteroids, loading, error, lastUpdated } = usePollingData(fetchAsteroids, POLL_MS, visible);
     if (asteroids) asteroidsRef.current = asteroids;
+
+    // GEOINT data provider
+    useEffect(() => {
+        geointRegister('asteroids', () => {
+            if (!visibleRef.current || asteroidsRef.current.length === 0) return null;
+            const sorted = [...asteroidsRef.current].sort((a, b) => a.missDistanceKm - b.missDistanceKm);
+            const items = sorted.slice(0, 6).map((a) =>
+                `${a.name}${a.isHazardous ? ' ⚠FARLIG' : ''} ${Math.round(a.missDistanceKm).toLocaleString('nb-NO')}km passasje ${a.closeApproachDate}`
+            );
+            return { layerId: 'asteroids', label: 'Asteroider (neste 7 dager)', count: asteroidsRef.current.length, items };
+        });
+        return () => geointUnregister('asteroids');
+    }, [geointRegister, geointUnregister]);
 
     useEffect(() => { setLayerError('asteroids', error); }, [error, setLayerError]);
     useEffect(() => { setLayerLastUpdated('asteroids', lastUpdated); }, [lastUpdated, setLayerLastUpdated]);

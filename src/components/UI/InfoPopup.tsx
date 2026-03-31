@@ -18,6 +18,12 @@ export function InfoPopup({ content, onClose, onFollow, isFollowing }: InfoPopup
 
     const isLarge = data.imageSize === 'large';
 
+    useEffect(() => {
+        const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+        document.addEventListener('keydown', handler);
+        return () => document.removeEventListener('keydown', handler);
+    }, [onClose]);
+
     // Reset state and trigger enrichment when content changes
     useEffect(() => {
         setData(content);

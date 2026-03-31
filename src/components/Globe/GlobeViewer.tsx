@@ -19,7 +19,6 @@ import { ANIME_SHADER } from '@/shaders/anime';
 import { type PopupContent } from '@/types/popup';
 import { useWASDNavigation } from '@/hooks/useWASDNavigation';
 
-const ORBIT_SPEED = 0.003;  // rad/frame ≈ 3.5 min per omgang
 const ORBIT_PITCH = -0.7;   // rad ≈ -40°, spionfly-vinkel
 
 // Fjerner kun GlobeViewers egne baselayers — overlay-lag (trafikkflyt osv.) overlever
@@ -89,7 +88,7 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
     const { activeMode } = useImagery();
     const { activeOverlay } = useShaderOverlay();
     const { trackedEntityId, setTrackedEntityId } = useTracking();
-    const { orbitActive, setOrbitActive } = useOrbit();
+    const { orbitActive, setOrbitActive, orbitSpeed } = useOrbit();
     useWASDNavigation(viewer, orbitActive);
     const tilesetRef = useRef<Cesium3DTileset | null>(null);
     const baseLayersRef = useRef<ImageryLayer[]>([]);
@@ -108,7 +107,9 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
     const orbitDistRef = useRef(500_000);
     const orbitHeadingRef = useRef(0);
     const orbitLastTimeMsRef = useRef(0);
+    const orbitSpeedRef = useRef(orbitSpeed);
     orbitActiveRef.current = orbitActive;
+    orbitSpeedRef.current = orbitSpeed;
 
     useEffect(() => {
         if (!containerRef.current || initRef.current) return;
@@ -235,7 +236,7 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
                             const now = performance.now();
                             const dt = orbitLastTimeMsRef.current === 0 ? 0 : Math.min((now - orbitLastTimeMsRef.current) / 16.67, 3);
                             orbitLastTimeMsRef.current = now;
-                            orbitHeadingRef.current += ORBIT_SPEED * dt;
+                            orbitHeadingRef.current += orbitSpeedRef.current * dt;
                             orbitHprScratch.heading = orbitHeadingRef.current;
                             orbitHprScratch.range = trackDistRef.current;
                             v.camera.lookAt(pos, orbitHprScratch);
@@ -260,7 +261,7 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
             const now = performance.now();
             const dt = orbitLastTimeMsRef.current === 0 ? 0 : Math.min((now - orbitLastTimeMsRef.current) / 16.67, 3);
             orbitLastTimeMsRef.current = now;
-            orbitHeadingRef.current += ORBIT_SPEED * dt;
+            orbitHeadingRef.current += orbitSpeedRef.current * dt;
             orbitHprScratch.heading = orbitHeadingRef.current;
             orbitHprScratch.range = orbitDistRef.current;
             v.camera.lookAt(orbitTargetRef.current, orbitHprScratch);

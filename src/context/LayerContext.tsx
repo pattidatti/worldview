@@ -46,6 +46,17 @@ export function LayerProvider({ children }: { children: ReactNode }) {
         });
     }, []);
 
+    const toggleCategory = useCallback((layerIds: LayerId[]) => {
+        setLayers((prev) => {
+            const anyVisible = prev.some((l) => layerIds.includes(l.id) && l.visible);
+            const next = prev.map((l) =>
+                layerIds.includes(l.id) ? { ...l, visible: !anyVisible } : l
+            );
+            saveVisibility(next);
+            return next;
+        });
+    }, []);
+
     const setLayerLoading = useCallback((id: LayerId, loading: boolean) => {
         setLayers((prev) =>
             prev.map((l) => (l.id === id ? { ...l, loading } : l))
@@ -77,7 +88,7 @@ export function LayerProvider({ children }: { children: ReactNode }) {
 
     return (
         <LayerContext.Provider
-            value={{ layers, toggleLayer, setLayerLoading, setLayerCount, setLayerError, setLayerLastUpdated, isVisible }}
+            value={{ layers, toggleLayer, toggleCategory, setLayerLoading, setLayerCount, setLayerError, setLayerLastUpdated, isVisible }}
         >
             {children}
         </LayerContext.Provider>

@@ -1,10 +1,16 @@
 import { useOrbit } from '@/context/OrbitContext';
 
+function speedLabel(speed: number): string {
+    if (speed <= 0.002) return 'Sakte';
+    if (speed <= 0.005) return 'Middels';
+    return 'Rask';
+}
+
 export function OrbitButton() {
-    const { orbitActive, setOrbitActive } = useOrbit();
+    const { orbitActive, setOrbitActive, orbitSpeed, setOrbitSpeed } = useOrbit();
 
     return (
-        <div className="absolute z-10" style={{ bottom: '14.5rem', right: '1.5rem' }}>
+        <div className="absolute z-10 flex flex-col gap-1" style={{ bottom: '14.5rem', right: '1.5rem' }}>
             <button
                 onClick={() => setOrbitActive(!orbitActive)}
                 title="Spionfly-orbit — sirkuler rundt nåværende punkt"
@@ -43,6 +49,40 @@ export function OrbitButton() {
                     )}
                 </div>
             </button>
+
+            {orbitActive && (
+                <div
+                    style={{
+                        fontFamily: 'var(--font-mono)',
+                        background: 'rgba(10, 10, 20, 0.75)',
+                        backdropFilter: 'blur(8px)',
+                        border: '1px solid rgba(0, 212, 255, 0.25)',
+                        borderLeft: '2px solid rgba(0, 212, 255, 0.5)',
+                        borderRadius: '6px',
+                        padding: '8px 12px',
+                        minWidth: '130px',
+                    }}
+                >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                        <span style={{ fontSize: '9px', letterSpacing: '0.08em', color: 'rgba(0, 212, 255, 0.6)', fontWeight: 'bold' }}>
+                            HASTIGHET
+                        </span>
+                        <span style={{ fontSize: '9px', color: 'rgba(0, 212, 255, 0.8)' }}>
+                            {speedLabel(orbitSpeed)}
+                        </span>
+                    </div>
+                    <input
+                        type="range"
+                        min={0.0005}
+                        max={0.012}
+                        step={0.0005}
+                        value={orbitSpeed}
+                        onChange={(e) => setOrbitSpeed(parseFloat(e.target.value))}
+                        style={{ width: '100%', accentColor: 'rgba(0, 212, 255, 0.8)', cursor: 'pointer' }}
+                        onClick={(e) => e.stopPropagation()}
+                    />
+                </div>
+            )}
         </div>
     );
 }

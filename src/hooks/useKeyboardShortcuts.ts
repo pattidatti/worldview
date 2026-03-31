@@ -5,6 +5,7 @@ interface KeyboardShortcutOptions {
     toggleLayer: (id: LayerId) => void;
     closePopup: () => void;
     focusSearch: () => void;
+    toggleHelp: () => void;
     layerIds: LayerId[];
 }
 
@@ -12,6 +13,7 @@ export function useKeyboardShortcuts({
     toggleLayer,
     closePopup,
     focusSearch,
+    toggleHelp,
     layerIds,
 }: KeyboardShortcutOptions) {
     useEffect(() => {
@@ -46,6 +48,13 @@ export function useKeyboardShortcuts({
                 return;
             }
 
+            // ? to toggle keyboard help
+            if (e.key === '?') {
+                e.preventDefault();
+                toggleHelp();
+                return;
+            }
+
             // 1-6 to toggle layers
             const num = parseInt(e.key, 10);
             if (num >= 1 && num <= layerIds.length) {
@@ -55,5 +64,5 @@ export function useKeyboardShortcuts({
 
         document.addEventListener('keydown', handler);
         return () => document.removeEventListener('keydown', handler);
-    }, [toggleLayer, closePopup, focusSearch, layerIds]);
+    }, [toggleLayer, closePopup, focusSearch, toggleHelp, layerIds]);
 }
