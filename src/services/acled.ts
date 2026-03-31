@@ -9,7 +9,10 @@ function dateString(d: Date): string {
 }
 
 export async function fetchConflicts(): Promise<ConflictEvent[]> {
-    if (!API_KEY || !EMAIL) return [];
+    if (!API_KEY || !EMAIL) {
+        if (import.meta.env.DEV) console.warn('[ConflictLayer] VITE_ACLED_API_KEY og/eller VITE_ACLED_EMAIL mangler — konflikdatalaget er deaktivert.');
+        return [];
+    }
 
     const now = new Date();
     const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);

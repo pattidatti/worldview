@@ -10,6 +10,7 @@ import { useViewer } from '@/context/ViewerContext';
 import { useLayers } from '@/context/LayerContext';
 import { usePopupRegistry } from '@/context/PopupRegistry';
 import { useTooltipRegistry } from '@/context/TooltipRegistry';
+import { useGeointRegistry } from '@/context/GeointContext';
 import { usePollingData } from '@/hooks/usePollingData';
 import { syncEntities } from '@/utils/syncEntities';
 import { fetchAsteroids } from '@/services/nasa-neo';

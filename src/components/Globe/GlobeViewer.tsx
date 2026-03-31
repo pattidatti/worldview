@@ -107,6 +107,7 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
     const orbitTargetRef = useRef<Cartesian3 | null>(null);
     const orbitDistRef = useRef(500_000);
     const orbitHeadingRef = useRef(0);
+    const orbitLastTimeMsRef = useRef(0);
     orbitActiveRef.current = orbitActive;
 
     useEffect(() => {
@@ -164,7 +165,6 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
         const orbitHprScratch = new HeadingPitchRange(0, ORBIT_PITCH, 500_000);
         const trackHprScratch = new HeadingPitchRange(0, CesiumMath.toRadians(-30), 500_000);
         const julianDateScratch = new JulianDate();
-        let orbitLastTimeMs = 0;
 
         v.canvas.addEventListener('wheel', (e) => {
             e.preventDefault();
@@ -233,8 +233,8 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
                         if (orbitActiveRef.current) {
                             // Orbit around the moving entity
                             const now = performance.now();
-                            const dt = orbitLastTimeMs === 0 ? 1 : Math.min((now - orbitLastTimeMs) / 16.67, 3);
-                            orbitLastTimeMs = now;
+                            const dt = orbitLastTimeMsRef.current === 0 ? 0 : Math.min((now - orbitLastTimeMsRef.current) / 16.67, 3);
+                            orbitLastTimeMsRef.current = now;
                             orbitHeadingRef.current += ORBIT_SPEED * dt;
                             orbitHprScratch.heading = orbitHeadingRef.current;
                             orbitHprScratch.range = trackDistRef.current;
@@ -258,8 +258,8 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
         scene.preRender.addEventListener(() => {
             if (!orbitActiveRef.current || !orbitTargetRef.current || trackedIdRef.current) return;
             const now = performance.now();
-            const dt = orbitLastTimeMs === 0 ? 1 : Math.min((now - orbitLastTimeMs) / 16.67, 3);
-            orbitLastTimeMs = now;
+            const dt = orbitLastTimeMsRef.current === 0 ? 0 : Math.min((now - orbitLastTimeMsRef.current) / 16.67, 3);
+            orbitLastTimeMsRef.current = now;
             orbitHeadingRef.current += ORBIT_SPEED * dt;
             orbitHprScratch.heading = orbitHeadingRef.current;
             orbitHprScratch.range = orbitDistRef.current;
@@ -376,7 +376,7 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
             setOrbitActive(true);
         }
         viewer.scene.requestRender();
-    }, [trackedEntityId, viewer]);
+    }, [trackedEntityId, viewer, setOrbitActive]);
 
     // Orbit aktivering/deaktivering
     useEffect(() => {
@@ -397,9 +397,11 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
                     ? Cartesian3.distance(viewer.camera.position, target)
                     : viewer.camera.positionCartographic.height;
             }
-            // Always seed heading from current camera
+            // Always seed heading and timestamp from current camera (prevents first-frame jerk)
             orbitHeadingRef.current = viewer.camera.heading;
+            orbitLastTimeMsRef.current = performance.now();
         } else {
+            orbitLastTimeMsRef.current = 0;
             viewer.camera.lookAtTransform(Matrix4.IDENTITY);
             orbitTargetRef.current = null;
         }

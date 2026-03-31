@@ -23,6 +23,7 @@ import { useViewer } from '@/context/ViewerContext';
 import { useLayers } from '@/context/LayerContext';
 import { usePopupRegistry } from '@/context/PopupRegistry';
 import { useTooltipRegistry } from '@/context/TooltipRegistry';
+import { useGeointRegistry } from '@/context/GeointContext';
 import { useViewport } from '@/hooks/useViewport';
 import { configureCluster } from '@/utils/cluster';
 import { AISStreamConnection } from '@/services/aisstream';
@@ -89,6 +90,7 @@ export function ShipLayer() {
     const { isVisible, setLayerLoading, setLayerCount, setLayerError, setLayerLastUpdated } = useLayers();
     const { register, unregister } = usePopupRegistry();
     const { register: tooltipRegister, unregister: tooltipUnregister } = useTooltipRegistry();
+    const { register: geointRegister, unregister: geointUnregister } = useGeointRegistry();
     const visible = isVisible('ships');
     const viewport = useViewport(viewer);
     const viewportRef = useRef(viewport);
@@ -103,6 +105,20 @@ export function ShipLayer() {
     const [ships, setShips] = useState<Map<number, Ship>>(new Map());
     const shipsRef = useRef<Map<number, Ship>>(new Map());
     shipsRef.current = ships;
+    const visibleRef = useRef(visible);
+    visibleRef.current = visible;
+
+    // GEOINT data provider
+    useEffect(() => {
+        geointRegister('ships', () => {
+            if (!visibleRef.current || shipsRef.current.size === 0) return null;
+            const items = [...shipsRef.current.values()].slice(0, 10).map((s) =>
+                `${s.name || `MMSI ${s.mmsi}`} ${getShipTypeName(s.shipType)} ${s.speed.toFixed(1)}kn${s.destination ? ` → ${s.destination}` : ''}`
+            );
+            return { layerId: 'ships', label: 'Skipstrafikk', count: shipsRef.current.size, items };
+        });
+        return () => geointUnregister('ships');
+    }, [geointRegister, geointUnregister]);
 
     // Register popup builder (håndterer klikk på hull OG overbygning)
     useEffect(() => {
@@ -198,10 +214,11 @@ export function ShipLayer() {
         const trailDs = new CustomDataSource('ships-trails');
         viewer.dataSources.add(trailDs);
         trailDsRef.current = trailDs;
+        const trailHistory = trailHistoryRef.current;
         return () => {
             if (!viewer.isDestroyed()) viewer.dataSources.remove(trailDs, true);
             trailDsRef.current = null;
-            trailHistoryRef.current.clear();
+            trailHistory.clear();
         };
     }, [viewer]);
 

@@ -1,4 +1,4 @@
-import { CustomDataSource, Entity } from 'cesium';
+import { CustomDataSource, Entity, Billboard, Label, PointPrimitive } from 'cesium';
 
 interface ClusterConfig {
     pixelRange: number;
@@ -44,7 +44,7 @@ export function configureCluster(ds: CustomDataSource, config: ClusterConfig): v
     ds.clustering.clusterLabels = true;
 
     ds.clustering.clusterEvent.addEventListener(
-        (clusteredEntities: Entity[], cluster: { billboard: any; label: any; point: any }) => {
+        (clusteredEntities: Entity[], cluster: { billboard: Billboard; label: Label; point: PointPrimitive }) => {
             const count = clusteredEntities.length;
             const size = sizeForCount(count);
 

@@ -15,6 +15,7 @@ import { useViewer } from '@/context/ViewerContext';
 import { useLayers } from '@/context/LayerContext';
 import { usePopupRegistry } from '@/context/PopupRegistry';
 import { useTooltipRegistry } from '@/context/TooltipRegistry';
+import { useGeointRegistry } from '@/context/GeointContext';
 import { useViewport } from '@/hooks/useViewport';
 import { configureCluster } from '@/utils/cluster';
 import { fetchFlights } from '@/services/airplaneslive';
@@ -95,6 +96,7 @@ export function FlightLayer() {
     const { isVisible, setLayerLoading, setLayerCount, setLayerError, setLayerLastUpdated } = useLayers();
     const { register, unregister } = usePopupRegistry();
     const { register: tooltipRegister, unregister: tooltipUnregister } = useTooltipRegistry();
+    const { register: geointRegister, unregister: geointUnregister } = useGeointRegistry();
     const visible = isVisible('flights');
     const viewport = useViewport(viewer);
     const dataSourceRef = useRef<CustomDataSource | null>(null);
@@ -105,9 +107,25 @@ export function FlightLayer() {
     viewportRef.current = viewport;
     const flightsRef = useRef<Flight[]>([]);
     flightsRef.current = flights;
+    const visibleRef = useRef(visible);
+    visibleRef.current = visible;
     const routePendingRef = useRef(new Set<string>());
     // Dead-reckoning state map
     const drStateRef = useRef<Map<string, DrState>>(new Map());
+
+    // GEOINT data provider
+    useEffect(() => {
+        geointRegister('flights', () => {
+            if (!visibleRef.current || flightsRef.current.length === 0) return null;
+            const flights = flightsRef.current;
+            const items = flights.slice(0, 10).map((f) => {
+                const altFt = Math.round(f.altitude * 3.28084 / 1000);
+                return `${f.callsign || f.icao24}${f.isMilitary ? ' [MILITÆR]' : ''} (${f.originCountry}) hdg ${Math.round(f.heading)}° alt ${altFt}kft`;
+            });
+            return { layerId: 'flights', label: 'Flytrafikk', count: flights.length, items };
+        });
+        return () => geointUnregister('flights');
+    }, [geointRegister, geointUnregister]);
 
     // Popup builder
     useEffect(() => {
@@ -220,10 +238,11 @@ export function FlightLayer() {
         const trailDs = new CustomDataSource('flights-trails');
         viewer.dataSources.add(trailDs);
         trailDsRef.current = trailDs;
+        const trailHistory = trailHistoryRef.current;
         return () => {
             if (!viewer.isDestroyed()) viewer.dataSources.remove(trailDs, true);
             trailDsRef.current = null;
-            trailHistoryRef.current.clear();
+            trailHistory.clear();
         };
     }, [viewer]);
 

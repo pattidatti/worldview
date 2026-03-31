@@ -4,6 +4,7 @@ import { type LayerId, type LayerConfig, LAYER_DEFAULTS } from '@/types/layers';
 interface LayerContextValue {
     layers: LayerConfig[];
     toggleLayer: (id: LayerId) => void;
+    toggleCategory: (layerIds: LayerId[]) => void;
     setLayerLoading: (id: LayerId, loading: boolean) => void;
     setLayerCount: (id: LayerId, count: number) => void;
     setLayerError: (id: LayerId, error: string | null) => void;
@@ -19,7 +20,8 @@ function loadVisibility(): Partial<Record<LayerId, boolean>> {
     try {
         const raw = localStorage.getItem(STORAGE_KEY);
         return raw ? JSON.parse(raw) : {};
-    } catch {
+    } catch (e) {
+        console.warn('[LayerContext] Feil ved lesing av lagsynlighet fra localStorage:', e);
         return {};
     }
 }

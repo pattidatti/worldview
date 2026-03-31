@@ -13,6 +13,7 @@ import { useViewer } from '@/context/ViewerContext';
 import { useLayers } from '@/context/LayerContext';
 import { usePopupRegistry } from '@/context/PopupRegistry';
 import { useTooltipRegistry } from '@/context/TooltipRegistry';
+import { useGeointRegistry } from '@/context/GeointContext';
 import { usePollingData } from '@/hooks/usePollingData';
 import { syncEntities } from '@/utils/syncEntities';
 import { fetchDisasters } from '@/services/eonet';
@@ -62,12 +63,27 @@ export function DisasterLayer() {
     const { isVisible, setLayerLoading, setLayerCount, setLayerError, setLayerLastUpdated } = useLayers();
     const { register, unregister } = usePopupRegistry();
     const { register: tooltipRegister, unregister: tooltipUnregister } = useTooltipRegistry();
+    const { register: geointRegister, unregister: geointUnregister } = useGeointRegistry();
     const visible = isVisible('disasters');
     const dataSourceRef = useRef<CustomDataSource | null>(null);
     const disastersRef = useRef<Disaster[]>([]);
+    const visibleRef = useRef(visible);
+    visibleRef.current = visible;
 
     const { data: disasters, loading, error, lastUpdated } = usePollingData(fetchDisasters, POLL_MS, visible);
     if (disasters) disastersRef.current = disasters;
+
+    // GEOINT data provider
+    useEffect(() => {
+        geointRegister('disasters', () => {
+            if (!visibleRef.current || disastersRef.current.length === 0) return null;
+            const items = disastersRef.current.slice(0, 8).map((d) =>
+                `${d.category}: ${d.title}`
+            );
+            return { layerId: 'disasters', label: 'Naturkatastrofer', count: disastersRef.current.length, items };
+        });
+        return () => geointUnregister('disasters');
+    }, [geointRegister, geointUnregister]);
 
     useEffect(() => { setLayerError('disasters', error); }, [error, setLayerError]);
     useEffect(() => { setLayerLastUpdated('disasters', lastUpdated); }, [lastUpdated, setLayerLastUpdated]);

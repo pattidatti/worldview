@@ -3,6 +3,7 @@ import {
     CustomDataSource,
     Entity,
     Cartesian3,
+    ConstantPositionProperty,
     BillboardGraphics,
     VerticalOrigin,
     HorizontalOrigin,
@@ -12,8 +13,10 @@ import { useViewer } from '@/context/ViewerContext';
 import { useLayers } from '@/context/LayerContext';
 import { usePopupRegistry } from '@/context/PopupRegistry';
 import { useTooltipRegistry } from '@/context/TooltipRegistry';
+import { useGeointRegistry } from '@/context/GeointContext';
 import { usePollingData } from '@/hooks/usePollingData';
 import { configureCluster } from '@/utils/cluster';
+import { syncEntities } from '@/utils/syncEntities';
 import { fetchNewsEvents } from '@/services/gdelt';
 import { type NewsEvent } from '@/types/news';
 
@@ -40,12 +43,27 @@ export function NewsLayer() {
     const { isVisible, setLayerLoading, setLayerCount, setLayerError, setLayerLastUpdated } = useLayers();
     const { register, unregister } = usePopupRegistry();
     const { register: tooltipRegister, unregister: tooltipUnregister } = useTooltipRegistry();
+    const { register: geointRegister, unregister: geointUnregister } = useGeointRegistry();
     const visible = isVisible('news');
     const dataSourceRef = useRef<CustomDataSource | null>(null);
     const newsRef = useRef<NewsEvent[]>([]);
+    const visibleRef = useRef(visible);
+    visibleRef.current = visible;
 
     const { data: news, loading, error, lastUpdated } = usePollingData(fetchNewsEvents, POLL_MS, visible);
     if (news) newsRef.current = news;
+
+    // GEOINT data provider
+    useEffect(() => {
+        geointRegister('news', () => {
+            if (!visibleRef.current || newsRef.current.length === 0) return null;
+            const items = newsRef.current.slice(0, 8).map((n) =>
+                `${n.title.length > 70 ? n.title.slice(0, 67) + '...' : n.title} (${n.domain})`
+            );
+            return { layerId: 'news', label: 'Nyheter', count: newsRef.current.length, items };
+        });
+        return () => geointUnregister('news');
+    }, [geointRegister, geointUnregister]);
 
     useEffect(() => { setLayerError('news', error); }, [error, setLayerError]);
     useEffect(() => { setLayerLastUpdated('news', lastUpdated); }, [lastUpdated, setLayerLastUpdated]);
@@ -114,9 +132,16 @@ export function NewsLayer() {
         const ds = dataSourceRef.current;
         if (!ds || !news) return;
         setLayerCount('news', news.length);
-        ds.entities.removeAll();
-        for (const item of news) {
-            ds.entities.add(new Entity({
+        syncEntities({
+            ds,
+            items: news,
+            getId: (item) => `news-${item.id}`,
+            onUpdate: (entity, item) => {
+                (entity.position as ConstantPositionProperty).setValue(
+                    Cartesian3.fromDegrees(item.lon, item.lat, 0),
+                );
+            },
+            onCreate: (item) => new Entity({
                 id: `news-${item.id}`,
                 name: item.title,
                 position: Cartesian3.fromDegrees(item.lon, item.lat, 0),
@@ -128,9 +153,9 @@ export function NewsLayer() {
                     horizontalOrigin: HorizontalOrigin.CENTER,
                     heightReference: HeightReference.CLAMP_TO_GROUND,
                 }),
-            }));
-        }
-        if (viewer && !viewer.isDestroyed()) viewer.scene.requestRender();
+            }),
+            viewer,
+        });
     }, [news, viewer, setLayerCount]);
 
     useEffect(() => { updateEntities(); }, [updateEntities]);

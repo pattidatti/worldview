@@ -7,11 +7,13 @@ import {
     ConstantPositionProperty,
     PointGraphics,
     ConstantProperty,
+    HeightReference,
 } from 'cesium';
 import { useViewer } from '@/context/ViewerContext';
 import { useLayers } from '@/context/LayerContext';
 import { usePopupRegistry } from '@/context/PopupRegistry';
 import { useTooltipRegistry } from '@/context/TooltipRegistry';
+import { useGeointRegistry } from '@/context/GeointContext';
 import { usePollingData } from '@/hooks/usePollingData';
 import { syncEntities } from '@/utils/syncEntities';
 import { configureCluster } from '@/utils/cluster';
@@ -53,12 +55,29 @@ export function ConflictLayer() {
     const { isVisible, setLayerLoading, setLayerCount, setLayerError, setLayerLastUpdated } = useLayers();
     const { register, unregister } = usePopupRegistry();
     const { register: tooltipRegister, unregister: tooltipUnregister } = useTooltipRegistry();
+    const { register: geointRegister, unregister: geointUnregister } = useGeointRegistry();
     const visible = isVisible('conflicts');
     const dataSourceRef = useRef<CustomDataSource | null>(null);
     const conflictsRef = useRef<ConflictEvent[]>([]);
+    const visibleRef = useRef(visible);
+    visibleRef.current = visible;
 
     const { data: conflicts, loading, error, lastUpdated } = usePollingData(fetchConflicts, POLL_MS, visible);
     if (conflicts) conflictsRef.current = conflicts;
+
+    // GEOINT data provider
+    useEffect(() => {
+        geointRegister('conflicts', () => {
+            if (!visibleRef.current || conflictsRef.current.length === 0) return null;
+            const sorted = [...conflictsRef.current].sort((a, b) => b.fatalities - a.fatalities);
+            const items = sorted.slice(0, 10).map((c) => {
+                const actors = [c.actor1, c.actor2].filter(Boolean).join(' vs ');
+                return `${EVENT_TYPE_NB[c.eventType] ?? c.eventType}: ${actors}, ${c.country} (${c.fatalities} drepte)`;
+            });
+            return { layerId: 'conflicts', label: 'Konflikter', count: conflictsRef.current.length, items };
+        });
+        return () => geointUnregister('conflicts');
+    }, [geointRegister, geointUnregister]);
 
     useEffect(() => { setLayerError('conflicts', error); }, [error, setLayerError]);
     useEffect(() => { setLayerLastUpdated('conflicts', lastUpdated); }, [lastUpdated, setLayerLastUpdated]);
@@ -158,7 +177,7 @@ export function ConflictLayer() {
                         color,
                         outlineColor: color.withAlpha(1.0),
                         outlineWidth: 1,
-                        heightReference: 1, // CLAMP_TO_GROUND
+                        heightReference: HeightReference.CLAMP_TO_GROUND,
                     }),
                 });
             },

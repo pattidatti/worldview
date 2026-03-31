@@ -4,6 +4,7 @@ import {
     Entity,
     Cartesian3,
     Color,
+    ConstantPositionProperty,
     BillboardGraphics,
     VerticalOrigin,
     HorizontalOrigin,
@@ -15,6 +16,7 @@ import { usePopupRegistry } from '@/context/PopupRegistry';
 import { useTooltipRegistry } from '@/context/TooltipRegistry';
 import { useViewport } from '@/hooks/useViewport';
 import { configureCluster } from '@/utils/cluster';
+import { syncEntities } from '@/utils/syncEntities';
 import { fetchWebcams } from '@/services/webcams';
 import { type Webcam } from '@/types/webcam';
 
@@ -85,7 +87,7 @@ export function WebcamLayer() {
             controller.abort();
             clearInterval(intervalId);
         };
-    }, [visible, viewport]);
+    }, [visible, viewport, setLayerError, setLayerLastUpdated]);
 
     if (webcams) webcamsRef.current = webcams;
 
@@ -150,9 +152,16 @@ export function WebcamLayer() {
         const ds = dataSourceRef.current;
         if (!ds || !webcams) return;
         setLayerCount('webcams', webcams.length);
-        ds.entities.removeAll();
-        for (const cam of webcams) {
-            ds.entities.add(new Entity({
+        syncEntities({
+            ds,
+            items: webcams,
+            getId: (cam) => cam.id,
+            onUpdate: (entity, cam) => {
+                (entity.position as ConstantPositionProperty).setValue(
+                    Cartesian3.fromDegrees(cam.lon, cam.lat, 0),
+                );
+            },
+            onCreate: (cam) => new Entity({
                 id: cam.id, name: cam.name,
                 position: Cartesian3.fromDegrees(cam.lon, cam.lat, 0),
                 billboard: new BillboardGraphics({
@@ -163,9 +172,9 @@ export function WebcamLayer() {
                     horizontalOrigin: HorizontalOrigin.CENTER,
                     heightReference: HeightReference.CLAMP_TO_GROUND,
                 }),
-            }));
-        }
-        if (viewer && !viewer.isDestroyed()) viewer.scene.requestRender();
+            }),
+            viewer,
+        });
     }, [webcams, viewer, setLayerCount]);
 
     useEffect(() => { updateEntities(); }, [updateEntities]);

@@ -12,6 +12,7 @@ import { useViewer } from '@/context/ViewerContext';
 import { useLayers } from '@/context/LayerContext';
 import { usePopupRegistry } from '@/context/PopupRegistry';
 import { useTooltipRegistry } from '@/context/TooltipRegistry';
+import { useGeointRegistry } from '@/context/GeointContext';
 import { usePollingData } from '@/hooks/usePollingData';
 import { syncEntities } from '@/utils/syncEntities';
 import { fetchEarthquakes } from '@/services/usgs';
@@ -47,12 +48,28 @@ export function EarthquakeLayer() {
     const { isVisible, setLayerLoading, setLayerCount, setLayerError, setLayerLastUpdated } = useLayers();
     const { register, unregister } = usePopupRegistry();
     const { register: tooltipRegister, unregister: tooltipUnregister } = useTooltipRegistry();
+    const { register: geointRegister, unregister: geointUnregister } = useGeointRegistry();
     const visible = isVisible('earthquakes');
     const dataSourceRef = useRef<CustomDataSource | null>(null);
     const quakesRef = useRef<Earthquake[]>([]);
+    const visibleRef = useRef(visible);
+    visibleRef.current = visible;
 
     const { data: quakes, loading, error, lastUpdated } = usePollingData(fetchEarthquakes, POLL_MS, visible);
     if (quakes) quakesRef.current = quakes;
+
+    // GEOINT data provider
+    useEffect(() => {
+        geointRegister('earthquakes', () => {
+            if (!visibleRef.current || quakesRef.current.length === 0) return null;
+            const sorted = [...quakesRef.current].sort((a, b) => b.magnitude - a.magnitude);
+            const items = sorted.slice(0, 8).map((q) =>
+                `M${q.magnitude.toFixed(1)} ${q.place}, dybde ${q.depth.toFixed(0)}km`
+            );
+            return { layerId: 'earthquakes', label: 'Jordskjelv', count: quakesRef.current.length, items };
+        });
+        return () => geointUnregister('earthquakes');
+    }, [geointRegister, geointUnregister]);
 
     useEffect(() => { setLayerError('earthquakes', error); }, [error, setLayerError]);
     useEffect(() => { setLayerLastUpdated('earthquakes', lastUpdated); }, [lastUpdated, setLayerLastUpdated]);

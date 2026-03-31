@@ -6,6 +6,16 @@ import {
     type OverpassInfrastructureData,
 } from '@/types/infrastructure';
 
+export interface OverpassGeomPoint { lat: string; lon: string }
+export interface OverpassElement {
+    type: string;
+    id: number;
+    lat?: string;
+    lon?: string;
+    tags?: Record<string, string>;
+    geometry?: OverpassGeomPoint[];
+}
+
 const ENDPOINT = 'https://overpass-api.de/api/interpreter';
 const EMPTY: OverpassInfrastructureData = { pipelines: [], platforms: [], wells: [] };
 
@@ -24,7 +34,7 @@ function buildQuery(vp: Viewport): string {
     return `[out:json][timeout:25];(way["man_made"="pipeline"]["substance"~"oil|gas|petroleum"](${bbox});node["man_made"="petroleum_well"](${bbox});node["man_made"="offshore_platform"](${bbox});way["man_made"="offshore_platform"](${bbox}););out geom;`;
 }
 
-function parseElements(elements: any[]): OverpassInfrastructureData {
+function parseElements(elements: OverpassElement[]): OverpassInfrastructureData {
     const pipelines: OverpassPipeline[] = [];
     const platforms: OverpassPlatform[] = [];
     const wells: OverpassWell[] = [];
@@ -33,13 +43,13 @@ function parseElements(elements: any[]): OverpassInfrastructureData {
         const tags = el.tags ?? {};
         const manMade = tags.man_made ?? '';
 
-        if (manMade === 'pipeline' && el.type === 'way' && el.geometry?.length >= 2) {
+        if (manMade === 'pipeline' && el.type === 'way' && (el.geometry?.length ?? 0) >= 2) {
             pipelines.push({
                 id: `osm-way-${el.id}`,
                 name: tags.name ?? '',
                 substance: tags.substance ?? '',
                 operator: tags.operator ?? '',
-                positions: el.geometry.map((g: any) => [Number(g.lon), Number(g.lat)]),
+                positions: el.geometry!.map((g) => [Number(g.lon), Number(g.lat)]),
             });
         } else if (manMade === 'offshore_platform') {
             if (el.type === 'node') {
@@ -52,8 +62,8 @@ function parseElements(elements: any[]): OverpassInfrastructureData {
                 });
             } else if (el.type === 'way' && el.geometry?.length) {
                 // Use centroid of way geometry
-                const lats = el.geometry.map((g: any) => Number(g.lat));
-                const lons = el.geometry.map((g: any) => Number(g.lon));
+                const lats = el.geometry!.map((g) => Number(g.lat));
+                const lons = el.geometry!.map((g) => Number(g.lon));
                 const avgLat = lats.reduce((a: number, b: number) => a + b, 0) / lats.length;
                 const avgLon = lons.reduce((a: number, b: number) => a + b, 0) / lons.length;
                 platforms.push({
@@ -79,7 +89,7 @@ function parseElements(elements: any[]): OverpassInfrastructureData {
 }
 
 // Generic Overpass fetcher — used by all OSM feature layers
-const _genericCache = new Map<string, any[]>();
+const _genericCache = new Map<string, OverpassElement[]>();
 
 export function overpassViewportKey05(vp: Viewport): string {
     // Round to 0.5 degrees — coarser cache for static features
@@ -94,9 +104,9 @@ const LS_INDEX  = 'wv_ov_idx';
 const MAX_LS_ENTRIES = 100;
 const MAX_LS_ENTRY_BYTES = 200_000; // skip localStorage for very large responses
 
-interface LsEntry { ts: number; data: any[] }
+interface LsEntry { ts: number; data: OverpassElement[] }
 
-function lsGet(key: string, maxAgeMs: number): any[] | null {
+function lsGet(key: string, maxAgeMs: number): OverpassElement[] | null {
     try {
         const raw = localStorage.getItem(LS_PREFIX + key);
         if (!raw) return null;
@@ -109,13 +119,13 @@ function lsGet(key: string, maxAgeMs: number): any[] | null {
     } catch { return null; }
 }
 
-function lsSet(key: string, data: any[]): void {
+function lsSet(key: string, data: OverpassElement[]): void {
     try {
         const serialized = JSON.stringify({ ts: Date.now(), data } satisfies LsEntry);
         if (serialized.length > MAX_LS_ENTRY_BYTES) return; // too large, skip
 
         let index: Record<string, number> = {};
-        try { index = JSON.parse(localStorage.getItem(LS_INDEX) ?? '{}'); } catch {}
+        try { index = JSON.parse(localStorage.getItem(LS_INDEX) ?? '{}'); } catch { /* invalid JSON — starts fresh */ }
 
         // Evict oldest 20% when index is full
         const existingKeys = Object.keys(index);
@@ -143,7 +153,7 @@ export async function fetchOverpassElements(
     query: string,
     cacheKey: string,
     maxAgeMs: number = 7 * DAY_MS,
-): Promise<any[]> {
+): Promise<OverpassElement[]> {
     // 1. In-memory (fastest, session-scoped)
     if (_genericCache.has(cacheKey)) return _genericCache.get(cacheKey)!;
 

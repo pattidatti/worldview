@@ -1,9 +1,14 @@
 import { type Facility, type Pipeline, type Field, type InfrastructureData } from '@/types/infrastructure';
 
+interface SodirGeometryPoint    { x: number; y: number }
+interface SodirGeometryPolyline { paths: number[][][] }
+interface SodirGeometryPolygon  { rings: number[][][] }
+interface SodirFeature<G>       { geometry: G; attributes: Record<string, unknown> }
+
 const BASE = 'https://factmaps.sodir.no/api/rest/services/DataService/Data/FeatureServer';
 const PAGE_SIZE = 2000;
 
-async function queryLayer(layerId: number, outFields: string[], offset = 0): Promise<{ features: any[]; exceededTransferLimit: boolean }> {
+async function queryLayer<G>(layerId: number, outFields: string[], offset = 0): Promise<{ features: SodirFeature<G>[]; exceededTransferLimit: boolean }> {
     const params = new URLSearchParams({
         where: '1=1',
         outFields: outFields.join(','),
@@ -19,12 +24,12 @@ async function queryLayer(layerId: number, outFields: string[], offset = 0): Pro
     return res.json();
 }
 
-async function queryAllPages(layerId: number, outFields: string[]): Promise<any[]> {
-    const all: any[] = [];
+async function queryAllPages<G>(layerId: number, outFields: string[]): Promise<SodirFeature<G>[]> {
+    const all: SodirFeature<G>[] = [];
     let offset = 0;
     let hasMore = true;
     while (hasMore) {
-        const result = await queryLayer(layerId, outFields, offset);
+        const result = await queryLayer<G>(layerId, outFields, offset);
         all.push(...result.features);
         hasMore = result.exceededTransferLimit === true;
         offset += PAGE_SIZE;
@@ -40,24 +45,25 @@ const FACILITY_FIELDS = [
 
 async function fetchFacilities(): Promise<Facility[]> {
     try {
-        const features = await queryAllPages(6000, FACILITY_FIELDS);
+        const features = await queryAllPages<SodirGeometryPoint>(6000, FACILITY_FIELDS);
         return features
-            .filter((f: any) => f.geometry)
-            .map((f: any) => ({
+            .filter((f) => f.geometry)
+            .map((f) => ({
                 id: String(f.attributes.fclNpdidFacility),
-                name: f.attributes.fclName ?? '',
-                kind: f.attributes.fclKind ?? '',
-                phase: f.attributes.fclPhase ?? '',
-                functions: f.attributes.fclFunctions ?? '',
-                fixedOrMoveable: f.attributes.fclFixedOrMoveable ?? '',
-                operator: f.attributes.fclCurrentOperatorName ?? '',
-                belongsTo: f.attributes.fclBelongsToName ?? '',
-                waterDepth: f.attributes.fclWaterDepth ?? 0,
-                startupDate: f.attributes.fclStartupDate ? new Date(f.attributes.fclStartupDate).toISOString() : null,
+                name: String(f.attributes.fclName ?? ''),
+                kind: String(f.attributes.fclKind ?? ''),
+                phase: String(f.attributes.fclPhase ?? ''),
+                functions: String(f.attributes.fclFunctions ?? ''),
+                fixedOrMoveable: String(f.attributes.fclFixedOrMoveable ?? ''),
+                operator: String(f.attributes.fclCurrentOperatorName ?? ''),
+                belongsTo: String(f.attributes.fclBelongsToName ?? ''),
+                waterDepth: Number(f.attributes.fclWaterDepth ?? 0),
+                startupDate: f.attributes.fclStartupDate ? new Date(String(f.attributes.fclStartupDate)).toISOString() : null,
                 lat: Number(f.geometry.y),
                 lon: Number(f.geometry.x),
             }));
-    } catch {
+    } catch (e) {
+        console.warn('[sodir] fetchFacilities feilet:', e);
         return [];
     }
 }
@@ -70,25 +76,26 @@ const PIPELINE_FIELDS = [
 
 async function fetchPipelines(): Promise<Pipeline[]> {
     try {
-        const features = await queryAllPages(6100, PIPELINE_FIELDS);
+        const features = await queryAllPages<SodirGeometryPolyline>(6100, PIPELINE_FIELDS);
         return features
-            .filter((f: any) => f.geometry?.paths?.length)
-            .map((f: any) => ({
+            .filter((f) => f.geometry?.paths?.length)
+            .map((f) => ({
                 id: String(f.attributes.pplNpdidPipeline),
-                name: f.attributes.pplName ?? '',
-                medium: f.attributes.pplMedium ?? '',
-                dimension: f.attributes.pplDimension ?? 0,
-                operator: f.attributes.cmpLongName ?? '',
-                fromFacility: f.attributes.fclNameFrom ?? '',
-                toFacility: f.attributes.fclNameTo ?? '',
-                phase: f.attributes.pplCurrentPhase ?? '',
-                belongsTo: f.attributes.pplBelongsToName ?? '',
-                waterDepth: f.attributes.pplWaterDepth ?? 0,
-                paths: (f.geometry.paths as number[][][]).map((path) =>
+                name: String(f.attributes.pplName ?? ''),
+                medium: String(f.attributes.pplMedium ?? ''),
+                dimension: Number(f.attributes.pplDimension ?? 0),
+                operator: String(f.attributes.cmpLongName ?? ''),
+                fromFacility: String(f.attributes.fclNameFrom ?? ''),
+                toFacility: String(f.attributes.fclNameTo ?? ''),
+                phase: String(f.attributes.pplCurrentPhase ?? ''),
+                belongsTo: String(f.attributes.pplBelongsToName ?? ''),
+                waterDepth: Number(f.attributes.pplWaterDepth ?? 0),
+                paths: f.geometry.paths.map((path) =>
                     path.map(([lon, lat]) => [Number(lon), Number(lat)]),
                 ),
             }));
-    } catch {
+    } catch (e) {
+        console.warn('[sodir] fetchPipelines feilet:', e);
         return [];
     }
 }
@@ -100,22 +107,23 @@ const FIELD_FIELDS = [
 
 async function fetchFields(): Promise<Field[]> {
     try {
-        const features = await queryAllPages(7100, FIELD_FIELDS);
+        const features = await queryAllPages<SodirGeometryPolygon>(7100, FIELD_FIELDS);
         return features
-            .filter((f: any) => f.geometry?.rings?.length)
-            .map((f: any) => ({
+            .filter((f) => f.geometry?.rings?.length)
+            .map((f) => ({
                 id: String(f.attributes.fldNpdidField),
-                name: f.attributes.fldName ?? '',
-                status: f.attributes.fldCurrentActivitySatus ?? '',
-                operator: f.attributes.cmpLongName ?? '',
-                hcType: f.attributes.fldHcType ?? '',
-                discoveryYear: f.attributes.fldDiscoveryYear ?? 0,
-                mainArea: f.attributes.fldMainArea ?? '',
-                rings: (f.geometry.rings as number[][][]).map((ring) =>
+                name: String(f.attributes.fldName ?? ''),
+                status: String(f.attributes.fldCurrentActivitySatus ?? ''),
+                operator: String(f.attributes.cmpLongName ?? ''),
+                hcType: String(f.attributes.fldHcType ?? ''),
+                discoveryYear: Number(f.attributes.fldDiscoveryYear ?? 0),
+                mainArea: String(f.attributes.fldMainArea ?? ''),
+                rings: f.geometry.rings.map((ring) =>
                     ring.map(([lon, lat]) => [Number(lon), Number(lat)]),
                 ),
             }));
-    } catch {
+    } catch (e) {
+        console.warn('[sodir] fetchFields feilet:', e);
         return [];
     }
 }

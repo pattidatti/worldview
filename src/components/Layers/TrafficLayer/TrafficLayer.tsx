@@ -70,7 +70,7 @@ export function TrafficLayer() {
             controller.abort();
             clearInterval(intervalId);
         };
-    }, [visible, viewport]);
+    }, [visible, viewport, setLayerError, setLayerLastUpdated]);
 
     if (events) eventsRef.current = events;
 

@@ -48,6 +48,7 @@ export function WeatherRadarProvider({ children }: { children: ReactNode }) {
         if (isAnimating) {
             stopAnimation();
         } else {
+            if (animRef.current) clearInterval(animRef.current);
             animRef.current = setInterval(() => {
                 setCurrentIndex((prev) =>
                     prev >= allFramesRef.current.length - 1 ? 0 : prev + 1

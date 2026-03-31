@@ -1,5 +1,5 @@
 import { type Viewport } from '@/hooks/useViewport';
-import { fetchOverpassElements, overpassViewportKey05, DAY_MS } from './overpass';
+import { fetchOverpassElements, overpassViewportKey05, DAY_MS, type OverpassGeomPoint } from './overpass';
 import {
     type PowerData,
     type WindData,
@@ -42,12 +42,12 @@ export async function fetchPowerData(viewport: Viewport): Promise<PowerData> {
         const tags: Record<string, string> = el.tags ?? {};
         const power = tags.power ?? '';
 
-        if (power === 'line' && el.type === 'way' && el.geometry?.length >= 2) {
+        if (power === 'line' && el.type === 'way' && (el.geometry?.length ?? 0) >= 2) {
             lines.push({
                 id: `power-way-${el.id}`,
                 name: tags.name ?? '',
                 tags,
-                positions: el.geometry.map((g: any) => [Number(g.lon), Number(g.lat)] as [number, number]),
+                positions: el.geometry!.map((g: OverpassGeomPoint) => [Number(g.lon), Number(g.lat)] as [number, number]),
             });
         } else if (power === 'substation') {
             if (el.type === 'node') {
@@ -108,12 +108,12 @@ export async function fetchHarborData(viewport: Viewport): Promise<HarborData> {
 
         if (el.type === 'node') {
             terminals.push({ id: `harbor-node-${el.id}`, lat: Number(el.lat), lon: Number(el.lon), name: tags.name ?? '', tags });
-        } else if (el.type === 'way' && el.geometry?.length >= 2) {
+        } else if (el.type === 'way' && (el.geometry?.length ?? 0) >= 2) {
             piers.push({
                 id: `harbor-way-${el.id}`,
                 name: tags.name ?? '',
                 tags,
-                positions: el.geometry.map((g: any) => [Number(g.lon), Number(g.lat)] as [number, number]),
+                positions: el.geometry!.map((g: OverpassGeomPoint) => [Number(g.lon), Number(g.lat)] as [number, number]),
             });
         }
     }
