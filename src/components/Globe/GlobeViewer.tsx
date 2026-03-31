@@ -35,19 +35,12 @@ function applySatelliteImagery(v: Viewer, tracked: ImageryLayer[]) {
         url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
         credit: 'Esri, Maxar, Earthstar Geographics',
     }), 0));
-    const lbl = v.imageryLayers.addImageryProvider(new UrlTemplateImageryProvider({
-        url: 'https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}.png',
-        subdomains: 'abcd',
-        credit: 'CartoDB',
-    }), 1);
-    lbl.alpha = 0.5;
-    tracked.push(lbl);
 }
 
 function applyMapImagery(v: Viewer, tracked: ImageryLayer[]) {
     clearBaseLayers(v, tracked);
     tracked.push(v.imageryLayers.addImageryProvider(new UrlTemplateImageryProvider({
-        url: 'https://{s}.basemaps.cartocdn.com/rastertiles/light_all/{z}/{x}/{y}.png',
+        url: 'https://{s}.basemaps.cartocdn.com/rastertiles/light_nolabels/{z}/{x}/{y}.png',
         subdomains: 'abcd',
         credit: 'CartoDB',
     }), 0));
@@ -66,13 +59,6 @@ function applyBlendImagery(v: Viewer, tracked: ImageryLayer[]) {
     }), 1);
     roads.alpha = 0.45;
     tracked.push(roads);
-    const lbl = v.imageryLayers.addImageryProvider(new UrlTemplateImageryProvider({
-        url: 'https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}.png',
-        subdomains: 'abcd',
-        credit: 'CartoDB',
-    }), 2);
-    lbl.alpha = 0.5;
-    tracked.push(lbl);
 }
 
 interface GlobeViewerProps {
@@ -164,7 +150,7 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
         const pickScratch = new Cartesian2();
         const dirScratch = new Cartesian3();
         const orbitHprScratch = new HeadingPitchRange(0, ORBIT_PITCH, 500_000);
-        const trackHprScratch = new HeadingPitchRange(0, CesiumMath.toRadians(-30), 500_000);
+        const trackHprScratch = new HeadingPitchRange(0, CesiumMath.toRadians(-45), 500_000);
         const julianDateScratch = new JulianDate();
 
         v.canvas.addEventListener('wheel', (e) => {
@@ -372,7 +358,7 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
             viewer.camera.lookAtTransform(Matrix4.IDENTITY);
             setOrbitActive(false);
         } else {
-            trackDistRef.current = Math.max(500, viewer.camera.positionCartographic.height * 0.5);
+            trackDistRef.current = 4_000;
             orbitHeadingRef.current = viewer.camera.heading;
             setOrbitActive(true);
         }

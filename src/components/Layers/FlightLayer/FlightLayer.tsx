@@ -56,9 +56,21 @@ function createPlaneIcon(heading: number, color: string): string {
     const cacheKey = `${h}-${color}`;
     const cached = planeIconCache.get(cacheKey);
     if (cached) return cached;
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
-        <g transform="rotate(${h}, 12, 12)">
-            <path d="M12 2 L14 9 L21 11 L14 13 L14 20 L12 18 L10 20 L10 13 L3 11 L10 9 Z"
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+        <g transform="rotate(${h}, 24, 24)">
+            <path d="M24 2 C26 2 28 5 28 10 L28 38 C28 43 26 46 24 46 C22 46 20 43 20 38 L20 10 C20 5 22 2 24 2 Z"
+                  fill="${color}" stroke="#000" stroke-width="0.5"/>
+            <path d="M20 18 L4 32 L4 35 L20 26 Z"
+                  fill="${color}" stroke="#000" stroke-width="0.5"/>
+            <path d="M28 18 L44 32 L44 35 L28 26 Z"
+                  fill="${color}" stroke="#000" stroke-width="0.5"/>
+            <path d="M9 28 C8 28 7 29.5 7 31 C7 32.5 8 34 9 34 L13 34 C14 34 15 32.5 15 31 C15 29.5 14 28 13 28 Z"
+                  fill="#222" stroke="#000" stroke-width="0.5"/>
+            <path d="M35 28 C34 28 33 29.5 33 31 C33 32.5 34 34 35 34 L39 34 C40 34 41 32.5 41 31 C41 29.5 40 28 39 28 Z"
+                  fill="#222" stroke="#000" stroke-width="0.5"/>
+            <path d="M20 39 L11 44 L11 46 L20 43 Z"
+                  fill="${color}" stroke="#000" stroke-width="0.5"/>
+            <path d="M28 39 L37 44 L37 46 L28 43 Z"
                   fill="${color}" stroke="#000" stroke-width="0.5"/>
         </g>
     </svg>`;
@@ -324,7 +336,7 @@ export function FlightLayer() {
                     id, name: flight.callsign || flight.icao24, position: pos,
                     billboard: {
                         image: createPlaneIcon(flight.heading, color),
-                        width: 20, height: 20, color: cesiumColor,
+                        width: 40, height: 40, color: cesiumColor,
                         verticalOrigin: VerticalOrigin.CENTER,
                         horizontalOrigin: HorizontalOrigin.CENTER,
                         heightReference: HeightReference.NONE, rotation: 0,

@@ -87,7 +87,14 @@ export function useWASDNavigation(viewer: Viewer | null, orbitActive: boolean) {
                 const pos = camera.positionCartographic.clone();
                 pos.longitude += vel.lon;
                 pos.latitude = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, pos.latitude + vel.lat));
-                camera.position = Cartesian3.fromRadians(pos.longitude, pos.latitude, pos.height);
+                camera.setView({
+                    destination: Cartesian3.fromRadians(pos.longitude, pos.latitude, pos.height),
+                    orientation: {
+                        heading: camera.heading,
+                        pitch: camera.pitch,
+                        roll: camera.roll,
+                    },
+                });
                 viewer.scene.requestRender();
             } else {
                 vel.lon = 0;
