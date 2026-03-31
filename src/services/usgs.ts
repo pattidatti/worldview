@@ -17,5 +17,5 @@ export async function fetchEarthquakes(): Promise<Earthquake[]> {
         lon: f.geometry.coordinates[0],
         lat: f.geometry.coordinates[1],
         depth: f.geometry.coordinates[2],
-    })).filter(eq => Number.isFinite(eq.lat) && Number.isFinite(eq.lon));
+    })).filter((eq: Earthquake) => Number.isFinite(eq.lat) && Number.isFinite(eq.lon));
 }
