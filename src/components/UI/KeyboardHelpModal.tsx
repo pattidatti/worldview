@@ -7,7 +7,7 @@ interface KeyboardHelpModalProps {
 
 const LAYER_SHORTCUTS = LAYER_DEFAULTS.slice(0, 6).map((l, i) => ({
     key: String(i + 1),
-    label: `Toggle ${l.name}`,
+    label: `Veksle ${l.name}`,
 }));
 
 const SHORTCUTS = [

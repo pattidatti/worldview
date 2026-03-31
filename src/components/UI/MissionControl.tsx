@@ -66,7 +66,8 @@ export function MissionControl() {
                 setError(err instanceof Error ? err.message : 'Ukjent feil');
             }
         } finally {
-            setLoading(false);
+            // Only clear loading if this is still the active request (guards against rapid re-clicks)
+            if (abortRef.current === controller) setLoading(false);
         }
     }, [viewer, viewport, collect]);
 

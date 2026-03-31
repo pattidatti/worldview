@@ -218,9 +218,10 @@ export function getShipComponents(
             { wFrac: 0.25, lFrac: 0.06, height: 15, fwdFrac: -0.28, vertBase: h,    css: '#a0b8c8' },
         ];
     }
-    // Standard/ukjent
+    // Standard/ukjent — generisk handelsfartøy: overbygning midtskips + høyere brotårn
     return [
-        { wFrac: 0.50, lFrac: 0.15, height: 14, fwdFrac: -0.20, vertBase: h, css: '#c8d0d8' },
+        { wFrac: 0.55, lFrac: 0.18, height: 12, fwdFrac: -0.10, vertBase: h,    css: '#c8d0d8' },
+        { wFrac: 0.35, lFrac: 0.08, height:  8, fwdFrac: -0.10, vertBase: h+12, css: '#bac2cc' },
     ];
 }
 

@@ -30,6 +30,7 @@ export async function fetchNewsEvents(): Promise<NewsEvent[]> {
         if (!coords || !props?.name || !props?.url) continue;
 
         const [lon, lat] = coords;
+        if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
         events.push({
             id: `${lon.toFixed(3)}_${lat.toFixed(3)}_${btoa(props.url.slice(-40)).slice(0, 12)}`,
             title: props.name,

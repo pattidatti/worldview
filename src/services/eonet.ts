@@ -44,7 +44,7 @@ export async function fetchDisasters(): Promise<Disaster[]> {
             lat = coords[1];
         }
 
-        if (lon == null || lat == null) continue;
+        if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
 
         results.push({
             id: event.id,

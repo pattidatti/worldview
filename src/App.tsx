@@ -50,6 +50,7 @@ import { OrbitProvider } from './context/OrbitContext';
 import { GeointProvider } from './context/GeointContext';
 import { MissionControl } from './components/UI/MissionControl';
 import { OrbitButton } from './components/UI/OrbitButton';
+import { ResetCameraButton } from './components/UI/ResetCameraButton';
 import { GeoNavigator } from './components/UI/GeoNavigator';
 import { KeyboardHelpModal } from './components/UI/KeyboardHelpModal';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
@@ -141,6 +142,7 @@ function AppContent({
                 <CameraHud />
                 <OrbitButton />
                 <MissionControl />
+                <ResetCameraButton />
                 <GeoNavigator />
                 <StatusTicker />
                 <LayerErrorWatcher />

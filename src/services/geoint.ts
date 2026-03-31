@@ -75,7 +75,8 @@ export async function streamGeointBrief(
         throw new Error(`API-feil ${response.status}: ${body}`);
     }
 
-    const reader = response.body!.getReader();
+    if (!response.body) throw new Error('Ingen stream fra API');
+    const reader = response.body.getReader();
     const decoder = new TextDecoder();
 
     return new ReadableStream<string>({

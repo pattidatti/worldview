@@ -322,7 +322,13 @@ export function ShipLayer() {
                         new Cartesian3(dims.width, dims.length, dims.height),
                     );
                 }
-                // Oppdater overbygningskomponenter
+                // Oppdater hull-farge (endres når shipType ankommer via ShipStaticData)
+                if (entity.box?.material !== undefined) {
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    (entity.box.material as any) = Color.fromCssColorString(getShipColorCss(ship.shipType)).withAlpha(0.95);
+                }
+                // Oppdater overbygningskomponenter — opprett manglende, fjern ekstra
+                // (skjer typisk når ShipStaticData ankommer etter PositionReport og endrer shipType)
                 for (let i = 0; i < components.length; i++) {
                     const comp = components[i];
                     const compId = `${id}::c${i + 1}`;
@@ -340,7 +346,27 @@ export function ShipLayer() {
                                 new Cartesian3(dims.width * comp.wFrac, dims.length * comp.lFrac, comp.height),
                             );
                         }
+                        if (compEntity.box?.material !== undefined) {
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                            (compEntity.box.material as any) = Color.fromCssColorString(comp.css).withAlpha(0.97);
+                        }
+                    } else if (superDs) {
+                        superDs.entities.add(new Entity({
+                            id: compId,
+                            position: compPos,
+                            orientation,
+                            box: {
+                                dimensions: new Cartesian3(dims.width * comp.wFrac, dims.length * comp.lFrac, comp.height),
+                                material: Color.fromCssColorString(comp.css).withAlpha(0.97),
+                                outline: true,
+                                outlineColor: Color.BLACK.withAlpha(0.22),
+                            },
+                        }));
                     }
+                }
+                // Fjern ekstra komponenter (f.eks. ved type-overgang passasjerskip→lasteskip: 5→3 komp.)
+                for (let i = components.length + 1; i <= 7; i++) {
+                    superDs?.entities.removeById(`${id}::c${i}`);
                 }
             } else {
                 const hullColor = Color.fromCssColorString(getShipColorCss(ship.shipType));

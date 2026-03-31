@@ -42,11 +42,11 @@ export async function fetchConflicts(): Promise<ConflictEvent[]> {
             actor2: row.actor2 ?? '',
             country: row.country ?? '',
             admin1: row.admin1 ?? '',
-            lat: parseFloat(row.latitude) || 0,
-            lon: parseFloat(row.longitude) || 0,
+            lat: parseFloat(row.latitude),
+            lon: parseFloat(row.longitude),
             fatalities: parseInt(row.fatalities) || 0,
             notes: row.notes ?? '',
             source: row.source ?? '',
         };
-    });
+    }).filter(ev => Number.isFinite(ev.lat) && Number.isFinite(ev.lon));
 }
