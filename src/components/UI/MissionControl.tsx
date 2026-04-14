@@ -232,7 +232,7 @@ export function MissionControl() {
                             alignItems: 'center',
                         }}>
                             <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.2)', letterSpacing: '0.06em' }}>
-                                GENERERT AV CLAUDE · SANNTIDSDATA WORLDVIEW
+                                GENERERT AV GEMINI · SANNTIDSDATA WORLDVIEW
                             </span>
                             {!loading && text && (
                                 <button

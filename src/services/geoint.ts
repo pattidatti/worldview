@@ -48,27 +48,23 @@ export async function streamGeointBrief(
     layerData: GeointLayerData[],
     signal: AbortSignal,
 ): Promise<ReadableStream<string>> {
-    const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
-    if (!apiKey) throw new Error('Mangler VITE_ANTHROPIC_API_KEY i miljøvariabler');
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+    if (!apiKey) throw new Error('Mangler VITE_GEMINI_API_KEY i miljøvariabler');
 
     const prompt = buildPrompt(centerLat, centerLon, cameraAlt / 1000, viewport, layerData);
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-            'x-api-key': apiKey,
-            'anthropic-version': '2023-06-01',
-            'content-type': 'application/json',
-            'anthropic-dangerous-direct-browser-access': 'true',
+    const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?key=${apiKey}&alt=sse`,
+        {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+                contents: [{ role: 'user', parts: [{ text: prompt }] }],
+                generationConfig: { maxOutputTokens: 1024 },
+            }),
+            signal,
         },
-        body: JSON.stringify({
-            model: 'claude-sonnet-4-6',
-            max_tokens: 1024,
-            stream: true,
-            messages: [{ role: 'user', content: prompt }],
-        }),
-        signal,
-    });
+    );
 
     if (!response.ok) {
         const body = await response.text().catch(() => response.statusText);
@@ -92,8 +88,7 @@ export async function streamGeointBrief(
                         if (json === '[DONE]' || json === '') continue;
                         try {
                             const parsed = JSON.parse(json);
-                            // Anthropic SSE format: content_block_delta with delta.text
-                            const delta: string = parsed.delta?.text ?? '';
+                            const delta: string = parsed.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
                             if (delta) controller.enqueue(delta);
                         } catch {
                             // skip malformed SSE lines
