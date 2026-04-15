@@ -8,6 +8,7 @@ import {
 import { reverseGeocode } from '@/services/geocoding';
 import { ViewerProvider } from '@/context/ViewerContext';
 import { usePopupRegistry } from '@/context/PopupRegistry';
+import { useGates } from '@/context/GateContext';
 import { useImagery } from '@/context/ImageryContext';
 import { useTracking } from '@/context/TrackingContext';
 import { useOrbit } from '@/context/OrbitContext';
@@ -71,6 +72,7 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
     const initRef = useRef(false);
     const [viewer, setViewer] = useState<Viewer | null>(null);
     const { resolve } = usePopupRegistry();
+    const { isDrawingRef } = useGates();
     const { activeMode } = useImagery();
     const { activeOverlay } = useShaderOverlay();
     const { trackedEntityId, setTrackedEntityId } = useTracking();
@@ -257,6 +259,7 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
         // Single centralized click handler
         const removeClickHandler = v.selectedEntityChanged.addEventListener(
             (entity: Entity | undefined) => {
+                if (isDrawingRef.current) return;
                 if (!entity) return;
                 const popup = resolveRef.current(entity);
                 if (popup) onSelectRef.current?.(popup);
@@ -266,6 +269,7 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
         // Click handler — cluster zoom + globe surface reverse geocoding
         const clickHandler = new ScreenSpaceEventHandler(v.canvas);
         clickHandler.setInputAction((click: { position: Cartesian2 }) => {
+            if (isDrawingRef.current) return;
             const picked = v.scene.pick(click.position);
 
             // Regular entity → handled by selectedEntityChanged, skip
@@ -349,6 +353,8 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
             setViewer(null);
             initRef.current = false;
         };
+        // isDrawingRef is a stable useRef — reading its .current inside handlers is intentional.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     // Camera lock/unlock when tracking changes

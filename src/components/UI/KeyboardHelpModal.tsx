@@ -17,6 +17,14 @@ const SHORTCUTS = [
     ...LAYER_SHORTCUTS,
 ];
 
+const GATE_SHORTCUTS = [
+    { key: 'G', label: 'Start tegning av port (når Porter-lag er på)' },
+    { key: 'Klikk', label: 'Legg til punkt' },
+    { key: 'Dbl-klikk / Enter', label: 'Fullfør port' },
+    { key: 'Backspace', label: 'Fjern siste punkt' },
+    { key: 'Escape', label: 'Avbryt tegning' },
+];
+
 export function KeyboardHelpModal({ onClose }: KeyboardHelpModalProps) {
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
@@ -60,6 +68,23 @@ export function KeyboardHelpModal({ onClose }: KeyboardHelpModalProps) {
                             </span>
                         </div>
                     ))}
+                </div>
+                <div className="mt-4 pt-3 border-t border-white/10">
+                    <h3 className="font-mono text-[10px] font-bold text-[var(--color-gates)] tracking-wider mb-2">
+                        PORTER
+                    </h3>
+                    <div className="flex flex-col gap-2">
+                        {GATE_SHORTCUTS.map(({ key, label }) => (
+                            <div key={key} className="flex items-center justify-between gap-4">
+                                <span className="font-mono text-xs bg-white/5 border border-white/10 rounded px-2 py-0.5 text-[var(--color-gates)] shrink-0">
+                                    {key}
+                                </span>
+                                <span className="text-xs text-[var(--text-secondary)] text-right">
+                                    {label}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
                 </div>
                 <p className="mt-4 text-[10px] text-[var(--text-muted)] text-center">
                     Trykk ? eller Escape for å lukke

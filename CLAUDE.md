@@ -87,6 +87,15 @@ ConflictLayer and NewsLayer use clustering via `configureCluster(ds, { pixelRang
 - **PopupRegistry** (`src/context/PopupRegistry.tsx`) — centralized entity click handling. Each layer calls `register(dataSourceName, builderFn)` with a function that takes an Entity and returns PopupContent or null. GlobeViewer has ONE `selectedEntityChanged` listener that calls `resolve(entity)`. Builders use refs for data to avoid re-render dependencies.
 - **TooltipRegistry** — centralized hover handling, same pattern as PopupRegistry
 - **OrbitContext** (`src/context/OrbitContext.tsx`) — boolean flag `orbitActive` + `setOrbitActive`; camera orbit implementation lives in GlobeViewer (not yet implemented)
+- **GateContext** (`src/context/GateContext.tsx`) — user-drawn polyline "gates" used for geofencing. CRUD + localStorage-persistens (key `worldview-gates`, schema v1). Eksponerer også draw-modus (`isDrawing`, `isDrawingRef`, `startDrawing/pushDrawVertex/popDrawVertex/finishDrawing/cancelDrawing`). `isDrawingRef` leses av GlobeViewer og `useHoverTooltip` for å suspendere entity-valg og tooltips under tegning.
+- **TimelineEventContext** (`src/context/TimelineEventContext.tsx`) — bounded queue (cap 1000, LIFO) for strukturerte hendelser (`gate-crossing`, `layer-alert`, `data-gap`). `append(events)` er idempotent på `id`-feltet. Dette er IKKE EventLog — som kun er count-delta-snapshot per lag.
+
+### Porter (gates) + crossing-deteksjon
+
+- `GateLayer` rendrer porter som polyliner via `PolylineGlowMaterialProperty`, eier også draw-mode-input via `useGateDrawing` (ScreenSpaceEventHandler for LEFT_CLICK, MOUSE_MOVE for preview, LEFT_DOUBLE_CLICK/Enter for fullfør, Escape/Backspace via window keydown).
+- Matematikk: `src/utils/geofence.ts` gjør segment-intersection i lokal ENU-tangent-plan per gate-segment (korrekt opp til ~100 km segmentlengde). Porter nær polene (|lat|>80°) eller over antimeridianen avvises.
+- Crossing-deteksjon skjer i `FlightLayer` og `ShipLayer` i deres `updateEntities()`-løkke — det finnes IKKE en sentral crossing-service. Hvert lag holder `lastEntityStateRef: Map<id, {pos, ts}>` separat fra `trailHistoryRef` (trail-strukturen utvides IKKE, for å unngå blast radius). Stale-trail-vern: ignorerer crossings hvis `dt > 2 × pollKadens` (20s for fly, 10s for skip).
+- Events flushes via `appendEventsRef.current(events)` én gang per poll-iterasjon. Idempotent doc-ID (`gateId:entityId:segmentIndex:tsMinute`) — trygt å kalle flere ganger.
 
 ### Key hooks
 

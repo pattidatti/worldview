@@ -1,4 +1,12 @@
-import { useState, useCallback, useRef, useMemo } from 'react';
+import { useState, useCallback, useRef, useMemo, useEffect } from 'react';
+import { GateProvider, useGates } from './context/GateContext';
+import { TimelineEventProvider } from './context/TimelineEventContext';
+import { GateLayer } from './components/Layers/GateLayer/GateLayer';
+import { GateNameModal } from './components/UI/GateNameModal';
+import { GateDrawHud } from './components/UI/GateDrawHud';
+import { GatePanel } from './components/UI/GatePanel';
+import { addToast } from './components/UI/Toast';
+import type { LatLon } from './types/gate';
 import { GlobeViewer } from './components/Globe/GlobeViewer';
 import { LayerProvider, useLayers } from './context/LayerContext';
 import { PopupRegistryProvider } from './context/PopupRegistry';
@@ -68,7 +76,8 @@ const LAYER_IDS = LAYER_DEFAULTS.map((l) => l.id);
 function TooltipHandler() {
     const viewer = useViewer();
     const { resolve } = useTooltipRegistry();
-    const hover = useHoverTooltip(viewer, resolve);
+    const { isDrawingRef } = useGates();
+    const hover = useHoverTooltip(viewer, resolve, isDrawingRef);
     return hover ? <EntityTooltip hover={hover} /> : null;
 }
 
@@ -87,8 +96,10 @@ function AppContent({
     showHelp: boolean;
     setShowHelp: (v: boolean) => void;
 }) {
-    const { toggleLayer } = useLayers();
+    const { toggleLayer, isVisible } = useLayers();
     const { trackedEntityId, setTrackedEntityId } = useTracking();
+    const { addGate, startDrawing, isDrawing } = useGates();
+    const [pendingVertices, setPendingVertices] = useState<LatLon[] | null>(null);
 
     const closePopup = useCallback(() => {
         setPopup(null);
@@ -105,6 +116,50 @@ function AppContent({
         toggleHelp,
         layerIds,
     });
+
+    // Shortcut: G to start drawing (only when gates layer is visible and not already drawing).
+    useEffect(() => {
+        const handler = (e: KeyboardEvent) => {
+            if (e.key !== 'g' && e.key !== 'G') return;
+            const target = e.target as HTMLElement | null;
+            if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+            if (!isVisible('gates') || isDrawing) return;
+            e.preventDefault();
+            startDrawing();
+        };
+        window.addEventListener('keydown', handler);
+        return () => window.removeEventListener('keydown', handler);
+    }, [isVisible, isDrawing, startDrawing]);
+
+    // Onboarding toast when the gates layer is first toggled visible.
+    const gatesVisible = isVisible('gates');
+    useEffect(() => {
+        if (!gatesVisible) return;
+        try {
+            const key = 'worldview-gates-onboarding-seen';
+            if (localStorage.getItem(key)) return;
+            localStorage.setItem(key, '1');
+            addToast('Porter: trykk G eller + TEGN for å tegne en port. Dobbeltklikk fullfører.', 'info');
+        } catch { /* ignore */ }
+    }, [gatesVisible]);
+
+    const handleRequestName = useCallback((vertices: LatLon[]) => {
+        if (vertices.length < 2) {
+            addToast('Port må ha minst 2 punkter.', 'error');
+            return;
+        }
+        setPendingVertices(vertices);
+    }, []);
+
+    const handleSaveGate = useCallback((name: string, vertices: LatLon[]) => {
+        addGate({ name, vertices });
+        setPendingVertices(null);
+    }, [addGate]);
+
+    const handleCancelName = useCallback(() => {
+        setPendingVertices(null);
+    }, []);
+
 
     return (
         <div className="h-full w-full relative">
@@ -137,9 +192,12 @@ function AppContent({
                 <RoadCameraLayer />
                 <GPSJamLayer />
                 <ChokepointLayer />
+                <GateLayer onRequestName={handleRequestName} />
                 <PlaceLabels />
                 <TopBar searchRef={searchRef} />
                 <LayerPanel />
+                <GatePanel />
+                <GateDrawHud />
                 <ImageryPicker />
                 <ShaderOverlayPicker />
                 <PortholeOverlay />
@@ -163,6 +221,13 @@ function AppContent({
                 <TooltipHandler />
             </GlobeViewer>
             {showHelp && <KeyboardHelpModal onClose={() => setShowHelp(false)} />}
+            {pendingVertices && (
+                <GateNameModal
+                    vertices={pendingVertices}
+                    onSave={handleSaveGate}
+                    onCancel={handleCancelName}
+                />
+            )}
             <ToastContainer />
         </div>
     );
@@ -178,6 +243,8 @@ export default function App() {
         <ShaderOverlayProvider>
         <ImageryProvider>
         <LayerProvider>
+        <GateProvider>
+        <TimelineEventProvider>
         <TrackingProvider>
         <OrbitProvider>
         <GeointProvider>
@@ -198,6 +265,8 @@ export default function App() {
         </GeointProvider>
         </OrbitProvider>
         </TrackingProvider>
+        </TimelineEventProvider>
+        </GateProvider>
         </LayerProvider>
         </ImageryProvider>
         </ShaderOverlayProvider>

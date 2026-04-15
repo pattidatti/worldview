@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useLayers } from '@/context/LayerContext';
+import { useGates } from '@/context/GateContext';
 import { type LayerConfig, type LayerCategory, type LayerId, LAYER_ICONS, LAYER_CATEGORIES } from '@/types/layers';
 import { AnimatedCount } from './AnimatedCount';
 
@@ -30,6 +31,7 @@ function formatTimeAgo(ts: number): string {
 
 function LayerToggle({ layer }: { layer: LayerConfig }) {
     const { toggleLayer } = useLayers();
+    const { startDrawing, isDrawing } = useGates();
     const [pulsing, setPulsing] = useState(false);
     const prevCountRef = useRef(layer.count);
 
@@ -81,6 +83,30 @@ function LayerToggle({ layer }: { layer: LayerConfig }) {
                     title={layer.lastUpdated ? `Sist oppdatert: ${formatTimeAgo(layer.lastUpdated)}` : undefined}
                 />
             ) : null}
+            {layer.id === 'gates' && layer.visible && (
+                <span
+                    role="button"
+                    tabIndex={0}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        if (!isDrawing) startDrawing();
+                    }}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            if (!isDrawing) startDrawing();
+                        }
+                    }}
+                    title="Tegn ny port (G)"
+                    className={`ml-1 text-[10px] font-mono px-1.5 py-0.5 rounded border cursor-pointer shrink-0 transition-colors
+                        ${isDrawing
+                            ? 'border-[var(--color-gates)] text-[var(--color-gates)] opacity-50 cursor-wait'
+                            : 'border-white/20 text-[var(--color-gates)] hover:bg-white/10'}`}
+                >
+                    +port
+                </span>
+            )}
         </button>
     );
 }

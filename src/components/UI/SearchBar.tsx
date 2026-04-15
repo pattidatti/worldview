@@ -53,6 +53,7 @@ const LAYER_COLORS: Record<LayerId, string> = {
     roadCameras: '#00e5ff',
     gpsjam: '#ff4500',
     chokepoints: '#ff6b35',
+    gates: '#4a9eff',
 };
 
 function searchEntities(viewer: import('cesium').Viewer | null, query: string, visibleLayerIds: Set<LayerId>): EntityResult[] {

@@ -18,6 +18,7 @@ export interface HoverState {
 export function useHoverTooltip(
     viewer: Viewer | null,
     resolve: (entity: Entity) => TooltipContent | null,
+    suspendedRef?: React.RefObject<boolean>,
 ): HoverState | null {
     const [hover, setHover] = useState<HoverState | null>(null);
     const resolveRef = useRef(resolve);
@@ -33,6 +34,14 @@ export function useHoverTooltip(
         const THROTTLE_MS = 50;
 
         handler.setInputAction((movement: { endPosition: Cartesian2 }) => {
+            if (suspendedRef?.current) {
+                if (lastEntityIdRef.current !== null) {
+                    lastEntityIdRef.current = null;
+                    lastContentRef.current = null;
+                    setHover(null);
+                }
+                return;
+            }
             const now = performance.now();
             if (now - lastPickTime < THROTTLE_MS) return;
             lastPickTime = now;
@@ -79,6 +88,8 @@ export function useHoverTooltip(
             lastEntityIdRef.current = null;
             lastContentRef.current = null;
         };
+        // suspendedRef is a stable useRef — only viewer identity should re-run this effect.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [viewer]);
 
     return hover;

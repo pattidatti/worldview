@@ -17,6 +17,8 @@ import { useLayers } from '@/context/LayerContext';
 import { usePopupRegistry } from '@/context/PopupRegistry';
 import { useTooltipRegistry } from '@/context/TooltipRegistry';
 import { useGeointRegistry } from '@/context/GeointContext';
+import { useGates } from '@/context/GateContext';
+import { useTimelineEvents } from '@/context/TimelineEventContext';
 import { useViewport } from '@/hooks/useViewport';
 import { configureCluster } from '@/utils/cluster';
 import { fetchFlights } from '@/services/airplaneslive';
@@ -24,6 +26,10 @@ import { fetchFlightRoute, getCachedRoute } from '@/services/opensky';
 import { lookupAirline } from '@/data/airlines';
 import { spawnPulseRing } from '@/utils/pulseRing';
 import { type Flight } from '@/types/flight';
+import {
+    detectEntityCrossings,
+    type EntityPosition,
+} from '@/utils/crossingDetector';
 
 const FLIGHT_COLOR = Color.fromCssColorString('#ffa500');
 const POLL_MS = 10_000;
@@ -107,6 +113,13 @@ export function FlightLayer() {
     const { register, unregister } = usePopupRegistry();
     const { register: tooltipRegister, unregister: tooltipUnregister } = useTooltipRegistry();
     const { register: geointRegister, unregister: geointUnregister } = useGeointRegistry();
+    const { gates } = useGates();
+    const { append: appendTimelineEvents } = useTimelineEvents();
+    const gatesRef = useRef(gates);
+    gatesRef.current = gates;
+    const appendEventsRef = useRef(appendTimelineEvents);
+    appendEventsRef.current = appendTimelineEvents;
+    const lastEntityStateRef = useRef<Map<string, EntityPosition>>(new Map());
     const visible = isVisible('flights');
     const viewport = useViewport(viewer);
     const dataSourceRef = useRef<CustomDataSource | null>(null);
@@ -340,6 +353,10 @@ export function FlightLayer() {
         for (const entity of ds.entities.values) existing.set(entity.id, entity);
         const nowMs = Date.now();
 
+        const crossingEvents = [] as ReturnType<typeof detectEntityCrossings>;
+        const gatesForDetection = gatesRef.current;
+        const detectOptions = { maxStalenessMs: 2 * POLL_MS };
+
         // Steg 1: oppdater API-sighting og synkroniser entiteter for fly fra denne pollen
         for (const flight of flights) {
             if (flight.onGround) continue;
@@ -347,6 +364,27 @@ export function FlightLayer() {
 
             // Oppdater tidsstempel for soft-removal TTL
             lastSeenByApiRef.current.set(id, nowMs);
+
+            // Gate-crossing deteksjon (før trail-append og entity-sync — leser forrige rene posisjon).
+            if (gatesForDetection.length > 0) {
+                const prevState = lastEntityStateRef.current.get(id);
+                const currState: EntityPosition = {
+                    pos: { lat: flight.lat, lon: flight.lon },
+                    ts: nowMs,
+                };
+                if (prevState) {
+                    const events = detectEntityCrossings(
+                        id,
+                        'flight',
+                        prevState,
+                        currState,
+                        gatesForDetection,
+                        detectOptions,
+                    );
+                    if (events.length > 0) crossingEvents.push(...events);
+                }
+                lastEntityStateRef.current.set(id, currState);
+            }
 
             const pos = Cartesian3.fromDegrees(flight.lon, flight.lat, flight.altitude);
             const color = getFlightColor(flight);
@@ -468,7 +506,13 @@ export function FlightLayer() {
                 trailHistoryRef.current.delete(id);
                 drStateRef.current.delete(id);
                 lastSeenByApiRef.current.delete(id);
+                lastEntityStateRef.current.delete(id);
             }
+        }
+
+        // Steg 3b: flush innsamlede gate-crossings til timeline
+        if (crossingEvents.length > 0) {
+            appendEventsRef.current(crossingEvents);
         }
 
         // Steg 4: sweep etter foreldreløse trail-entiteter (f.eks. fra race conditions ved mount)

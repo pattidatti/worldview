@@ -24,10 +24,16 @@ import { useLayers } from '@/context/LayerContext';
 import { usePopupRegistry } from '@/context/PopupRegistry';
 import { useTooltipRegistry } from '@/context/TooltipRegistry';
 import { useGeointRegistry } from '@/context/GeointContext';
+import { useGates } from '@/context/GateContext';
+import { useTimelineEvents } from '@/context/TimelineEventContext';
 import { useViewport } from '@/hooks/useViewport';
 import { configureCluster } from '@/utils/cluster';
 import { AISStreamConnection } from '@/services/aisstream';
 import { type Ship } from '@/types/ship';
+import {
+    detectEntityCrossings,
+    type EntityPosition,
+} from '@/utils/crossingDetector';
 import {
     getShipTypeName,
     getNavStatusText,
@@ -45,6 +51,8 @@ const MAX_SHIPS = 1000;
 const MAX_SHIP_TRAIL = 60;
 const SHIP_STALE_MS = 60 * 60 * 1000; // fjern skip som ikke har rapportert på 60 min
 const SHIP_TRAIL_COLOR = Color.fromCssColorString('#00d4ff');
+const SHIP_BATCH_MS = 5_000; // AISStreamConnection batches updates every 5s — brukes som staleness-referanse
+const SHIP_CROSSING_STALENESS_MS = 2 * SHIP_BATCH_MS;
 
 // Navn-label vises 0–150 km, krymper gradvis
 const LABEL_RANGE = new DistanceDisplayCondition(0, 150_000);
@@ -93,6 +101,13 @@ export function ShipLayer() {
     const { register, unregister } = usePopupRegistry();
     const { register: tooltipRegister, unregister: tooltipUnregister } = useTooltipRegistry();
     const { register: geointRegister, unregister: geointUnregister } = useGeointRegistry();
+    const { gates } = useGates();
+    const { append: appendTimelineEvents } = useTimelineEvents();
+    const gatesRef = useRef(gates);
+    gatesRef.current = gates;
+    const appendEventsRef = useRef(appendTimelineEvents);
+    appendEventsRef.current = appendTimelineEvents;
+    const lastEntityStateRef = useRef<Map<string, EntityPosition>>(new Map());
     const visible = isVisible('ships');
     const viewport = useViewport(viewer);
     const viewportRef = useRef(viewport);
@@ -300,9 +315,35 @@ export function ShipLayer() {
         for (const entity of ds.entities.values) existing.set(entity.id, entity);
         const seen = new Set<string>();
 
+        const crossingEvents = [] as ReturnType<typeof detectEntityCrossings>;
+        const gatesForDetection = gatesRef.current;
+        const detectOptions = { maxStalenessMs: SHIP_CROSSING_STALENESS_MS };
+        const nowMs = Date.now();
+
         for (const [mmsi, ship] of ships) {
             const id = String(mmsi);
             seen.add(id);
+
+            // Gate-crossing deteksjon (før entity-sync — bruker AIS-posisjonen rett fra state).
+            if (gatesForDetection.length > 0) {
+                const prevState = lastEntityStateRef.current.get(id);
+                const currState: EntityPosition = {
+                    pos: { lat: ship.lat, lon: ship.lon },
+                    ts: nowMs,
+                };
+                if (prevState) {
+                    const events = detectEntityCrossings(
+                        id,
+                        'ship',
+                        prevState,
+                        currState,
+                        gatesForDetection,
+                        detectOptions,
+                    );
+                    if (events.length > 0) crossingEvents.push(...events);
+                }
+                lastEntityStateRef.current.set(id, currState);
+            }
 
             const dims = getShipDimensions(ship.shipType, ship.length, ship.width);
             const components = getShipComponents(ship.shipType, dims);
@@ -472,7 +513,11 @@ export function ShipLayer() {
                 for (let i = 1; i <= 7; i++) superDs?.entities.removeById(`${id}::c${i}`);
                 if (trailDs) trailDs.entities.removeById(`trail-${id}`);
                 trailHistoryRef.current.delete(id);
+                lastEntityStateRef.current.delete(id);
             }
+        }
+        if (crossingEvents.length > 0) {
+            appendEventsRef.current(crossingEvents);
         }
         if (viewer && !viewer.isDestroyed()) viewer.scene.requestRender();
     }, [ships, viewer, setLayerCount]);

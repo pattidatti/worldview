@@ -1,4 +1,4 @@
-export type LayerId = 'flights' | 'ships' | 'satellites' | 'weather' | 'webcams' | 'traffic' | 'trafficFlow' | 'simulatedTraffic' | 'infrastructure' | 'infrastructurePipelines' | 'infrastructureFields' | 'power' | 'wind' | 'harbors' | 'lighthouses' | 'telecom' | 'mines' | 'buildings' | 'submarineCables' | 'earthquakes' | 'disasters' | 'asteroids' | 'news' | 'conflicts' | 'weatherRadar' | 'sigmet' | 'roadCameras' | 'gpsjam' | 'chokepoints';
+export type LayerId = 'flights' | 'ships' | 'satellites' | 'weather' | 'webcams' | 'traffic' | 'trafficFlow' | 'simulatedTraffic' | 'infrastructure' | 'infrastructurePipelines' | 'infrastructureFields' | 'power' | 'wind' | 'harbors' | 'lighthouses' | 'telecom' | 'mines' | 'buildings' | 'submarineCables' | 'earthquakes' | 'disasters' | 'asteroids' | 'news' | 'conflicts' | 'weatherRadar' | 'sigmet' | 'roadCameras' | 'gpsjam' | 'chokepoints' | 'gates';
 
 export interface LayerConfig {
     id: LayerId;
@@ -41,6 +41,7 @@ export const LAYER_ICONS: Record<LayerId, string> = {
     roadCameras: '📷',
     gpsjam: '📡',
     chokepoints: '🌊',
+    gates: '⛩',
 };
 
 export interface LayerCategory {
@@ -58,6 +59,7 @@ export const LAYER_CATEGORIES: LayerCategory[] = [
     { id: 'geo', label: 'Geo', icon: '🌍', layers: ['earthquakes', 'disasters'] },
     { id: 'rom', label: 'Rom', icon: '🛰', layers: ['satellites', 'asteroids'] },
     { id: 'verden', label: 'Verden', icon: '🌐', layers: ['news', 'conflicts', 'webcams', 'buildings', 'telecom', 'mines'] },
+    { id: 'analyse', label: 'Analyse', icon: '⛩', layers: ['gates'] },
 ];
 
 export const LAYER_DEFAULTS: LayerConfig[] = [
@@ -90,4 +92,5 @@ export const LAYER_DEFAULTS: LayerConfig[] = [
     { id: 'roadCameras', name: 'DOT-kameraer', color: '#00e5ff', visible: false, loading: false, count: 0, error: null, lastUpdated: null },
     { id: 'gpsjam', name: 'GPS-forstyrrelser', color: '#ff4500', visible: false, loading: false, count: 0, error: null, lastUpdated: null },
     { id: 'chokepoints', name: 'Strategiske passasjer', color: '#ff6b35', visible: false, loading: false, count: 0, error: null, lastUpdated: null },
+    { id: 'gates', name: 'Porter', color: 'var(--color-gates)', visible: false, loading: false, count: 0, error: null, lastUpdated: null },
 ];
