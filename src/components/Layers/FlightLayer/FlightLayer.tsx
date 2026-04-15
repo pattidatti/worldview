@@ -10,6 +10,7 @@ import {
     HeightReference,
     VerticalOrigin,
     HorizontalOrigin,
+    Math as CesiumMath,
 } from 'cesium';
 import { useViewer } from '@/context/ViewerContext';
 import { useLayers } from '@/context/LayerContext';
@@ -20,13 +21,16 @@ import { useViewport } from '@/hooks/useViewport';
 import { configureCluster } from '@/utils/cluster';
 import { fetchFlights } from '@/services/airplaneslive';
 import { fetchFlightRoute, getCachedRoute } from '@/services/opensky';
+import { lookupAirline } from '@/data/airlines';
+import { spawnPulseRing } from '@/utils/pulseRing';
 import { type Flight } from '@/types/flight';
 
 const FLIGHT_COLOR = Color.fromCssColorString('#ffa500');
-const POLL_MS = 15_000;
-const MAX_FLIGHT_TRAIL = 20;
+const POLL_MS = 10_000;
+const MAX_FLIGHT_TRAIL = 40;
 const MAX_FLIGHTS = 2000;
-const DR_MAX_AGE_MS = POLL_MS * 2; // stop extrapolating after 2 missed polls
+const DR_MAX_AGE_MS = POLL_MS * 3;    // stopp ekstrapolering etter 3 missede polls (30s)
+const REMOVAL_TTL_MS = DR_MAX_AGE_MS; // fjern entitet når DR stopper
 const EARTH_RADIUS_M = 6_371_000;
 
 const MILITARY_COLOR = '#ff2244';
@@ -37,12 +41,6 @@ const SOURCE_COLORS: Record<number, string> = {
     2: '#ffcc00',
     3: '#00ff88',
 };
-const SOURCE_LABELS: Record<number, string> = {
-    0: 'ADS-B (GPS)',
-    1: 'ASTERIX (radar)',
-    2: 'MLAT (multilateration)',
-    3: 'FLARM',
-};
 
 function getFlightColor(flight: Flight): string {
     if (flight.isMilitary) return MILITARY_COLOR;
@@ -51,13 +49,13 @@ function getFlightColor(flight: Flight): string {
 
 const planeIconCache = new Map<string, string>();
 
-function createPlaneIcon(heading: number, color: string): string {
-    const h = Math.round(heading);
-    const cacheKey = `${h}-${color}`;
+// Ikonet peker alltid nordover (0°). Heading settes via billboard.rotation + alignedAxis.
+function createPlaneIcon(color: string): string {
+    const cacheKey = color;
     const cached = planeIconCache.get(cacheKey);
     if (cached) return cached;
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
-        <g transform="rotate(${h}, 24, 24)">
+        <g transform="rotate(0, 24, 24)">
             <path d="M24 2 C26 2 28 5 28 10 L28 38 C28 43 26 46 24 46 C22 46 20 43 20 38 L20 10 C20 5 22 2 24 2 Z"
                   fill="${color}" stroke="#000" stroke-width="0.5"/>
             <path d="M20 18 L4 32 L4 35 L20 26 Z"
@@ -113,7 +111,9 @@ export function FlightLayer() {
     const viewport = useViewport(viewer);
     const dataSourceRef = useRef<CustomDataSource | null>(null);
     const trailDsRef = useRef<CustomDataSource | null>(null);
+    const pulseDsRef = useRef<CustomDataSource | null>(null);
     const trailHistoryRef = useRef<Map<string, Cartesian3[]>>(new Map());
+    const firstPollDoneRef = useRef(false);
     const [flights, setFlights] = useState<Flight[]>([]);
     const viewportRef = useRef(viewport);
     viewportRef.current = viewport;
@@ -121,9 +121,10 @@ export function FlightLayer() {
     flightsRef.current = flights;
     const visibleRef = useRef(visible);
     visibleRef.current = visible;
-    const routePendingRef = useRef(new Set<string>());
     // Dead-reckoning state map
     const drStateRef = useRef<Map<string, DrState>>(new Map());
+    // Sist gang hvert fly ble returnert av API — brukes for soft-removal TTL
+    const lastSeenByApiRef = useRef<Map<string, number>>(new Map());
 
     // GEOINT data provider
     useEffect(() => {
@@ -145,46 +146,65 @@ export function FlightLayer() {
             if (!dataSourceRef.current?.entities.contains(entity)) return null;
             const flight = flightsRef.current.find((f) => f.icao24 === entity.id);
             if (!flight) return null;
+
             const altFt = Math.round(flight.altitude * 3.28084);
+            const altKft = Math.round(altFt / 1000);
             const speedKts = Math.round(flight.velocity * 1.94384);
             const callsign = flight.callsign;
+            const color = getFlightColor(flight);
+            const airline = lookupAirline(callsign ?? '');
             const cachedRoute = callsign ? getCachedRoute(callsign) : undefined;
 
-            if (callsign && cachedRoute === undefined && !routePendingRef.current.has(callsign)) {
-                routePendingRef.current.add(callsign);
-                fetchFlightRoute(callsign).then(() => {
-                    if (viewer?.selectedEntity?.id === flight.icao24) {
-                        const selected = viewer.selectedEntity;
-                        viewer.selectedEntity = undefined;
-                        setTimeout(() => { viewer.selectedEntity = selected; }, 0);
-                    }
-                });
-            }
+            const buildDescription = (route?: { origin: string; destination: string }) => {
+                const fra = route
+                    ? `fra ${route.origin} til ${route.destination}`
+                    : 'rute ukjent';
+                const vertDesc =
+                    flight.verticalRate > 0.5 ? ', stiger' :
+                    flight.verticalRate < -0.5 ? ', synker' : '';
+                const who = flight.isMilitary
+                    ? 'Militærfly'
+                    : airline?.name ?? callsign ?? flight.icao24;
+                return `${who} flyr ${fra}. ${altKft} 000 fot, ${speedKts} knop${vertDesc}.`;
+            };
 
-            const color = getFlightColor(flight);
+            const baseFields = [
+                { label: 'Høyde', value: altFt.toLocaleString('nb-NO'), unit: 'ft' },
+                { label: 'Hastighet', value: speedKts, unit: 'kts' },
+                { label: 'Kurs', value: `${Math.round(flight.heading)}°` },
+                { label: 'Vertikal', value: flight.verticalRate.toFixed(1), unit: 'm/s' },
+                ...(flight.aircraftType ? [{ label: 'Type', value: flight.aircraftType }] : []),
+                { label: 'ICAO24', value: flight.icao24 },
+            ];
+
+            const routeFields = cachedRoute
+                ? [{ label: 'Fra', value: cachedRoute.origin }, { label: 'Til', value: cachedRoute.destination }]
+                : [];
+
             return {
-                title: flight.callsign || flight.icao24,
+                title: callsign || flight.icao24,
                 icon: flight.isMilitary ? '🪖' : '✈',
                 color,
+                description: buildDescription(cachedRoute ?? undefined),
+                imageUrl: airline ? `https://pics.avs.io/200/80/${airline.iataCode}.png` : undefined,
                 followEntityId: flight.icao24,
-                fields: [
-                    ...(flight.isMilitary ? [{ label: 'Type', value: 'Militærfly' }] : []),
-                    ...(cachedRoute ? [
-                        { label: 'Fra', value: cachedRoute.origin },
-                        { label: 'Til', value: cachedRoute.destination },
-                    ] : []),
-                    { label: 'ICAO24', value: flight.icao24 },
-                    ...(flight.originCountry ? [{ label: 'Land', value: flight.originCountry }] : []),
-                    { label: 'Høyde', value: altFt.toLocaleString('nb-NO'), unit: 'ft' },
-                    { label: 'Hastighet', value: speedKts, unit: 'kts' },
-                    { label: 'Kurs', value: `${Math.round(flight.heading)}°` },
-                    { label: 'Vertikal', value: flight.verticalRate.toFixed(1), unit: 'm/s' },
-                    { label: 'Posisjonskilde', value: SOURCE_LABELS[flight.positionSource] ?? 'Ukjent' },
-                ],
+                fields: [...routeFields, ...baseFields],
+                enrichAsync: cachedRoute ? undefined : async () => {
+                    const route = await fetchFlightRoute(callsign ?? '');
+                    if (!route) return {};
+                    const newRouteFields = [
+                        { label: 'Fra', value: route.origin },
+                        { label: 'Til', value: route.destination },
+                    ];
+                    return {
+                        description: buildDescription(route),
+                        fields: [...newRouteFields, ...baseFields],
+                    };
+                },
             };
         });
         return () => unregister('flights');
-    }, [register, unregister, viewer]);
+    }, [register, unregister]);
 
     // Tooltip builder
     useEffect(() => {
@@ -259,8 +279,20 @@ export function FlightLayer() {
     }, [viewer]);
 
     useEffect(() => {
+        if (!viewer || viewer.isDestroyed()) return;
+        const pulseDs = new CustomDataSource('flights-pulses');
+        viewer.dataSources.add(pulseDs);
+        pulseDsRef.current = pulseDs;
+        return () => {
+            if (!viewer.isDestroyed()) viewer.dataSources.remove(pulseDs, true);
+            pulseDsRef.current = null;
+        };
+    }, [viewer]);
+
+    useEffect(() => {
         if (dataSourceRef.current) dataSourceRef.current.show = visible;
         if (trailDsRef.current) trailDsRef.current.show = visible;
+        if (pulseDsRef.current) pulseDsRef.current.show = visible;
     }, [visible]);
 
     // --- Dead-reckoning: preRender listener ---
@@ -306,13 +338,16 @@ export function FlightLayer() {
         setLayerCount('flights', flights.length);
         const existing = new Map<string, Entity>();
         for (const entity of ds.entities.values) existing.set(entity.id, entity);
-        const seen = new Set<string>();
         const nowMs = Date.now();
 
+        // Steg 1: oppdater API-sighting og synkroniser entiteter for fly fra denne pollen
         for (const flight of flights) {
             if (flight.onGround) continue;
             const id = flight.icao24;
-            seen.add(id);
+
+            // Oppdater tidsstempel for soft-removal TTL
+            lastSeenByApiRef.current.set(id, nowMs);
+
             const pos = Cartesian3.fromDegrees(flight.lon, flight.lat, flight.altitude);
             const color = getFlightColor(flight);
             const cesiumColor = Color.fromCssColorString(color);
@@ -328,20 +363,29 @@ export function FlightLayer() {
             if (entity) {
                 (entity.position as ConstantPositionProperty).setValue(pos);
                 if (entity.billboard) {
-                    entity.billboard.image = createPlaneIcon(flight.heading, color) as unknown as import('cesium').Property;
+                    entity.billboard.image = createPlaneIcon(color) as unknown as import('cesium').Property;
                     (entity.billboard.color as ConstantProperty).setValue(cesiumColor);
+                    (entity.billboard.rotation as ConstantProperty).setValue(
+                        CesiumMath.toRadians(-flight.heading)
+                    );
                 }
             } else {
                 ds.entities.add(new Entity({
                     id, name: flight.callsign || flight.icao24, position: pos,
                     billboard: {
-                        image: createPlaneIcon(flight.heading, color),
+                        image: createPlaneIcon(color),
                         width: 40, height: 40, color: cesiumColor,
                         verticalOrigin: VerticalOrigin.CENTER,
                         horizontalOrigin: HorizontalOrigin.CENTER,
-                        heightReference: HeightReference.NONE, rotation: 0,
+                        heightReference: HeightReference.NONE,
+                        rotation: new ConstantProperty(CesiumMath.toRadians(-flight.heading)),
+                        alignedAxis: new ConstantProperty(Cartesian3.UNIT_Z),
                     },
                 }));
+                // Pulsering for nye fly (ikke ved første lasting)
+                if (firstPollDoneRef.current && pulseDsRef.current) {
+                    spawnPulseRing(pulseDsRef.current, pos, cesiumColor);
+                }
             }
 
             if (trailDs) {
@@ -349,37 +393,100 @@ export function FlightLayer() {
                 history.push(pos.clone());
                 if (history.length > MAX_FLIGHT_TRAIL) history.shift();
                 trailHistoryRef.current.set(id, history);
-                const trailId = `trail-${id}`;
-                const trailEntity = trailDs.entities.getById(trailId);
-                if (trailEntity?.polyline?.positions) {
-                    (trailEntity.polyline.positions as ConstantProperty).setValue([...history]);
-                } else if (history.length >= 2) {
+
+                const trailColor = flight.isMilitary
+                    ? Color.fromCssColorString(MILITARY_COLOR)
+                    : FLIGHT_COLOR;
+
+                // Fersk hale: siste 8 posisjoner — lys og tydelig
+                const freshId = `trail-fresh-${id}`;
+                const fresh = history.slice(-8);
+                const freshEntity = trailDs.entities.getById(freshId);
+                if (freshEntity?.polyline?.positions) {
+                    (freshEntity.polyline.positions as ConstantProperty).setValue([...fresh]);
+                } else if (fresh.length >= 2) {
                     trailDs.entities.add(new Entity({
-                        id: trailId,
+                        id: freshId,
                         polyline: {
-                            positions: new ConstantProperty([...history]),
-                            width: 1.5,
+                            positions: new ConstantProperty([...fresh]),
+                            width: 2.5,
                             material: new PolylineGlowMaterialProperty({
-                                glowPower: 0.2,
-                                color: flight.isMilitary
-                                    ? Color.fromCssColorString(MILITARY_COLOR).withAlpha(0.7)
-                                    : FLIGHT_COLOR.withAlpha(0.7),
+                                glowPower: 0.4,
+                                color: trailColor.withAlpha(0.9),
                             }),
                             clampToGround: false,
                         },
                     }));
                 }
+
+                // Gammel hale: resten — mørk og diskret
+                const oldId = `trail-old-${id}`;
+                const old = history.slice(0, -8);
+                const oldEntity = trailDs.entities.getById(oldId);
+                if (old.length >= 2) {
+                    if (oldEntity?.polyline?.positions) {
+                        (oldEntity.polyline.positions as ConstantProperty).setValue([...old]);
+                    } else {
+                        trailDs.entities.add(new Entity({
+                            id: oldId,
+                            polyline: {
+                                positions: new ConstantProperty([...old]),
+                                width: 1,
+                                material: new PolylineGlowMaterialProperty({
+                                    glowPower: 0.1,
+                                    color: trailColor.withAlpha(0.25),
+                                }),
+                                clampToGround: false,
+                            },
+                        }));
+                    }
+                } else if (oldEntity) {
+                    trailDs.entities.removeById(oldId);
+                }
             }
         }
 
+        // Marker første poll som ferdig slik at neste poll kan spawne pulseringer
+        if (!firstPollDoneRef.current && flights.length > 0) {
+            firstPollDoneRef.current = true;
+        }
+
+        // Steg 2: bygg keepAlive-set fra alle fly sett innen TTL (inkl. grace period)
+        const keepAlive = new Set<string>();
+        for (const [id, lastSeen] of lastSeenByApiRef.current) {
+            if (nowMs - lastSeen < REMOVAL_TTL_MS) keepAlive.add(id);
+        }
+
+        // Steg 3: fjern flyentiteter som har utløpt grace period
         for (const [id] of existing) {
-            if (!seen.has(id)) {
+            if (!keepAlive.has(id)) {
                 ds.entities.removeById(id);
-                if (trailDs) trailDs.entities.removeById(`trail-${id}`);
+                if (trailDs) {
+                    trailDs.entities.removeById(`trail-fresh-${id}`);
+                    trailDs.entities.removeById(`trail-old-${id}`);
+                }
                 trailHistoryRef.current.delete(id);
                 drStateRef.current.delete(id);
+                lastSeenByApiRef.current.delete(id);
             }
         }
+
+        // Steg 4: sweep etter foreldreløse trail-entiteter (f.eks. fra race conditions ved mount)
+        if (trailDs) {
+            for (const entity of [...trailDs.entities.values]) {
+                const eid = entity.id;
+                const planeId = eid.startsWith('trail-fresh-')
+                    ? eid.slice('trail-fresh-'.length)
+                    : eid.startsWith('trail-old-')
+                    ? eid.slice('trail-old-'.length)
+                    : null;
+                if (planeId && !keepAlive.has(planeId)) {
+                    trailDs.entities.removeById(eid);
+                    trailHistoryRef.current.delete(planeId);
+                }
+            }
+        }
+
         if (viewer && !viewer.isDestroyed()) viewer.scene.requestRender();
     }, [flights, viewer, setLayerCount]);
 

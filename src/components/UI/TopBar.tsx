@@ -34,25 +34,6 @@ export function TopBar({ searchRef }: TopBarProps) {
                     <h1 className="font-mono text-base font-bold tracking-wider text-[var(--accent-blue)]">
                         WORLDVIEW
                     </h1>
-                    {/* LIVE badge */}
-                    <span className="hidden sm:flex items-center gap-1 font-mono font-bold tracking-widest"
-                        style={{ fontSize: '10px', color: 'rgba(248, 113, 113, 0.9)' }}>
-                        <span className="live-pulse-dot w-1.5 h-1.5 rounded-full bg-red-500" />
-                        LIVE
-                    </span>
-                    <div className="hidden sm:flex items-center gap-1.5">
-                        {layers.map((l) => (
-                            <span
-                                key={l.id}
-                                className="w-1.5 h-1.5 rounded-full transition-opacity"
-                                style={{
-                                    backgroundColor: l.color,
-                                    opacity: l.visible ? 1 : 0.2,
-                                }}
-                                title={`${l.name}: ${l.visible ? l.count : 'av'}`}
-                            />
-                        ))}
-                    </div>
                 </div>
 
                 {/* Search */}

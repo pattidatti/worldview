@@ -1,5 +1,6 @@
 import { Viewer, Cartographic, Math as CesiumMath, JulianDate } from 'cesium';
 import { type GeoNavItem } from '../data/geoNavData';
+import { fetchOverpassElements, type OverpassElement } from './overpass';
 
 const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search';
 const SESSION_TTL = 30 * 60 * 1000; // 30 min
@@ -74,48 +75,32 @@ export async function getCitiesForCountry(
         );
     }
 
-    const params = new URLSearchParams({
-        q: '',
-        format: 'json',
-        limit: '30',
-        addressdetails: '1',
-        featureType: 'city',
-        countrycodes: countryCode,
-        'accept-language': 'nb',
-    });
+    const iso = countryCode.toUpperCase();
+    const query = `[out:json][timeout:15];area["ISO3166-1"="${iso}"]->.c;node["place"~"^(city|town)$"](area.c);out 40;`;
 
-    try {
-        const res = await fetch(`${NOMINATIM_URL}?${params}`, {
-            headers: { 'User-Agent': 'WorldView/0.1' },
-        });
-        if (!res.ok) return [];
+    const elements: OverpassElement[] = await fetchOverpassElements(
+        query,
+        `overpass-cities-${countryCode}`,
+        7 * 86_400_000
+    );
 
-        const data: NominatimResult[] = await res.json();
+    const cities: GeoNavItem[] = elements
+        .filter((el) => el.lat != null && el.lon != null)
+        .map((el, i) => ({
+            id: `city-${countryCode}-${i}`,
+            name: el.tags?.['name:nb'] ?? el.tags?.name ?? '',
+            lat: Number(el.lat),
+            lon: Number(el.lon),
+            altitude: 150_000,
+            countryCode,
+        }))
+        .filter((c) => c.name.length > 0);
 
-        const cities: GeoNavItem[] = data
-            .filter((r) => r.class === 'place' || r.type === 'city' || r.type === 'town')
-            .map((r, i) => {
-                const addr = r.address ?? {};
-                const shortName = addr.city ?? addr.town ?? addr.village ?? addr.county ?? r.display_name.split(',')[0].trim();
-                return {
-                    id: `city-${countryCode}-${i}`,
-                    name: shortName,
-                    lat: parseFloat(r.lat),
-                    lon: parseFloat(r.lon),
-                    altitude: 150_000,
-                    countryCode,
-                };
-            })
-            .filter((c) => c.name.length > 0);
-
-        sessionSet(cacheKey, cities);
-        return cities.sort((a, b) =>
-            haversine(cameraLat, cameraLon, a.lat, a.lon) -
-            haversine(cameraLat, cameraLon, b.lat, b.lon)
-        );
-    } catch {
-        return [];
-    }
+    sessionSet(cacheKey, cities);
+    return cities.sort((a, b) =>
+        haversine(cameraLat, cameraLon, a.lat, a.lon) -
+        haversine(cameraLat, cameraLon, b.lat, b.lon)
+    );
 }
 
 export async function getPlacesForCity(

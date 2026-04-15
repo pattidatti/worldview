@@ -14,4 +14,6 @@ export interface Flight {
     onGround: boolean;
     positionSource: PositionSource;
     isMilitary: boolean;
+    registration?: string;   // Registreringsnummer (f.eks. LN-NIG)
+    aircraftType?: string;   // Flytype (f.eks. B738)
 }

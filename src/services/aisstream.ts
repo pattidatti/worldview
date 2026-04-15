@@ -25,6 +25,7 @@ export class AISStreamConnection {
     private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     private connectTimeout: ReturnType<typeof setTimeout> | null = null;
     private stopped = false;
+    private reconnectCount = 0;
 
     constructor(apiKey: string, viewport: Viewport, onUpdate: ShipCallback, onError?: (msg: string) => void) {
         this.apiKey = apiKey;
@@ -53,6 +54,7 @@ export class AISStreamConnection {
         this.ws.onopen = () => {
             if (import.meta.env.DEV) console.log('[AIS] Connected via', wsUrl);
             if (this.connectTimeout) clearTimeout(this.connectTimeout);
+            this.reconnectCount = 0;
             this.ws?.send(
                 JSON.stringify({
                     APIKey: this.apiKey,
@@ -102,6 +104,7 @@ export class AISStreamConnection {
                         heading: pos.TrueHeading ?? pos.Cog ?? 0,
                         rateOfTurn: pos.RateOfTurn ?? 0,
                         navStatus: pos.NavigationalStatus ?? 15,
+                        lastSeen: Date.now(),
                     });
                 } else if (msg.MessageType === 'ShipStaticData') {
                     const sd = msg.Message?.ShipStaticData;
@@ -134,6 +137,7 @@ export class AISStreamConnection {
                             width: dim ? dim.C + dim.D : 0,
                             draught: sd.MaximumStaticDraught ?? 0,
                             destination: (sd.Destination ?? '').trim(),
+                            lastSeen: Date.now(),
                         });
                     }
                 }
@@ -156,6 +160,10 @@ export class AISStreamConnection {
 
             // Auto-reconnect after 3s unless stopped
             if (!this.stopped) {
+                this.reconnectCount++;
+                if (this.reconnectCount >= 3) {
+                    this.onError?.('AISStream utilgjengelig – sjekk API-nøkkel eller nettverkstilgang');
+                }
                 this.reconnectTimer = setTimeout(() => this.connect(), 3000);
             }
         };

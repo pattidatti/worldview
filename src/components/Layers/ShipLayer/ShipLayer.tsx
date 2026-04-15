@@ -32,16 +32,18 @@ import {
     getShipTypeName,
     getNavStatusText,
     getFlagState,
-    createShipIcon,
+    createShipIconWithStatus,
     getShipDimensions,
     getShipComponents,
     getShipColorCss,
+    getNavStatusColor,
+    SHIP_DARK_MS,
 } from '@/utils/ship-utils';
 
 const API_KEY = import.meta.env.VITE_AISSTREAM_API_KEY || '';
 const MAX_SHIPS = 1000;
 const MAX_SHIP_TRAIL = 60;
-const SHIP_STALE_MS = 15 * 60 * 1000; // fjern skip som ikke har rapportert på 15 min
+const SHIP_STALE_MS = 60 * 60 * 1000; // fjern skip som ikke har rapportert på 60 min
 const SHIP_TRAIL_COLOR = Color.fromCssColorString('#00d4ff');
 
 // Navn-label vises 0–150 km, krymper gradvis
@@ -133,15 +135,20 @@ export function ShipLayer() {
             const ship = shipsRef.current.get(Number(mmsiStr));
             if (!ship) return null;
             const navText = getNavStatusText(ship.navStatus);
+            const navColor = getNavStatusColor(ship.navStatus);
             const dims = ship.length && ship.width
                 ? `${ship.length} × ${ship.width} m`
                 : '';
+            const isDark = ship.lastSeen > 0 && (Date.now() - ship.lastSeen) > SHIP_DARK_MS;
+            const minutesDark = isDark ? Math.floor((Date.now() - ship.lastSeen) / 60_000) : 0;
+            const popupColor = isDark ? '#ff2200' : (navColor ?? '#00d4ff');
             return {
                 title: ship.name || `MMSI ${ship.mmsi}`,
-                icon: '⚓',
-                color: '#00d4ff',
+                icon: isDark ? '📵' : '⚓',
+                color: popupColor,
                 followEntityId: String(ship.mmsi),
                 fields: [
+                    ...(isDark ? [{ label: '⚠ MØRKT SKIP', value: `Signal mistet for ${minutesDark} min siden` }] : []),
                     { label: 'Type', value: getShipTypeName(ship.shipType) },
                     { label: 'Flagg', value: getFlagState(ship.mmsi) },
                     ...(navText ? [{ label: 'Status', value: navText }] : []),
@@ -300,6 +307,9 @@ export function ShipLayer() {
             const dims = getShipDimensions(ship.shipType, ship.length, ship.width);
             const components = getShipComponents(ship.shipType, dims);
             const effectiveH = ship.heading >= 0 && ship.heading <= 360 ? ship.heading : ship.course;
+            const isDark = ship.lastSeen > 0 && (Date.now() - ship.lastSeen) > SHIP_DARK_MS;
+            const navStatusColor = getNavStatusColor(ship.navStatus);
+            const shipBillboard = createShipIconWithStatus(effectiveH, ship.shipType, navStatusColor, isDark);
 
             // Havnivå-posisjon (basis for offset-beregninger)
             const seaPos = Cartesian3.fromDegrees(ship.lon, ship.lat, 0);
@@ -312,7 +322,7 @@ export function ShipLayer() {
                 (entity.position as ConstantPositionProperty).setValue(hullPos);
                 (entity.orientation as ConstantProperty).setValue(orientation);
                 if (entity.billboard?.image) {
-                    (entity.billboard.image as ConstantProperty).setValue(createShipIcon(effectiveH, ship.shipType));
+                    (entity.billboard.image as ConstantProperty).setValue(shipBillboard);
                 }
                 if (entity.label?.text) {
                     (entity.label.text as ConstantProperty).setValue(ship.name || `MMSI ${mmsi}`);
@@ -383,7 +393,7 @@ export function ShipLayer() {
                         outlineColor: Color.BLACK.withAlpha(0.3),
                     },
                     billboard: {
-                        image: createShipIcon(effectiveH, ship.shipType),
+                        image: shipBillboard,
                         width: 22,
                         height: 22,
                         verticalOrigin: VerticalOrigin.CENTER,

@@ -1,4 +1,4 @@
-export type LayerId = 'flights' | 'ships' | 'satellites' | 'weather' | 'webcams' | 'traffic' | 'trafficFlow' | 'infrastructure' | 'infrastructurePipelines' | 'infrastructureFields' | 'power' | 'wind' | 'harbors' | 'lighthouses' | 'telecom' | 'mines' | 'buildings' | 'submarineCables' | 'earthquakes' | 'disasters' | 'asteroids' | 'news' | 'conflicts' | 'weatherRadar' | 'sigmet' | 'roadCameras';
+export type LayerId = 'flights' | 'ships' | 'satellites' | 'weather' | 'webcams' | 'traffic' | 'trafficFlow' | 'simulatedTraffic' | 'infrastructure' | 'infrastructurePipelines' | 'infrastructureFields' | 'power' | 'wind' | 'harbors' | 'lighthouses' | 'telecom' | 'mines' | 'buildings' | 'submarineCables' | 'earthquakes' | 'disasters' | 'asteroids' | 'news' | 'conflicts' | 'weatherRadar' | 'sigmet' | 'roadCameras' | 'gpsjam' | 'chokepoints';
 
 export interface LayerConfig {
     id: LayerId;
@@ -19,6 +19,7 @@ export const LAYER_ICONS: Record<LayerId, string> = {
     webcams: '📷',
     traffic: '🚗',
     trafficFlow: '🚦',
+    simulatedTraffic: '🚙',
     infrastructure: '🛢',
     infrastructurePipelines: '〰',
     infrastructureFields: '⬡',
@@ -38,6 +39,8 @@ export const LAYER_ICONS: Record<LayerId, string> = {
     weatherRadar: '🌧',
     sigmet: '⚠',
     roadCameras: '📷',
+    gpsjam: '📡',
+    chokepoints: '🌊',
 };
 
 export interface LayerCategory {
@@ -48,8 +51,8 @@ export interface LayerCategory {
 }
 
 export const LAYER_CATEGORIES: LayerCategory[] = [
-    { id: 'trafikk', label: 'Trafikk', icon: '✈', layers: ['flights', 'traffic', 'trafficFlow', 'sigmet', 'roadCameras'] },
-    { id: 'maritim', label: 'Maritim', icon: '⚓', layers: ['ships', 'harbors', 'lighthouses', 'submarineCables'] },
+    { id: 'trafikk', label: 'Trafikk', icon: '✈', layers: ['flights', 'traffic', 'trafficFlow', 'simulatedTraffic', 'sigmet', 'roadCameras', 'gpsjam'] },
+    { id: 'maritim', label: 'Maritim', icon: '⚓', layers: ['ships', 'harbors', 'lighthouses', 'submarineCables', 'chokepoints'] },
     { id: 'energi', label: 'Energi', icon: '⚡', layers: ['power', 'wind', 'infrastructureFields', 'infrastructurePipelines', 'infrastructure'] },
     { id: 'vaer', label: 'Vær', icon: '☁', layers: ['weather', 'weatherRadar'] },
     { id: 'geo', label: 'Geo', icon: '🌍', layers: ['earthquakes', 'disasters'] },
@@ -65,6 +68,7 @@ export const LAYER_DEFAULTS: LayerConfig[] = [
     { id: 'webcams', name: 'Webkameraer', color: 'var(--color-webcams)', visible: false, loading: false, count: 0, error: null, lastUpdated: null },
     { id: 'traffic', name: 'Veitrafikk', color: 'var(--color-traffic-green)', visible: false, loading: false, count: 0, error: null, lastUpdated: null },
     { id: 'trafficFlow', name: 'Trafikkflyt', color: 'var(--color-traffic-green)', visible: false, loading: false, count: 0, error: null, lastUpdated: null },
+    { id: 'simulatedTraffic', name: 'Simulert biltrafikk', color: '#00cc44', visible: false, loading: false, count: 0, error: null, lastUpdated: null },
     { id: 'infrastructure', name: 'Installasjoner', color: 'var(--color-infrastructure)', visible: false, loading: false, count: 0, error: null, lastUpdated: null },
     { id: 'infrastructurePipelines', name: 'Rørledninger', color: 'var(--color-infrastructure-pipelines)', visible: false, loading: false, count: 0, error: null, lastUpdated: null },
     { id: 'infrastructureFields', name: 'Olje/gass-felt', color: 'var(--color-infrastructure-fields)', visible: false, loading: false, count: 0, error: null, lastUpdated: null },
@@ -84,4 +88,6 @@ export const LAYER_DEFAULTS: LayerConfig[] = [
     { id: 'weatherRadar', name: 'Værradar', color: 'var(--color-weather-radar)', visible: false, loading: false, count: 0, error: null, lastUpdated: null },
     { id: 'sigmet', name: 'Luftromsadvarsler', color: '#ff8800', visible: false, loading: false, count: 0, error: null, lastUpdated: null },
     { id: 'roadCameras', name: 'DOT-kameraer', color: '#00e5ff', visible: false, loading: false, count: 0, error: null, lastUpdated: null },
+    { id: 'gpsjam', name: 'GPS-forstyrrelser', color: '#ff4500', visible: false, loading: false, count: 0, error: null, lastUpdated: null },
+    { id: 'chokepoints', name: 'Strategiske passasjer', color: '#ff6b35', visible: false, loading: false, count: 0, error: null, lastUpdated: null },
 ];

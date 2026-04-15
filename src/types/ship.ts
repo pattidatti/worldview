@@ -15,4 +15,5 @@ export interface Ship {
     width: number;       // meters
     draught: number;     // meters
     destination: string;
+    lastSeen: number;    // Unix timestamp (ms) for siste AIS-oppdatering
 }

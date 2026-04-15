@@ -10,6 +10,7 @@ interface LogEvent {
     diff: number;
     total: number;
     color: string;
+    isError?: boolean;
 }
 
 let _eid = 0;
@@ -19,12 +20,31 @@ function useEventLog(): LogEvent[] {
     const [events, setEvents] = useState<LogEvent[]>([]);
     const prevCountRef = useRef<Partial<Record<LayerId, number>>>({});
     const prevUpdatedRef = useRef<Partial<Record<LayerId, number | null>>>({});
+    const prevErrorRef = useRef<Partial<Record<LayerId, string | null>>>({});
 
     useEffect(() => {
         const newEvents: LogEvent[] = [];
 
         for (const layer of layers) {
             if (!layer.visible) continue;
+
+            // Feil-hendelser
+            const prevError = prevErrorRef.current[layer.id];
+            if (layer.error && layer.error !== prevError) {
+                newEvents.push({
+                    id: _eid++,
+                    time: new Date().toTimeString().slice(0, 8),
+                    icon: '⚠',
+                    name: layer.name.toUpperCase(),
+                    diff: 0,
+                    total: 0,
+                    color: 'var(--accent-orange, #ff6b35)',
+                    isError: true,
+                });
+            }
+            prevErrorRef.current[layer.id] = layer.error;
+
+            // Data-hendelser
             const prevUpdated = prevUpdatedRef.current[layer.id];
             if (layer.lastUpdated === prevUpdated) continue;
 
@@ -48,11 +68,33 @@ function useEventLog(): LogEvent[] {
         }
 
         if (newEvents.length > 0) {
-            setEvents((prev) => [...newEvents, ...prev].slice(0, 8));
+            setEvents((prev) => [...newEvents, ...prev].slice(0, 12));
         }
     }, [layers]);
 
     return events;
+}
+
+function DiffBadge({ diff, total }: { diff: number; total: number }) {
+    if (diff > 0) {
+        return (
+            <span style={{ color: 'var(--accent-green)', marginLeft: 'auto', flexShrink: 0 }}>
+                ▲ +{diff}
+            </span>
+        );
+    }
+    if (diff < 0) {
+        return (
+            <span style={{ color: 'var(--accent-orange, #ff6b35)', marginLeft: 'auto', flexShrink: 0 }}>
+                ▼ {diff}
+            </span>
+        );
+    }
+    return (
+        <span style={{ color: 'rgba(255,255,255,0.35)', marginLeft: 'auto', flexShrink: 0 }}>
+            {total.toLocaleString('nb-NO')}
+        </span>
+    );
 }
 
 export function EventLog() {
@@ -103,6 +145,7 @@ export function EventLog() {
                                     fontFamily: 'var(--font-mono)',
                                     fontSize: '10px',
                                     borderBottom: '1px solid rgba(255,255,255,0.04)',
+                                    borderLeft: `2px solid ${ev.color}40`,
                                     animation: 'fade-in 200ms ease-out',
                                 }}
                             >
@@ -113,9 +156,13 @@ export function EventLog() {
                                 <span style={{ color: ev.color, opacity: 0.85, flexShrink: 0 }}>
                                     {ev.name}
                                 </span>
-                                <span style={{ color: 'rgba(255,255,255,0.35)', marginLeft: 'auto', flexShrink: 0 }}>
-                                    {ev.diff > 0 ? '+' : ''}{ev.diff !== 0 ? ev.diff : ev.total.toLocaleString('nb-NO')}
-                                </span>
+                                {ev.isError ? (
+                                    <span style={{ color: ev.color, marginLeft: 'auto', flexShrink: 0, fontSize: '9px' }}>
+                                        FEIL
+                                    </span>
+                                ) : (
+                                    <DiffBadge diff={ev.diff} total={ev.total} />
+                                )}
                             </div>
                         ))}
                     </div>

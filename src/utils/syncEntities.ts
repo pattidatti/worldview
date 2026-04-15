@@ -35,7 +35,9 @@ export function syncEntities<T>({
         if (entity) {
             onUpdate?.(entity, item);
         } else {
-            ds.entities.add(onCreate(item));
+            const newEntity = onCreate(item);
+            ds.entities.add(newEntity);
+            existing.set(id, newEntity); // prevent DeveloperError if input has duplicate IDs
         }
     }
 

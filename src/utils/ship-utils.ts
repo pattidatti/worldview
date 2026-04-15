@@ -1,3 +1,28 @@
+/** Terskel i ms for å markere et skip som "mørkt" (signal tapt) */
+export const SHIP_DARK_MS = 20 * 60 * 1000; // 20 min
+
+/**
+ * AIS navStatus → CSS-farge for billboard-ramme og popup-indikator.
+ * Null = standard skip-farge (ingen ekstra markering).
+ */
+export function getNavStatusColor(status: number): string | null {
+    switch (status) {
+        case 1: // For anker
+        case 5: // Fortøyd
+            return '#ffcc00';
+        case 2: // Ikke manøvreringsdyktig
+            return '#ff2200';
+        case 3: // Begrenset manøvreringsevne
+            return '#ff8800';
+        case 7: // Fiske
+            return '#00e5ff';
+        case 14: // AIS-SART (nødsignal!)
+            return '#ff00ff';
+        default:
+            return null;
+    }
+}
+
 /**
  * IMO ship type codes → norsk lesbar tekst
  */
@@ -107,6 +132,49 @@ export function createShipIcon(heading: number, shipType: number): string {
     </svg>`;
     const result = 'data:image/svg+xml,' + encodeURIComponent(svg);
     shipIconCache.set(cacheKey, result);
+    return result;
+}
+
+/**
+ * Skipikon med navStatus-farget ring og/eller "mørk skip"-indikator.
+ * isDark = skip som ikke har sendt AIS-oppdatering på SHIP_DARK_MS ms.
+ * statusColor = CSS-farge fra getNavStatusColor(), eller null for standard.
+ */
+const shipIconStatusCache = new Map<string, string>();
+export function createShipIconWithStatus(
+    heading: number,
+    shipType: number,
+    statusColor: string | null,
+    isDark: boolean,
+): string {
+    const h = Math.round(heading);
+    const cacheKey = `${h}-${shipType}-${statusColor ?? 'none'}-${isDark}`;
+    const cached = shipIconStatusCache.get(cacheKey);
+    if (cached) return cached;
+
+    // Hent basis-ikon-innhold (gjenbruk body fra createShipIcon)
+    const baseDataUri = createShipIcon(heading, shipType);
+    // Dekoder SVG-en slik at vi kan legge til lag
+    const decoded = decodeURIComponent(baseDataUri.replace('data:image/svg+xml,', ''));
+    const ringColor = isDark ? '#ff2200' : (statusColor ?? null);
+
+    if (!ringColor) {
+        shipIconStatusCache.set(cacheKey, baseDataUri);
+        return baseDataUri;
+    }
+
+    // Injiser en farget ring + eventuelt "mørk"-kryss (X)
+    const ringOpacity = isDark ? '0.95' : '0.85';
+    const ring = `<circle cx="16" cy="16" r="14" fill="none" stroke="${ringColor}" stroke-width="${isDark ? 2.5 : 2}" opacity="${ringOpacity}"/>`;
+    const darkMark = isDark
+        ? `<line x1="10" y1="10" x2="22" y2="22" stroke="${ringColor}" stroke-width="2" opacity="0.9"/>
+           <line x1="22" y1="10" x2="10" y2="22" stroke="${ringColor}" stroke-width="2" opacity="0.9"/>`
+        : '';
+
+    // Sett inn rett før avsluttende </svg>
+    const enhanced = decoded.replace('</svg>', `${ring}${darkMark}</svg>`);
+    const result = 'data:image/svg+xml,' + encodeURIComponent(enhanced);
+    shipIconStatusCache.set(cacheKey, result);
     return result;
 }
 

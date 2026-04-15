@@ -91,6 +91,11 @@ function parseElements(elements: OverpassElement[]): OverpassInfrastructureData 
 // Generic Overpass fetcher — used by all OSM feature layers
 const _genericCache = new Map<string, OverpassElement[]>();
 
+// Serial request queue: ensures only one Overpass request is in-flight at a time.
+// Prevents 429s caused by multiple layers firing queries simultaneously on initial load.
+const _pending = new Map<string, Promise<OverpassElement[]>>();
+let _queueTail: Promise<void> = Promise.resolve();
+
 export function overpassViewportKey05(vp: Viewport): string {
     // Round to 0.5 degrees — coarser cache for static features
     const r = (n: number) => Math.round(n * 2) / 2;
@@ -149,58 +154,85 @@ function lsSet(key: string, data: OverpassElement[]): void {
 
 export const DAY_MS = 86_400_000;
 
-export async function fetchOverpassElements(
+export function fetchOverpassElements(
     query: string,
     cacheKey: string,
     maxAgeMs: number = 7 * DAY_MS,
 ): Promise<OverpassElement[]> {
     // 1. In-memory (fastest, session-scoped)
-    if (_genericCache.has(cacheKey)) return _genericCache.get(cacheKey)!;
+    if (_genericCache.has(cacheKey)) return Promise.resolve(_genericCache.get(cacheKey)!);
 
     // 2. localStorage (survives page reload)
     const persisted = lsGet(cacheKey, maxAgeMs);
     if (persisted) {
         _genericCache.set(cacheKey, persisted);
-        return persisted;
+        return Promise.resolve(persisted);
     }
 
-    // 3. Overpass API
-    try {
-        const res = await fetch(ENDPOINT, {
-            method: 'POST',
-            body: `data=${encodeURIComponent(query)}`,
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            signal: AbortSignal.timeout(32_000),
-        });
-        if (!res.ok) return [];
-        const json = await res.json();
-        const elements = json.elements ?? [];
-        _genericCache.set(cacheKey, elements);
-        lsSet(cacheKey, elements);
-        return elements;
-    } catch {
-        return [];
-    }
+    // 3. In-flight dedup: if the same key is already queued/fetching, return same promise
+    if (_pending.has(cacheKey)) return _pending.get(cacheKey)!;
+
+    // 4. Queue behind any current in-flight request (400 ms gap between Overpass POSTs)
+    const myRequest: Promise<OverpassElement[]> = _queueTail.then(async () => {
+        // Re-check cache after waiting — another queued request may have fetched this key
+        if (_genericCache.has(cacheKey)) return _genericCache.get(cacheKey)!;
+        const persisted2 = lsGet(cacheKey, maxAgeMs);
+        if (persisted2) {
+            _genericCache.set(cacheKey, persisted2);
+            return persisted2;
+        }
+
+        try {
+            const res = await fetch(ENDPOINT, {
+                method: 'POST',
+                body: `data=${encodeURIComponent(query)}`,
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                signal: AbortSignal.timeout(32_000),
+            });
+            if (res.status === 429) return []; // rate-limited; next poll will retry
+            if (!res.ok) return [];
+            const json = await res.json();
+            const elements: OverpassElement[] = json.elements ?? [];
+            _genericCache.set(cacheKey, elements);
+            lsSet(cacheKey, elements);
+            return elements;
+        } catch {
+            return [];
+        }
+    });
+
+    // Advance the queue tail: wait for this request, then pause 400 ms before the next one
+    _queueTail = myRequest.then(() => new Promise<void>(r => setTimeout(r, 400)));
+
+    _pending.set(cacheKey, myRequest);
+    myRequest.finally(() => { _pending.delete(cacheKey); });
+    return myRequest;
 }
 
-export async function fetchOverpassInfrastructure(viewport: Viewport): Promise<OverpassInfrastructureData> {
+export function fetchOverpassInfrastructure(viewport: Viewport): Promise<OverpassInfrastructureData> {
     const key = viewportKey(viewport);
-    if (key === cachedKey && cachedData !== EMPTY) return cachedData;
+    if (key === cachedKey && cachedData !== EMPTY) return Promise.resolve(cachedData);
 
-    try {
-        const res = await fetch(ENDPOINT, {
-            method: 'POST',
-            body: `data=${encodeURIComponent(buildQuery(viewport))}`,
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            signal: AbortSignal.timeout(30_000),
-        });
-        if (!res.ok) return EMPTY;
-        const json = await res.json();
-        const result = parseElements(json.elements ?? []);
-        cachedKey = key;
-        cachedData = result;
-        return result;
-    } catch {
-        return EMPTY;
-    }
+    const myRequest = _queueTail.then(async () => {
+        if (key === cachedKey && cachedData !== EMPTY) return cachedData;
+        try {
+            const res = await fetch(ENDPOINT, {
+                method: 'POST',
+                body: `data=${encodeURIComponent(buildQuery(viewport))}`,
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                signal: AbortSignal.timeout(30_000),
+            });
+            if (!res.ok) return EMPTY;
+            const json = await res.json();
+            const result = parseElements(json.elements ?? []);
+            cachedKey = key;
+            cachedData = result;
+            return result;
+        } catch {
+            return EMPTY;
+        }
+    });
+
+    _queueTail = myRequest.then(() => new Promise<void>(r => setTimeout(r, 400)));
+    return myRequest;
 }

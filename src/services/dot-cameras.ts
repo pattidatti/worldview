@@ -1,4 +1,5 @@
 import { type RoadCamera } from '@/types/roadCamera';
+import { proxied } from '@/utils/corsProxy';
 
 // Caltrans CWWP (California DOT) — free, no key, hundreds of highway cameras
 const CALTRANS_URL = 'https://cwwp2.dot.ca.gov/api/hpevds/data.json';
@@ -76,7 +77,7 @@ function parseEntry(d: unknown): RoadCamera | null {
 }
 
 export async function fetchDotCameras(): Promise<RoadCamera[]> {
-    const res = await fetch(CALTRANS_URL);
+    const res = await fetch(proxied(CALTRANS_URL));
     if (!res.ok) throw new Error(`Caltrans DOT kamera-feil: ${res.status}`);
     const json = await res.json();
 

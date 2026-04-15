@@ -1,7 +1,9 @@
 import { type Flight, type PositionSource } from '@/types/flight';
 import { type Viewport } from '@/hooks/useViewport';
 
-const API_BASE = 'https://api.airplanes.live/v2';
+const API_BASE = import.meta.env.DEV
+    ? '/proxy/airplanes/v2'
+    : 'https://api.airplanes.live/v2';
 
 interface AcEntry {
     hex?: string;
@@ -17,7 +19,7 @@ interface AcEntry {
     type?: string;
     r?: string;           // registration
     t?: string;           // aircraft type code
-    seen?: number;
+    seen?: number;        // seconds since last position report
 }
 
 function transponderType(ac: AcEntry): PositionSource {
@@ -35,6 +37,7 @@ function transponderType(ac: AcEntry): PositionSource {
 
 function toFlight(ac: AcEntry): Flight | null {
     if (ac.lat == null || ac.lon == null) return null;
+    if ((ac.seen ?? 0) > 60) return null; // posisjonsdata eldre enn 60s er upålitelig
     const onGround = ac.alt_baro === 'ground';
     const altFt = onGround ? 0 : (ac.alt_geom ?? (ac.alt_baro as number) ?? 0);
     return {
@@ -50,6 +53,8 @@ function toFlight(ac: AcEntry): Flight | null {
         onGround,
         positionSource: transponderType(ac),
         isMilitary: ((ac.dbFlags ?? 0) & 1) === 1,
+        registration: ac.r,
+        aircraftType: ac.t,
     };
 }
 
@@ -73,6 +78,10 @@ export async function fetchFlights(viewport?: Viewport | null): Promise<Flight[]
     }
 
     const response = await fetch(url);
+    if (response.status === 429) {
+        console.warn('[FlightLayer] airplanes.live rate-limited (429) — skipping this poll');
+        return [];
+    }
     if (!response.ok) throw new Error(`airplanes.live feil: ${response.status}`);
     const data = await response.json() as { ac?: AcEntry[] };
     if (!data.ac) return [];

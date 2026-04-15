@@ -42,7 +42,10 @@ function aisProxy(): Plugin {
                     });
 
                     remote.on('close', () => clientWs.close());
-                    remote.on('error', () => clientWs.close());
+                    remote.on('error', (err) => {
+                        console.error('[ais-proxy] Remote connection failed:', (err as Error).message);
+                        clientWs.close();
+                    });
                     clientWs.on('close', () => remote.close());
                     clientWs.on('error', () => remote.close());
                 });
@@ -57,6 +60,30 @@ export default defineConfig({
     resolve: {
         alias: {
             '@': path.resolve(__dirname, 'src'),
+        },
+    },
+    server: {
+        proxy: {
+            '/proxy/airplanes': {
+                target: 'https://api.airplanes.live',
+                changeOrigin: true,
+                rewrite: (path) => path.replace(/^\/proxy\/airplanes/, ''),
+            },
+            '/proxy/gdelt': {
+                target: 'https://api.gdeltproject.org',
+                changeOrigin: true,
+                rewrite: (path) => path.replace(/^\/proxy\/gdelt/, ''),
+            },
+            '/proxy/dot': {
+                target: 'https://cwwp2.dot.ca.gov',
+                changeOrigin: true,
+                rewrite: (path) => path.replace(/^\/proxy\/dot/, ''),
+            },
+            '/proxy/sigmet': {
+                target: 'https://aviationweather.gov',
+                changeOrigin: true,
+                rewrite: (path) => path.replace(/^\/proxy\/sigmet/, ''),
+            },
         },
     },
 });

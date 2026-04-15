@@ -31,6 +31,7 @@ const LAYER_COLORS: Record<LayerId, string> = {
     webcams: '#ff4444',
     traffic: '#00cc44',
     trafficFlow: '#00cc44',
+    simulatedTraffic: '#00cc44',
     infrastructure: '#ff9800',
     infrastructurePipelines: '#e65100',
     infrastructureFields: '#bf360c',
@@ -50,6 +51,8 @@ const LAYER_COLORS: Record<LayerId, string> = {
     weatherRadar: '#00e5ff',
     sigmet: '#ff8800',
     roadCameras: '#00e5ff',
+    gpsjam: '#ff4500',
+    chokepoints: '#ff6b35',
 };
 
 function searchEntities(viewer: import('cesium').Viewer | null, query: string, visibleLayerIds: Set<LayerId>): EntityResult[] {
@@ -290,7 +293,7 @@ export const SearchBar = forwardRef<SearchBarHandle>(function SearchBar(_, ref) 
                                 const idx = flatIndex++;
                                 return (
                                     <button
-                                        key={r.geoResult.name}
+                                        key={`${r.geoResult.lat}-${r.geoResult.lon}`}
                                         onClick={() => selectResult(r)}
                                         onMouseEnter={() => setHighlightIndex(idx)}
                                         className={`w-full text-left px-4 py-2.5 text-sm text-[var(--text-secondary)] transition-colors cursor-pointer border-b border-white/5 last:border-0 ${

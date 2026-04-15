@@ -1,9 +1,10 @@
 import { type Sigmet } from '@/types/sigmet';
+import { proxied } from '@/utils/corsProxy';
 
 const URL = 'https://aviationweather.gov/api/data/sigmet?format=geojson';
 
 export async function fetchSigmets(): Promise<Sigmet[]> {
-    const res = await fetch(URL);
+    const res = await fetch(proxied(URL));
     if (!res.ok) throw new Error(`SIGMET feil: ${res.status}`);
     const json = await res.json();
     const features: unknown[] = json?.features ?? [];

@@ -1,4 +1,5 @@
 import { type NewsEvent } from '@/types/news';
+import { proxied } from '@/utils/corsProxy';
 
 const GDELT_URL =
     'https://api.gdeltproject.org/api/v2/geo/geo?query=*&mode=PointData&format=GeoJSON&timespan=60min';
@@ -6,7 +7,7 @@ const GDELT_URL =
 const MAX_RESULTS = 2000;
 
 export async function fetchNewsEvents(): Promise<NewsEvent[]> {
-    const response = await fetch(GDELT_URL);
+    const response = await fetch(proxied(GDELT_URL));
     if (!response.ok) throw new Error(`GDELT feil: ${response.status}`);
 
     const json = await response.json();

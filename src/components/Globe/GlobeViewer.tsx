@@ -358,7 +358,24 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
             viewer.camera.lookAtTransform(Matrix4.IDENTITY);
             setOrbitActive(false);
         } else {
-            trackDistRef.current = 4_000;
+            // Finn entitetens nåværende høyde for å bestemme kameraavstand
+            // Satellitter (>100km) trenger mye større avstand enn skip/fly
+            let entityAltM = 0;
+            for (let i = 0; i < viewer.dataSources.length; i++) {
+                const entity = viewer.dataSources.get(i).entities.getById(trackedEntityId);
+                if (entity?.position) {
+                    const pos = entity.position.getValue(JulianDate.now());
+                    if (pos) {
+                        const carto = viewer.scene.globe.ellipsoid.cartesianToCartographic(pos);
+                        entityAltM = carto?.height ?? 0;
+                    }
+                    break;
+                }
+            }
+            // Satellitter (alt > 100 km): orbit på 15% av høyden; ellers standard 4 km
+            trackDistRef.current = entityAltM > 100_000
+                ? Math.max(50_000, entityAltM * 0.15)
+                : 4_000;
             orbitHeadingRef.current = viewer.camera.heading;
             setOrbitActive(true);
         }

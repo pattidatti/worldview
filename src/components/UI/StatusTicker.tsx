@@ -1,8 +1,17 @@
 import { useLayers } from '@/context/LayerContext';
+import { AnimatedCount } from './AnimatedCount';
+
+function formatAge(ts: number | null): string {
+    if (!ts) return '';
+    const s = Math.floor((Date.now() - ts) / 1000);
+    if (s < 60) return ' nå';
+    if (s < 3600) return ` ${Math.floor(s / 60)}m`;
+    return ` ${Math.floor(s / 3600)}t`;
+}
 
 export function StatusTicker() {
     const { layers } = useLayers();
-    const active = layers.filter((l) => l.visible && l.count > 0);
+    const active = layers.filter((l) => l.visible && (l.count > 0 || l.loading || l.error));
 
     if (active.length === 0) return null;
 
@@ -30,9 +39,24 @@ export function StatusTicker() {
                             <span style={{ color: 'rgba(255,255,255,0.15)', margin: '0 10px' }}>·</span>
                         )}
                         <span style={{ color: l.color, opacity: 0.8 }}>{l.name.toUpperCase()}</span>
-                        <span style={{ color: 'rgba(255,255,255,0.35)', marginLeft: '5px' }}>
-                            {l.count.toLocaleString('nb-NO')}
+                        <span style={{ marginLeft: '5px' }}>
+                            {l.error ? (
+                                <span style={{ color: 'var(--accent-orange, #ff6b35)' }}>⚠</span>
+                            ) : l.loading && l.count === 0 ? (
+                                <span className="animate-pulse" style={{ color: 'rgba(255,255,255,0.35)' }}>···</span>
+                            ) : (
+                                <AnimatedCount
+                                    value={l.count}
+                                    color="rgba(255,255,255,0.35)"
+                                    flashColor={l.color}
+                                />
+                            )}
                         </span>
+                        {l.lastUpdated && !l.error && (
+                            <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: '8px', marginLeft: '3px' }}>
+                                {formatAge(l.lastUpdated)}
+                            </span>
+                        )}
                     </span>
                 ))}
             </div>
