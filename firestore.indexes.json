@@ -1,0 +1,12 @@
+{
+    "indexes": [
+        {
+            "collectionGroup": "entries",
+            "queryScope": "COLLECTION",
+            "fields": [
+                { "fieldPath": "ts", "order": "ASCENDING" }
+            ]
+        }
+    ],
+    "fieldOverrides": []
+}

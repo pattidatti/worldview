@@ -33,6 +33,9 @@ Optional (layers degrade gracefully without them):
 - `VITE_ACLED_API_KEY` — ACLED conflict data (requires account at acleddata.com)
 - `VITE_ACLED_EMAIL` — Email tied to ACLED account registration (required alongside API key)
 
+**Firebase (fase 2+):**
+- `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_APP_ID` — påkrevd for innlogging, gate-sync og snapshot-historikk. Uten disse vises `SignInGate` med feilmelding og appen er lokked.
+
 All env vars use Vite's `import.meta.env.VITE_*` convention.
 
 ## Critical Gotchas
@@ -45,6 +48,22 @@ All env vars use Vite's `import.meta.env.VITE_*` convention.
 - **airplaneslive.ts erstatter opensky.ts** for flightlaget — viewport-aware via center-point + radius i nautiske mil (maks 250nm).
 - **WeatherRadarLayer er unntaket** — det eneste laget som returnerer JSX (animasjonskontroller) og bruker CesiumJS `ImageryLayer` i stedet for `CustomDataSource`. Fjern gammelt lag fra viewer før nytt legges til (unngå stacking).
 - **ACLED krever nøkkel + e-post** — begge `VITE_ACLED_API_KEY` og `VITE_ACLED_EMAIL` må være satt. Mangler én av dem returneres tomt array stille.
+- **Firebase påkrevd fase 2+** — `SignInGate` blokkerer all UI til Google-innlogging. `VITE_FIREBASE_*` må være satt; ellers vises "Firebase ikke konfigurert".
+- **Lag-skop for historikk** — kun `flights`, `ships`, `conflicts`, `disasters`, `news` (og senere alle count-bærende lag) får snapshots. Satellitter propageres deterministisk fra TLE. Værradar, asteroider, trafikk og resten får ingen historikk-writes.
+- **UTC i storage, lokal i UI** — Firestore-doc-IDer bruker `YYYY-MM-DD_UTC`. `expiresAt`-felt er 30d etter ts.
+- **schemaVersion på alle writes** — firestore.rules avviser writes uten `schemaVersion == CURRENT`. Migratorer kjører ved lesing (se `src/utils/schemaMigrators.ts`).
+
+## Firebase
+
+- **Region**: Firestore `eur3`. Cloud Functions (fase 3) planlegges i `europe-west1`.
+- **Auth**: Google sign-in via `signInWithPopup` med redirect-fallback. Identitet persisterer på tvers av enheter.
+- **Bootstrap**: `firebase login` + `firebase use --add <prosjekt-id>`. Konfigurer Google-provider i Firebase Console → Authentication. Opprett TTL-policy på `expiresAt`-feltet for kolleksjonene `snapshots/*/entries` og `gate_crossings/*/events` (CLI støtter ikke TTL — gjøres i Console).
+- **Billing-alert** 1 USD/dag settes i Firebase Console → Usage.
+- **Kill-switch**: Firestore-doc `/config/killSwitch` med `{ disabled: true }` leses av klient ved innlogging. Når aktiv: alle writes blokkeres, toast "Read-only modus". Slettes kun fra Firebase Console.
+- **Schemas**:
+    - `/gates/{gateId}` = `{ name, vertices, color, ownerUid, createdAt, schemaVersion }` — globalt delt read, kun eier kan write/delete. Visibility per-bruker i localStorage (`worldview-gates-visibility-{uid}`).
+    - `/snapshots/{YYYY-MM-DD_UTC}/entries/{epochMinute}` = `{ ts, schemaVersion, expiresAt, counts }` — globalt delt, 30d TTL.
+- **Deploy**: `firebase deploy --only firestore:rules,firestore:indexes`. Cloud Functions ikke brukt i fase 2.
 
 ## Architecture
 

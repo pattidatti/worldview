@@ -2,6 +2,10 @@ import { useEffect, useState } from 'react';
 import { useLayers } from '@/context/LayerContext';
 import { SearchBar, type SearchBarHandle } from './SearchBar';
 import { AnimatedCount } from './AnimatedCount';
+import { SignOutButton } from './SignOutButton';
+import { AnalysisMenu } from './AnalysisPanel/AnalysisMenu';
+import { useAnalysisPanels } from './AnalysisPanel/AnalysisPanelHost';
+import { addToast } from './Toast';
 
 function SystemClock() {
     const [time, setTime] = useState(() => new Date().toTimeString().slice(0, 8));
@@ -22,6 +26,19 @@ interface TopBarProps {
 
 export function TopBar({ searchRef }: TopBarProps) {
     const { layers } = useLayers();
+    const { addDelta, addTrend, hideAll, count } = useAnalysisPanels();
+    const [menuOpen, setMenuOpen] = useState(false);
+
+    const handleMenuToggle = () => {
+        setMenuOpen((v) => !v);
+        try {
+            const key = 'worldview-analysis-onboarding-seen';
+            if (!localStorage.getItem(key)) {
+                localStorage.setItem(key, '1');
+                addToast('Analyse: Delta viser endring vs historikk. Trend viser kryssinger per port.', 'info');
+            }
+        } catch { /* ignore */ }
+    };
 
     const activeLayers = layers.filter((l) => l.visible);
     const totalObjects = activeLayers.reduce((sum, l) => sum + l.count, 0);
@@ -53,7 +70,34 @@ export function TopBar({ searchRef }: TopBarProps) {
                         <span className="text-[var(--accent-blue)]">{activeLayers.length}</span>
                         /{layers.length} lag
                     </span>
+
+                    <div className="relative">
+                        <button
+                            onClick={handleMenuToggle}
+                            className="px-2 py-1 cursor-pointer"
+                            style={{
+                                background: menuOpen ? 'rgba(0,255,136,0.08)' : 'rgba(10,10,20,0.65)',
+                                border: '1px solid rgba(255,255,255,0.12)',
+                                borderLeft: '2px solid var(--accent-green)',
+                                color: 'var(--text-primary, #fff)',
+                                letterSpacing: '0.08em',
+                            }}
+                            title="Analyse-paneler"
+                        >
+                            ANALYSE{count > 0 ? ` (${count})` : ''}
+                        </button>
+                        {menuOpen && (
+                            <AnalysisMenu
+                                onAddDelta={(id) => addDelta(id)}
+                                onAddTrend={(id) => addTrend(id)}
+                                onHideAll={hideAll}
+                                onClose={() => setMenuOpen(false)}
+                            />
+                        )}
+                    </div>
+
                     <SystemClock />
+                    <SignOutButton />
                 </div>
             </div>
         </div>

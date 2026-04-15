@@ -1,4 +1,8 @@
 import { useState, useCallback, useRef, useMemo, useEffect } from 'react';
+import { AuthProvider } from './context/AuthContext';
+import { HistoryProvider } from './context/HistoryContext';
+import { SignInGate } from './components/UI/SignInGate';
+import { AnalysisPanelProvider } from './components/UI/AnalysisPanel/AnalysisPanelHost';
 import { GateProvider, useGates } from './context/GateContext';
 import { TimelineEventProvider } from './context/TimelineEventContext';
 import { GateLayer } from './components/Layers/GateLayer/GateLayer';
@@ -240,9 +244,11 @@ export default function App() {
     const searchRef = useRef<SearchBarHandle>(null);
 
     return (
+        <AuthProvider>
         <ShaderOverlayProvider>
         <ImageryProvider>
         <LayerProvider>
+        <HistoryProvider>
         <GateProvider>
         <TimelineEventProvider>
         <TrackingProvider>
@@ -251,6 +257,7 @@ export default function App() {
         <WeatherRadarProvider>
             <PopupRegistryProvider>
             <TooltipRegistryProvider>
+            <AnalysisPanelProvider>
                 <AppContent
                     popup={popup}
                     setPopup={setPopup}
@@ -259,6 +266,8 @@ export default function App() {
                     showHelp={showHelp}
                     setShowHelp={setShowHelp}
                 />
+                <SignInGate />
+            </AnalysisPanelProvider>
             </TooltipRegistryProvider>
             </PopupRegistryProvider>
         </WeatherRadarProvider>
@@ -267,8 +276,10 @@ export default function App() {
         </TrackingProvider>
         </TimelineEventProvider>
         </GateProvider>
+        </HistoryProvider>
         </LayerProvider>
         </ImageryProvider>
         </ShaderOverlayProvider>
+        </AuthProvider>
     );
 }
