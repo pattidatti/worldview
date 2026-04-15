@@ -2,6 +2,7 @@ const DEV_ROUTES: Record<string, string> = {
     'api.gdeltproject.org': '/proxy/gdelt',
     'cwwp2.dot.ca.gov': '/proxy/dot',
     'aviationweather.gov': '/proxy/sigmet',
+    'opensky-network.org': '/proxy/opensky',
 };
 
 export function proxied(url: string): string {

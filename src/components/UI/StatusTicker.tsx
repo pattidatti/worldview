@@ -1,5 +1,15 @@
 import { useLayers } from '@/context/LayerContext';
+import { useTimelineMode } from '@/context/TimelineModeContext';
 import { AnimatedCount } from './AnimatedCount';
+
+function formatReplayTime(ts: number): string {
+    return new Date(ts).toLocaleString('nb-NO', {
+        day: '2-digit',
+        month: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+    });
+}
 
 function formatAge(ts: number | null): string {
     if (!ts) return '';
@@ -11,13 +21,14 @@ function formatAge(ts: number | null): string {
 
 export function StatusTicker() {
     const { layers } = useLayers();
+    const { mode, cursor } = useTimelineMode();
     const active = layers.filter((l) => l.visible && (l.count > 0 || l.loading || l.error));
 
-    if (active.length === 0) return null;
+    if (active.length === 0 && mode === 'live') return null;
 
     return (
         <div
-            className="absolute bottom-0 left-0 right-0 z-10 flex items-center overflow-hidden"
+            className="fixed bottom-0 left-0 right-0 z-10 flex items-center overflow-hidden"
             style={{
                 height: '36px',
                 background: 'rgba(10, 10, 20, 0.75)',
@@ -31,7 +42,20 @@ export function StatusTicker() {
                 gap: '0',
             }}
         >
-            <span style={{ color: 'rgba(0, 212, 255, 0.5)', marginRight: '12px' }}>◈</span>
+            {mode === 'replay' ? (
+                <span
+                    style={{
+                        color: 'var(--accent-orange)',
+                        marginRight: '12px',
+                        fontWeight: 600,
+                    }}
+                    title="Replay-modus"
+                >
+                    ▶ REPLAY · {formatReplayTime(cursor)}
+                </span>
+            ) : (
+                <span style={{ color: 'rgba(0, 212, 255, 0.5)', marginRight: '12px' }}>◈</span>
+            )}
             <div className="flex items-center gap-0 overflow-hidden" style={{ whiteSpace: 'nowrap' }}>
                 {active.map((l, i) => (
                     <span key={l.id} className="flex items-center">

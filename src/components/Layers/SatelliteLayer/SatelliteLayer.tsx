@@ -16,6 +16,7 @@ import { useLayers } from '@/context/LayerContext';
 import { usePopupRegistry } from '@/context/PopupRegistry';
 import { useTooltipRegistry } from '@/context/TooltipRegistry';
 import { useTracking } from '@/context/TrackingContext';
+import { useTimelineMode } from '@/context/TimelineModeContext';
 import { usePollingData } from '@/hooks/usePollingData';
 import { syncEntities } from '@/utils/syncEntities';
 import { configureCluster } from '@/utils/cluster';
@@ -38,6 +39,8 @@ export function SatelliteLayer() {
     const { register, unregister } = usePopupRegistry();
     const { register: tooltipRegister, unregister: tooltipUnregister } = useTooltipRegistry();
     const { trackedEntityId } = useTracking();
+    const { mode, cursor } = useTimelineMode();
+    const isReplay = mode === 'replay';
     const visible = isVisible('satellites');
     const dataSourceRef = useRef<CustomDataSource | null>(null);
     const trackDsRef = useRef<CustomDataSource | null>(null);
@@ -218,7 +221,9 @@ export function SatelliteLayer() {
     const updatePositions = useCallback(() => {
         const ds = dataSourceRef.current;
         if (!ds || !tleData.length) return;
-        const positions = computePositions(tleData);
+        // I replay-modus: propager TLE til cursor-tid. Ellers: nåtid.
+        const time = isReplay ? new Date(cursor) : undefined;
+        const positions = computePositions(tleData, time);
         setLayerCount('satellites', positions.length);
         syncEntities({
             ds,
@@ -240,14 +245,16 @@ export function SatelliteLayer() {
             }),
             viewer,
         });
-    }, [tleData, viewer, setLayerCount]);
+    }, [tleData, viewer, setLayerCount, isReplay, cursor]);
 
     useEffect(() => {
         if (!visible || !tleData.length) return;
         updatePositions();
+        // Live: oppdater hvert 10. sek. Replay: oppdater kun når cursor endres (styres av updatePositions sin useCallback).
+        if (isReplay) return;
         const id = setInterval(updatePositions, POSITION_REFRESH_MS);
         return () => clearInterval(id);
-    }, [visible, tleData, updatePositions]);
+    }, [visible, tleData, updatePositions, isReplay]);
 
     return null;
 }

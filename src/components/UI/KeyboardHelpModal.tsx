@@ -25,6 +25,13 @@ const GATE_SHORTCUTS = [
     { key: 'Escape', label: 'Avbryt tegning' },
 ];
 
+const TIMELINE_SHORTCUTS = [
+    { key: 'L', label: 'Veksle LIVE / REPLAY' },
+    { key: 'Space', label: 'Pause / spill av (replay)' },
+    { key: '← / →', label: 'Hopp ±1 bucket' },
+    { key: 'Home', label: 'Hopp til nå (live)' },
+];
+
 export function KeyboardHelpModal({ onClose }: KeyboardHelpModalProps) {
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
@@ -77,6 +84,23 @@ export function KeyboardHelpModal({ onClose }: KeyboardHelpModalProps) {
                         {GATE_SHORTCUTS.map(({ key, label }) => (
                             <div key={key} className="flex items-center justify-between gap-4">
                                 <span className="font-mono text-xs bg-white/5 border border-white/10 rounded px-2 py-0.5 text-[var(--color-gates)] shrink-0">
+                                    {key}
+                                </span>
+                                <span className="text-xs text-[var(--text-secondary)] text-right">
+                                    {label}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+                <div className="mt-4 pt-3 border-t border-white/10">
+                    <h3 className="font-mono text-[10px] font-bold text-[var(--accent-orange)] tracking-wider mb-2">
+                        TIDSLINJE
+                    </h3>
+                    <div className="flex flex-col gap-2">
+                        {TIMELINE_SHORTCUTS.map(({ key, label }) => (
+                            <div key={key} className="flex items-center justify-between gap-4">
+                                <span className="font-mono text-xs bg-white/5 border border-white/10 rounded px-2 py-0.5 text-[var(--accent-orange)] shrink-0">
                                     {key}
                                 </span>
                                 <span className="text-xs text-[var(--text-secondary)] text-right">

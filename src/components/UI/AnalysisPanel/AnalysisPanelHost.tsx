@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useGates } from '@/context/GateContext';
 import { addToast } from '../Toast';
 import { DeltaPanel } from './DeltaPanel';
@@ -64,6 +64,8 @@ export function useAnalysisPanels(): AnalysisPanelHostValue {
 export function AnalysisPanelProvider({ children }: { children: ReactNode }) {
     const [panels, setPanels] = useState<PanelState[]>(() => loadPanels());
     const { gates } = useGates();
+    const panelsRef = useRef(panels);
+    panelsRef.current = panels;
 
     useEffect(() => {
         savePanels(panels);
@@ -72,12 +74,12 @@ export function AnalysisPanelProvider({ children }: { children: ReactNode }) {
     // Auto-lukk trend-paneler når porten slettes.
     useEffect(() => {
         const activeIds = new Set(gates.map((g) => g.id));
-        const orphans = panels.filter((p) => p.type === 'trend' && !activeIds.has(p.gateId));
+        const orphans = panelsRef.current.filter((p) => p.type === 'trend' && !activeIds.has(p.gateId));
         if (orphans.length === 0) return;
         const orphanSet = new Set(orphans.map((p) => p.id));
         setPanels((prev) => prev.filter((p) => !orphanSet.has(p.id)));
         orphans.forEach(() => addToast('Port slettet — trend-panel fjernet', 'info'));
-    }, [gates, panels]);
+    }, [gates]);
 
     const evictOldestIfFull = (list: PanelState[]): { trimmed: PanelState[]; evicted: boolean } => {
         if (list.length < MAX_PANELS) return { trimmed: list, evicted: false };

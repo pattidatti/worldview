@@ -1,6 +1,8 @@
 import { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import { AuthProvider } from './context/AuthContext';
 import { HistoryProvider } from './context/HistoryContext';
+import { TimelineModeProvider } from './context/TimelineModeContext';
+import { TimelineBar } from './components/UI/Timeline/TimelineBar';
 import { SignInGate } from './components/UI/SignInGate';
 import { AnalysisPanelProvider } from './components/UI/AnalysisPanel/AnalysisPanelHost';
 import { GateProvider, useGates } from './context/GateContext';
@@ -213,6 +215,7 @@ function AppContent({
                 <ResetCameraButton />
                 <GeoNavigator />
                 <StatusTicker />
+                <TimelineBar />
                 <LayerErrorWatcher />
                 {popup && (
                     <InfoPopup
@@ -249,6 +252,7 @@ export default function App() {
         <ImageryProvider>
         <LayerProvider>
         <HistoryProvider>
+        <TimelineModeProvider>
         <GateProvider>
         <TimelineEventProvider>
         <TrackingProvider>
@@ -276,6 +280,7 @@ export default function App() {
         </TrackingProvider>
         </TimelineEventProvider>
         </GateProvider>
+        </TimelineModeProvider>
         </HistoryProvider>
         </LayerProvider>
         </ImageryProvider>

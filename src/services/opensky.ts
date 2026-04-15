@@ -1,5 +1,6 @@
 import { type Flight, type PositionSource } from '@/types/flight';
 import { type Viewport } from '@/hooks/useViewport';
+import { proxied } from '@/utils/corsProxy';
 
 const OPENSKY_BASE = 'https://opensky-network.org/api';
 
@@ -111,7 +112,7 @@ export async function fetchFlightRoute(callsign: string): Promise<FlightRoute | 
     if (cached !== undefined) return cached;
 
     try {
-        const response = await fetch(`${OPENSKY_BASE}/routes?callsign=${encodeURIComponent(callsign)}`);
+        const response = await fetch(proxied(`${OPENSKY_BASE}/routes?callsign=${encodeURIComponent(callsign)}`));
         if (!response.ok) {
             routeCache.set(callsign, null);
             saveRouteToSession(callsign, null);

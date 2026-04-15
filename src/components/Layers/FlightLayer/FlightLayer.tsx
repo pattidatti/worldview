@@ -19,6 +19,9 @@ import { useTooltipRegistry } from '@/context/TooltipRegistry';
 import { useGeointRegistry } from '@/context/GeointContext';
 import { useGates } from '@/context/GateContext';
 import { useTimelineEvents } from '@/context/TimelineEventContext';
+import { writeCrossings } from '@/services/crossingSync';
+import { useTimelineMode, CURSOR_JUMP_THRESHOLD_MS } from '@/context/TimelineModeContext';
+import { useReplayEntities } from '@/hooks/useReplayEntities';
 import { useViewport } from '@/hooks/useViewport';
 import { configureCluster } from '@/utils/cluster';
 import { fetchFlights } from '@/services/airplaneslive';
@@ -122,6 +125,11 @@ export function FlightLayer() {
     const lastEntityStateRef = useRef<Map<string, EntityPosition>>(new Map());
     const visible = isVisible('flights');
     const viewport = useViewport(viewer);
+    const { mode, cursor, modeEpoch } = useTimelineMode();
+    const isReplay = mode === 'replay';
+    const replayResult = useReplayEntities('flight', cursor);
+    const replayEntities = replayResult.entities;
+    const lastCursorRef = useRef(cursor);
     const dataSourceRef = useRef<CustomDataSource | null>(null);
     const trailDsRef = useRef<CustomDataSource | null>(null);
     const pulseDsRef = useRef<CustomDataSource | null>(null);
@@ -235,9 +243,10 @@ export function FlightLayer() {
         return () => tooltipUnregister('flights');
     }, [tooltipRegister, tooltipUnregister]);
 
-    // Polling
+    // Polling — paused i replay-modus.
     useEffect(() => {
         if (!visible) return;
+        if (isReplay) return;
         let cancelled = false;
         let timerId: ReturnType<typeof setTimeout>;
 
@@ -264,7 +273,37 @@ export function FlightLayer() {
 
         doFetch();
         return () => { cancelled = true; clearTimeout(timerId); };
-    }, [visible, setLayerLoading, setLayerError, setLayerLastUpdated]);
+    }, [visible, isReplay, setLayerLoading, setLayerError, setLayerLastUpdated]);
+
+    // Replay-drevet state: når i replay-modus, driv `flights` fra useReplayEntities.
+    useEffect(() => {
+        if (!isReplay) return;
+        // ReplayFlight mangler originCountry — legg til tom for kompatibilitet.
+        const adapted: Flight[] = replayEntities.map((f) => ({
+            ...f,
+            originCountry: '',
+            positionSource: f.positionSource as Flight['positionSource'],
+        }));
+        setFlights(adapted);
+        setLayerLastUpdated('flights', cursor);
+    }, [isReplay, replayEntities, cursor, setLayerLastUpdated]);
+
+    // Mode-switch og stor cursor-jump: nullstill trails + DR + sist-sett-state.
+    useEffect(() => {
+        const jumpLarge = Math.abs(cursor - lastCursorRef.current) > CURSOR_JUMP_THRESHOLD_MS;
+        lastCursorRef.current = cursor;
+        if (!jumpLarge && modeEpoch === 0) return; // første render, intet å rydde.
+        trailHistoryRef.current.clear();
+        drStateRef.current.clear();
+        lastSeenByApiRef.current.clear();
+        lastEntityStateRef.current.clear();
+        const ds = dataSourceRef.current;
+        const trailDs = trailDsRef.current;
+        if (ds) ds.entities.removeAll();
+        if (trailDs) trailDs.entities.removeAll();
+        firstPollDoneRef.current = false;
+        if (viewer && !viewer.isDestroyed()) viewer.scene.requestRender();
+    }, [modeEpoch, cursor, viewer]);
 
     useEffect(() => {
         if (!viewer || viewer.isDestroyed()) return;
@@ -311,8 +350,10 @@ export function FlightLayer() {
     // --- Dead-reckoning: preRender listener ---
     // Each frame: extrapolate every airborne flight forward from its last known position.
     // We only extrapolate up to DR_MAX_AGE_MS to avoid runaway drift on stale data.
+    // Skipped i replay-modus (vi ekstrapolerer ikke gamle posisjoner).
     useEffect(() => {
         if (!viewer || viewer.isDestroyed()) return;
+        if (isReplay) return;
         const handle = viewer.scene.preRender.addEventListener(() => {
             const ds = dataSourceRef.current;
             if (!ds?.show) return;
@@ -327,13 +368,15 @@ export function FlightLayer() {
             }
         });
         return () => handle();
-    }, [viewer]);
+    }, [viewer, isReplay]);
 
     // --- rAF loop: drives rendering at ~60fps while flights are visible ---
     // This is what makes dead-reckoning actually smooth — requestRenderMode
     // won't re-render unless asked, so we ask every animation frame.
+    // I replay-modus trenger vi ikke rAF — replay-entiteter oppdateres via state-change.
     useEffect(() => {
         if (!visible || !viewer) return;
+        if (isReplay) return;
         let rafId: number;
         const tick = () => {
             if (viewer && !viewer.isDestroyed()) viewer.scene.requestRender();
@@ -341,7 +384,7 @@ export function FlightLayer() {
         };
         rafId = requestAnimationFrame(tick);
         return () => cancelAnimationFrame(rafId);
-    }, [visible, viewer]);
+    }, [visible, viewer, isReplay]);
 
     // Entity sync + DR state update
     const updateEntities = useCallback(() => {
@@ -510,9 +553,11 @@ export function FlightLayer() {
             }
         }
 
-        // Steg 3b: flush innsamlede gate-crossings til timeline
+        // Steg 3b: flush innsamlede gate-crossings til timeline + Firestore.
+        // Firestore-write er fire-and-forget; feil logges men blokkerer ikke UI.
         if (crossingEvents.length > 0) {
             appendEventsRef.current(crossingEvents);
+            void writeCrossings(crossingEvents);
         }
 
         // Steg 4: sweep etter foreldreløse trail-entiteter (f.eks. fra race conditions ved mount)

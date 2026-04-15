@@ -37,6 +37,24 @@ service cloud.firestore {
       allow delete: if false; // TTL rydder opp
     }
 
+    // Entity-snapshots (fly, skip, disasters, news): globalt delt read.
+    // Writes kun fra Cloud Functions via admin SDK (rules bypasses for admin).
+    match /entities/{entityType}/buckets/{bucketId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
+    // Gate-crossings: globalt delt read, enhver innlogget kan skrive med korrekt schemaVersion.
+    // Idempotens via deterministisk doc-ID (gateId_entityId_segmentIndex_tsMinute).
+    match /gate_crossings/{day}/events/{crossingId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+                    && !killSwitchOn()
+                    && request.resource.data.schemaVersion == 1;
+      allow update: if false;
+      allow delete: if false; // TTL rydder opp
+    }
+
     // Alt annet — default deny.
     match /{document=**} {
       allow read, write: if false;

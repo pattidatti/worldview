@@ -20,7 +20,7 @@ export function WeatherRadarControls() {
     const isNowcast = currentIndex >= pastCount;
 
     return (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-10
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-10
                         flex items-center gap-3 px-4 py-2.5
                         bg-[var(--bg-ui)] backdrop-blur-md
                         border border-white/10 rounded-xl

@@ -53,9 +53,30 @@ All env vars use Vite's `import.meta.env.VITE_*` convention.
 - **UTC i storage, lokal i UI** — Firestore-doc-IDer bruker `YYYY-MM-DD_UTC`. `expiresAt`-felt er 30d etter ts.
 - **schemaVersion på alle writes** — firestore.rules avviser writes uten `schemaVersion == CURRENT`. Migratorer kjører ved lesing (se `src/utils/schemaMigrators.ts`).
 
+## History schemas (fase 3)
+
+Fase 3 introduserer tidslinje-scrubber + playback. Entity-snapshots skrives av Cloud Functions i `europe-west1` til Firestore.
+
+- **Collections**:
+    - `/entities/flight/buckets/{YYYY-MM-DD_UTC}_{bucketIdx}` — hvert 10. min, hele Nord-Europa.
+    - `/entities/ship/buckets/{YYYY-MM-DD_UTC}_{bucketIdx}` — hvert 5. min med 30s AIS-vindu.
+    - `/entities/disaster/buckets/...` og `/entities/news/buckets/...` — hvert 10. min.
+- **Doc-format**: `{ ts, schemaVersion, expiresAt, items: T[], count }`. `items` er array av entity-typer (`ReplayFlight`, `ReplayShip`, etc. i `src/types/replay.ts`).
+- **TTL**: `expiresAt = ts + 30d`. TTL-policy settes manuelt per kolleksjon i Firebase Console (CLI støtter ikke TTL).
+- **Security rules**: klient har READ-tilgang for auth, men `write: false` — kun Cloud Function via admin SDK kan skrive. Gate-crossings (`/gate_crossings/{day}/events/{id}`) er write-fra-klient med idempotent doc-ID.
+- **Cloud Function-kode**: `functions/src/{index,snapshotWorker,sources/*}.ts`. Sharing: typer duplikat-kopieres (ikke shared workspace) — `CURRENT_ENTITY_SCHEMA` holdes manuelt i sync mellom `functions/src/schemaVersion.ts` og `src/utils/schemaMigrators.ts`.
+- **Replay-lesing klient**: `src/services/historyReplay.ts` henter bucket on-demand. LRU-cache (`src/utils/historyCache.ts`, cap 48) ved nøkkel `${type}:${bucketTs}`. Interpolasjon mellom prev+next bucket i `src/utils/entityInterpolation.ts`.
+- **Hook**: `useReplayEntities(type, cursorTs)` returnerer `{ entities, trails, loading }`. Trails = siste 6 buckets før cursor (60 min for fly, 30 min for skip).
+- **Live vs replay i lag**: FlightLayer og ShipLayer har to kodegrener. I replay-modus: polling/WebSocket pauses, dead-reckoning pauses, `flights`/`ships`-state drives fra replay-hook. SatelliteLayer propagerer TLE til cursor via `computePositions(tle, new Date(cursor))`.
+- **Mode-switch og cursor-jump >15 min**: nullstill `trailHistoryRef`, `drStateRef`, `lastEntityStateRef`, og fjern eksisterende entities fra dataSource. Forhindrer blanding av live og replay-derived posisjoner.
+- **Data-gap-deteksjon**: klient-side i `useReplayEntities`. Hvis prev+next buckets er tomme innen forventet Cloud Function-kadens, emitteres `{ kind: 'data-gap' }` til TimelineEventContext og rendres som grå stripe i EventMarkers.
+- **Speed-knapper**: 0 (PAUSE), 30 (30m/s), 120 (2t/s), 360 (6t/s) — sekund-multiplier av sanntid.
+- **TimelineModeContext**: wrappet i App mellom `HistoryProvider` og `GateProvider`. Eksponerer `mode`, `cursor`, `speed`, `setMode`, `setCursor`, `setSpeed`, `jumpToNow`, `modeEpoch` (øker ved mode-switch, brukt av lag for reset).
+- **Cloud Function-sampling**: `functions/src/sources/flights.ts` bruker 5 sample-punkter à 250nm (airplanes.live max-radius) som dekker Nord-Europa. `ships.ts` bruker én bounding box [45..75°N, -15..40°E]. Utvides ved behov.
+
 ## Firebase
 
-- **Region**: Firestore `eur3`. Cloud Functions (fase 3) planlegges i `europe-west1`.
+- **Region**: Firestore `eur3`. Cloud Functions fase 3 er deployet i `europe-west1`.
 - **Auth**: Google sign-in via `signInWithPopup` med redirect-fallback. Identitet persisterer på tvers av enheter.
 - **Bootstrap**: `firebase login` + `firebase use --add <prosjekt-id>`. Konfigurer Google-provider i Firebase Console → Authentication. Opprett TTL-policy på `expiresAt`-feltet for kolleksjonene `snapshots/*/entries` og `gate_crossings/*/events` (CLI støtter ikke TTL — gjøres i Console).
 - **Billing-alert** 1 USD/dag settes i Firebase Console → Usage.

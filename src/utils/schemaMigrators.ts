@@ -29,3 +29,7 @@ export const snapshotMigrators = buildRegistry<unknown>(1, {});
 
 // Gate-migratorer (v1 er current — ingen migratorer enda).
 export const gateMigrators = buildRegistry<unknown>(1, {});
+
+// Entity-snapshot-migratorer (v1 er current — ingen migratorer enda).
+// Bruker Cloud Function skriver til /entities/{type}/buckets/*.
+export const entityMigrators = buildRegistry<unknown>(1, {});

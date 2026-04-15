@@ -79,6 +79,11 @@ export default defineConfig({
                 changeOrigin: true,
                 rewrite: (path) => path.replace(/^\/proxy\/dot/, ''),
             },
+            '/proxy/opensky': {
+                target: 'https://opensky-network.org',
+                changeOrigin: true,
+                rewrite: (path) => path.replace(/^\/proxy\/opensky/, ''),
+            },
             '/proxy/sigmet': {
                 target: 'https://aviationweather.gov',
                 changeOrigin: true,

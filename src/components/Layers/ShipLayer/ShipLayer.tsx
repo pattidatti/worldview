@@ -26,6 +26,9 @@ import { useTooltipRegistry } from '@/context/TooltipRegistry';
 import { useGeointRegistry } from '@/context/GeointContext';
 import { useGates } from '@/context/GateContext';
 import { useTimelineEvents } from '@/context/TimelineEventContext';
+import { writeCrossings } from '@/services/crossingSync';
+import { useTimelineMode, CURSOR_JUMP_THRESHOLD_MS } from '@/context/TimelineModeContext';
+import { useReplayEntities } from '@/hooks/useReplayEntities';
 import { useViewport } from '@/hooks/useViewport';
 import { configureCluster } from '@/utils/cluster';
 import { AISStreamConnection } from '@/services/aisstream';
@@ -124,6 +127,11 @@ export function ShipLayer() {
     shipsRef.current = ships;
     const visibleRef = useRef(visible);
     visibleRef.current = visible;
+    const { mode, cursor, modeEpoch } = useTimelineMode();
+    const isReplay = mode === 'replay';
+    const replayResult = useReplayEntities('ship', cursor);
+    const replayEntities = replayResult.entities;
+    const lastCursorRef = useRef(cursor);
 
     // GEOINT data provider
     useEffect(() => {
@@ -250,9 +258,10 @@ export function ShipLayer() {
         if (trailDsRef.current) trailDsRef.current.show = visible;
     }, [visible]);
 
-    // Connect to AIS stream
+    // Connect to AIS stream — pauses i replay-modus.
     useEffect(() => {
         if (!visible || !API_KEY || !hasViewport) return;
+        if (isReplay) return;
         setLayerLoading('ships', true);
         const conn = new AISStreamConnection(API_KEY, viewportRef.current!, (updatedShips) => {
             const now = Date.now();
@@ -296,7 +305,38 @@ export function ShipLayer() {
             connRef.current = null;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [visible, hasViewport]);
+    }, [visible, hasViewport, isReplay]);
+
+    // Replay-drevet state: når i replay-modus, driv `ships` fra useReplayEntities.
+    useEffect(() => {
+        if (!isReplay) return;
+        const next = new Map<number, Ship>();
+        for (const s of replayEntities) {
+            next.set(s.mmsi, {
+                ...s,
+                lastSeen: cursor,
+            });
+        }
+        setShips(next);
+        setLayerLastUpdated('ships', cursor);
+    }, [isReplay, replayEntities, cursor, setLayerLastUpdated]);
+
+    // Mode-switch og stor cursor-jump: nullstill trails + ship-state.
+    useEffect(() => {
+        const jumpLarge = Math.abs(cursor - lastCursorRef.current) > CURSOR_JUMP_THRESHOLD_MS;
+        lastCursorRef.current = cursor;
+        if (!jumpLarge && modeEpoch === 0) return;
+        trailHistoryRef.current.clear();
+        lastEntityStateRef.current.clear();
+        shipTimestampsRef.current.clear();
+        const ds = dataSourceRef.current;
+        const superDs = superDsRef.current;
+        const trailDs = trailDsRef.current;
+        if (ds) ds.entities.removeAll();
+        if (superDs) superDs.entities.removeAll();
+        if (trailDs) trailDs.entities.removeAll();
+        if (viewer && !viewer.isDestroyed()) viewer.scene.requestRender();
+    }, [modeEpoch, cursor, viewer]);
 
     // Update viewport on camera move (re-subscribe with new bounding box)
     useEffect(() => {
@@ -518,6 +558,7 @@ export function ShipLayer() {
         }
         if (crossingEvents.length > 0) {
             appendEventsRef.current(crossingEvents);
+            void writeCrossings(crossingEvents);
         }
         if (viewer && !viewer.isDestroyed()) viewer.scene.requestRender();
     }, [ships, viewer, setLayerCount]);

@@ -7,7 +7,7 @@ export function GateDrawHud() {
     const count = draw.vertices.length;
 
     return (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-20">
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-20">
             <div className="bg-[var(--bg-ui)] backdrop-blur-md border border-[var(--color-gates)]/40 rounded-xl shadow-2xl px-4 py-2 flex items-center gap-3">
                 <span className="text-[var(--color-gates)] text-sm">⛩</span>
                 <span className="font-mono text-xs tracking-wider text-[var(--color-gates)]">
