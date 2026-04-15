@@ -1,5 +1,7 @@
 {
-    "projects": {
-        "default": ""
-    }
+  "projects": {
+    "default": "worldview-pattidatti"
+  },
+  "targets": {},
+  "etags": {}
 }

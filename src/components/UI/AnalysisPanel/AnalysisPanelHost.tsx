@@ -71,28 +71,25 @@ export function AnalysisPanelProvider({ children }: { children: ReactNode }) {
 
     // Auto-lukk trend-paneler når porten slettes.
     useEffect(() => {
-        setPanels((prev) => {
-            const activeIds = new Set(gates.map((g) => g.id));
-            const next = prev.filter((p) => {
-                if (p.type !== 'trend') return true;
-                if (activeIds.has(p.gateId)) return true;
-                addToast(`Port slettet — trend-panel fjernet`, 'info');
-                return false;
-            });
-            return next.length === prev.length ? prev : next;
-        });
-    }, [gates]);
+        const activeIds = new Set(gates.map((g) => g.id));
+        const orphans = panels.filter((p) => p.type === 'trend' && !activeIds.has(p.gateId));
+        if (orphans.length === 0) return;
+        const orphanSet = new Set(orphans.map((p) => p.id));
+        setPanels((prev) => prev.filter((p) => !orphanSet.has(p.id)));
+        orphans.forEach(() => addToast('Port slettet — trend-panel fjernet', 'info'));
+    }, [gates, panels]);
 
-    const evictOldestIfFull = (list: PanelState[]): PanelState[] => {
-        if (list.length < MAX_PANELS) return list;
+    const evictOldestIfFull = (list: PanelState[]): { trimmed: PanelState[]; evicted: boolean } => {
+        if (list.length < MAX_PANELS) return { trimmed: list, evicted: false };
         const oldest = list.reduce((a, b) => (a.openedAt <= b.openedAt ? a : b));
-        addToast('Eldste panel lukket — maks 8 samtidig', 'info');
-        return list.filter((p) => p.id !== oldest.id);
+        return { trimmed: list.filter((p) => p.id !== oldest.id), evicted: true };
     };
 
     const addDelta = useCallback((layerId: LayerId) => {
+        let didEvict = false;
         setPanels((prev) => {
-            const trimmed = evictOldestIfFull(prev);
+            const { trimmed, evicted } = evictOldestIfFull(prev);
+            didEvict = evicted;
             const panel: PanelState = {
                 id: newId(),
                 type: 'delta',
@@ -102,11 +99,14 @@ export function AnalysisPanelProvider({ children }: { children: ReactNode }) {
             };
             return [...trimmed, panel];
         });
+        if (didEvict) addToast('Eldste panel lukket — maks 8 samtidig', 'info');
     }, []);
 
     const addTrend = useCallback((gateId: string) => {
+        let didEvict = false;
         setPanels((prev) => {
-            const trimmed = evictOldestIfFull(prev);
+            const { trimmed, evicted } = evictOldestIfFull(prev);
+            didEvict = evicted;
             const panel: PanelState = {
                 id: newId(),
                 type: 'trend',
@@ -116,6 +116,7 @@ export function AnalysisPanelProvider({ children }: { children: ReactNode }) {
             };
             return [...trimmed, panel];
         });
+        if (didEvict) addToast('Eldste panel lukket — maks 8 samtidig', 'info');
     }, []);
 
     const hideAll = useCallback(() => {

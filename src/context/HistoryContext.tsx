@@ -17,6 +17,7 @@ const SNAPSHOT_INTERVAL_MS = 60_000; // 60s rolling buffer
 const BATCH_FLUSH_MS = 5 * 60_000; // 5-min Firestore batch write
 const MAX_SAMPLES = 10_080; // 7 dager × 1440 min
 const BACKFILL_MS = 7 * 86_400_000; // 7d boot-restore
+const MAX_PENDING = 1440; // cap retry-buffer ved gjentatte flush-feil (~24t)
 
 interface HistoryContextValue {
     snapshots: Snapshot[];
@@ -88,8 +89,9 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
             pendingRef.current = [];
             writeSnapshotBatch(pending).catch((e) => {
                 console.warn('[HistoryContext] flush feilet', e);
-                // Legg tilbake så neste flush prøver igjen.
-                pendingRef.current.unshift(...pending);
+                // Legg tilbake så neste flush prøver igjen, men cap for å unngå ubegrenset vekst.
+                const merged = [...pending, ...pendingRef.current];
+                pendingRef.current = merged.slice(-MAX_PENDING);
             });
         }, BATCH_FLUSH_MS);
         return () => clearInterval(id);
