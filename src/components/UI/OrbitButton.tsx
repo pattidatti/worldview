@@ -10,7 +10,7 @@ export function OrbitButton() {
     const { orbitActive, setOrbitActive, orbitSpeed, setOrbitSpeed } = useOrbit();
 
     return (
-        <div className="absolute z-10 flex flex-col gap-1" style={{ bottom: '14.5rem', right: '1.5rem' }}>
+        <div className="flex flex-col gap-1">
             <button
                 onClick={() => setOrbitActive(!orbitActive)}
                 title="Spionfly-orbit — sirkuler rundt nåværende punkt"

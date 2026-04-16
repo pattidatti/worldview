@@ -202,17 +202,23 @@ function AppContent({
                 <PlaceLabels />
                 <TopBar searchRef={searchRef} />
                 <LayerPanel />
-                <GatePanel />
+                {/* Top-right panel: GatePanel + EventLog i felles kolonne */}
+                <div className="absolute top-20 right-4 z-10 flex flex-col gap-2 w-56">
+                    <GatePanel />
+                    <EventLog />
+                </div>
                 <GateDrawHud />
-                <ImageryPicker />
-                <ShaderOverlayPicker />
                 <PortholeOverlay />
                 <HudOverlay />
-                <EventLog />
-                <CameraHud />
-                <OrbitButton />
-                <MissionControl />
-                <ResetCameraButton />
+                {/* Høyre-side bunn-kolonne — alle kontroller i én flex-stack */}
+                <div className="absolute bottom-20 right-6 z-10 flex flex-col gap-2 items-end pointer-events-none">
+                    <div className="pointer-events-auto"><ResetCameraButton /></div>
+                    <div className="pointer-events-auto"><MissionControl /></div>
+                    <div className="pointer-events-auto"><OrbitButton /></div>
+                    <CameraHud />
+                    <div className="pointer-events-auto"><ImageryPicker /></div>
+                    <div className="pointer-events-auto"><ShaderOverlayPicker /></div>
+                </div>
                 <GeoNavigator />
                 <StatusTicker />
                 <TimelineBar />

@@ -375,7 +375,7 @@ export function GeoNavigator() {
     return (
         <div
             ref={panelRef}
-            className="absolute bottom-9 left-1/2 -translate-x-1/2 z-20 flex flex-col items-stretch gap-1"
+            className="absolute bottom-20 left-1/2 -translate-x-1/2 z-20 flex flex-col items-stretch gap-1"
             style={{ width: 'clamp(400px, 50vw, 640px)' }}
         >
             {/* ── Panel (slides up from nav bar) ───────────────────────── */}

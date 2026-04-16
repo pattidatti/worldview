@@ -104,10 +104,7 @@ export function EventLog() {
     if (events.length === 0) return null;
 
     return (
-        <div
-            className="absolute z-10"
-            style={{ top: '56px', right: '1.5rem', width: '220px' }}
-        >
+        <div>
             <div
                 style={{
                     background: 'rgba(10, 10, 20, 0.75)',

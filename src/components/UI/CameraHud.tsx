@@ -54,10 +54,8 @@ export function CameraHud() {
 
     return (
         <div
-            className="absolute z-10 pointer-events-none"
+            className="pointer-events-none"
             style={{
-                bottom: '9rem',
-                right: '1.5rem',
                 fontFamily: 'var(--font-mono)',
                 fontSize: '10px',
                 lineHeight: '1.6',

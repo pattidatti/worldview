@@ -24,7 +24,7 @@ export function ResetCameraButton() {
     };
 
     return (
-        <div className="absolute z-10" style={{ bottom: '24.5rem', right: '1.5rem' }}>
+        <div>
             <button
                 onClick={handleReset}
                 title="Nullstill kamera — nord opp, ingen tilt"

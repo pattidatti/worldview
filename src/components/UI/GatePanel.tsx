@@ -156,7 +156,7 @@ export function GatePanel() {
     if (!layerVisible) return null;
 
     return (
-        <div className="absolute right-4 top-20 z-10 w-56">
+        <div className="w-56">
             <div className="bg-[var(--bg-ui)] backdrop-blur-md border border-white/10 rounded-xl shadow-2xl overflow-hidden">
                 <div className="flex items-center justify-between px-3 py-2 border-b border-white/5">
                     <span className="font-mono text-[10px] tracking-wider text-[var(--color-gates)]">

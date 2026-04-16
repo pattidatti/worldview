@@ -95,8 +95,7 @@ export function MissionControl() {
 
     return (
         <>
-            {/* Trigger button — right column, above OrbitButton */}
-            <div className="absolute z-10" style={{ bottom: '19.5rem', right: '1.5rem' }}>
+            {/* Trigger button */}
                 <button onClick={handleOpen} style={buttonStyle} title="AI GEOINT-brief for gjeldende visning">
                     <div style={{ fontSize: '9px', letterSpacing: '0.08em', marginBottom: '6px', color: 'rgba(0, 255, 136, 0.7)', fontWeight: 'bold' }}>
                         MISSION CONTROL
@@ -116,7 +115,6 @@ export function MissionControl() {
                         )}
                     </div>
                 </button>
-            </div>
 
             {/* Modal overlay */}
             {open && (
