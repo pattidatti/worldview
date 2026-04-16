@@ -86,10 +86,15 @@ function toFlight(ac: AcEntry): SnapshotFlight | null {
     };
 }
 
+const FETCH_TIMEOUT_MS = 20_000;
+
 async function fetchPoint(lat: number, lon: number, radiusNm: number): Promise<AcEntry[]> {
     const url = `${API_BASE}/point/${lat}/${lon}/${radiusNm}`;
     try {
-        const res = await fetch(url, { headers: { 'User-Agent': 'worldview-cf/1.0' } });
+        const ac = new AbortController();
+        const timer = setTimeout(() => ac.abort(), FETCH_TIMEOUT_MS);
+        const res = await fetch(url, { headers: { 'User-Agent': 'worldview-cf/1.0' }, signal: ac.signal });
+        clearTimeout(timer);
         if (res.status === 429) {
             console.warn(`[flights] rate-limited at ${lat},${lon}`);
             return [];

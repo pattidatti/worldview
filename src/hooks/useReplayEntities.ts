@@ -21,6 +21,9 @@ import type { DataGapEvent } from '@/types/timeline-event';
 
 const TRAIL_BUCKET_COUNT = 6; // 60 min ved 10-min fly-buckets, 30 min ved 5-min skip.
 
+// Tidligste tidspunkt vi forventer CF-data (unngå falske gap-events for tid før deploy).
+const CF_EARLIEST_TS = Date.UTC(2026, 3, 15); // 2026-04-15 — juster ved behov.
+
 // Pre-cast hjelper-typer; interpolations-koden strict-krever type.
 type TypedBucket = ReplayBucket<ReplayFlight> | ReplayBucket<ReplayShip>;
 
@@ -81,8 +84,9 @@ export function useReplayEntities(
             ]);
             if (cancelled) return;
 
-            // Data-gap: hvis begge er tomme og vi forventet data (cursor innenfor range hvor Cloud Function var aktiv).
-            if (prev && next && prev.items.length === 0 && next.items.length === 0) {
+            // Data-gap: kun innenfor forventet CF-range (etter deploy, før nå minus kadens).
+            const withinCfRange = prevTs >= CF_EARLIEST_TS && prevTs <= Date.now() - interval * 2;
+            if (withinCfRange && prev && next && prev.items.length === 0 && next.items.length === 0) {
                 const gapKey = `${type}-${prevTs}`;
                 if (lastGapKeyRef.current !== gapKey) {
                     lastGapKeyRef.current = gapKey;

@@ -30,6 +30,7 @@ const TIMELINE_SHORTCUTS = [
     { key: 'Space', label: 'Pause / spill av (replay)' },
     { key: '← / →', label: 'Hopp ±1 bucket' },
     { key: 'Home', label: 'Hopp til nå (live)' },
+    { key: 'End', label: 'Hopp til eldste tilgjengelige' },
 ];
 
 export function KeyboardHelpModal({ onClose }: KeyboardHelpModalProps) {

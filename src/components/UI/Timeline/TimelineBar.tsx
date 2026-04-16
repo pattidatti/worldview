@@ -52,6 +52,12 @@ export function TimelineBar() {
                 jumpToNow();
                 return;
             }
+            if (e.key === 'End') {
+                e.preventDefault();
+                setCursor(Date.now() - 30 * 24 * 60 * 60 * 1000 + 60_000);
+                setMode('replay');
+                return;
+            }
             if (mode !== 'replay') return;
             if (e.key === ' ' || e.code === 'Space') {
                 e.preventDefault();
