@@ -194,7 +194,7 @@ export function LayerPanel() {
 
     return (
         <div className="absolute left-4 top-20 z-10">
-            <div className="w-44 bg-[var(--bg-ui)] backdrop-blur-md border border-white/10 rounded-xl shadow-2xl overflow-hidden">
+            <div className="w-44 bg-[var(--bg-ui)] backdrop-blur-md border border-white/10 rounded-xl shadow-2xl overflow-hidden flex flex-col" style={{ maxHeight: 'calc(100vh - 10.5rem)' }}>
                 {/* Search */}
                 <div className="px-3 pt-2 pb-1">
                     <div className="flex items-center gap-1 bg-white/5 border border-white/10 rounded-lg px-2 py-1">
@@ -218,7 +218,7 @@ export function LayerPanel() {
                     </div>
                 </div>
 
-                <div className="py-1 flex flex-col divide-y divide-white/5">
+                <div className="py-1 flex flex-col divide-y divide-white/5 overflow-y-auto flex-1 min-h-0">
                     {filteredLayers ? (
                         /* Search results: flat list */
                         filteredLayers.length > 0 ? (

@@ -125,3 +125,6 @@
 [  419078ms] [WARNING] [historyReplay] fetch feilet ship 2026-04-16_UTC_202 FirebaseError: Missing or insufficient permissions. @ http://localhost:5175/src/services/historyReplay.ts:23
 [  419131ms] [WARNING] [historyReplay] fetch feilet flight 2026-04-16_UTC_097 FirebaseError: Missing or insufficient permissions. @ http://localhost:5175/src/services/historyReplay.ts:23
 [  419185ms] [WARNING] [historyReplay] fetch feilet ship 2026-04-16_UTC_201 FirebaseError: Missing or insufficient permissions. @ http://localhost:5175/src/services/historyReplay.ts:23
+[  524302ms] [WARNING] [historyReplay] fetch feilet ship 2026-04-16_UTC_209 FirebaseError: Missing or insufficient permissions. @ http://localhost:5175/src/services/historyReplay.ts:23
+[  524302ms] [WARNING] [historyReplay] fetch feilet flight 2026-04-16_UTC_105 FirebaseError: Missing or insufficient permissions. @ http://localhost:5175/src/services/historyReplay.ts:23
+[  824414ms] [WARNING] [historyReplay] fetch feilet ship 2026-04-16_UTC_210 FirebaseError: Missing or insufficient permissions. @ http://localhost:5175/src/services/historyReplay.ts:23
