@@ -10,6 +10,7 @@ import { ViewerProvider } from '@/context/ViewerContext';
 import { usePopupRegistry } from '@/context/PopupRegistry';
 import { useGates } from '@/context/GateContext';
 import { useImagery } from '@/context/ImageryContext';
+import { useSceneProjection } from '@/context/SceneProjectionContext';
 import { useTracking } from '@/context/TrackingContext';
 import { useOrbit } from '@/context/OrbitContext';
 import { useShaderOverlay } from '@/context/ShaderOverlayContext';
@@ -73,7 +74,12 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
     const [viewer, setViewer] = useState<Viewer | null>(null);
     const { resolve } = usePopupRegistry();
     const { isDrawingRef } = useGates();
-    const { activeMode } = useImagery();
+    const { activeMode, setMode } = useImagery();
+    const { is2D } = useSceneProjection();
+    const activeModeRef = useRef(activeMode);
+    activeModeRef.current = activeMode;
+    const is2DRef = useRef(is2D);
+    is2DRef.current = is2D;
     const { activeOverlay } = useShaderOverlay();
     const { trackedEntityId, setTrackedEntityId } = useTracking();
     const { orbitActive, setOrbitActive, orbitSpeed } = useOrbit();
@@ -426,6 +432,14 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
 
         async function apply() {
             if (activeMode === 'photorealistic3d') {
+                // photorealistic3d støttes ikke i 2D-modus — fall tilbake til map
+                if (is2DRef.current) {
+                    scene.globe.show = true;
+                    if (tilesetRef.current) tilesetRef.current.show = false;
+                    applyMapImagery(viewer!, baseLayersRef.current);
+                    if (!cancelled) scene.requestRender();
+                    return;
+                }
                 scene.globe.show = false;
 
                 if (!tilesetRef.current) {
@@ -487,6 +501,17 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
 
         scene.requestRender();
     }, [viewer, activeOverlay]);
+
+    // 2D/3D projeksjonstoggle
+    useEffect(() => {
+        if (!viewer) return;
+        if (is2D) {
+            if (activeModeRef.current === 'photorealistic3d') setMode('map');
+            viewer.scene.morphTo2D(1.5);
+        } else {
+            viewer.scene.morphTo3D(1.5);
+        }
+    }, [viewer, is2D]); // eslint-disable-line react-hooks/exhaustive-deps
 
     return (
         <ViewerProvider value={viewer}>

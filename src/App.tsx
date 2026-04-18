@@ -55,6 +55,8 @@ import { ChokepointLayer } from './components/Layers/ChokepointLayer/ChokepointL
 import { PlaceLabels } from './components/Globe/PlaceLabels';
 import { ImageryProvider } from './context/ImageryContext';
 import { ImageryPicker } from './components/UI/ImageryPicker';
+import { SceneProjectionProvider } from './context/SceneProjectionContext';
+import { DimensionToggle } from './components/UI/DimensionToggle';
 import { ShaderOverlayProvider } from './context/ShaderOverlayContext';
 import { ShaderOverlayPicker } from './components/UI/ShaderOverlayPicker';
 import { HudOverlay } from './components/UI/HudOverlay';
@@ -216,7 +218,10 @@ function AppContent({
                     <div className="pointer-events-auto"><MissionControl /></div>
                     <div className="pointer-events-auto"><OrbitButton /></div>
                     <CameraHud />
-                    <div className="pointer-events-auto"><ImageryPicker /></div>
+                    <div className="pointer-events-auto flex flex-row gap-2 items-center">
+                        <DimensionToggle />
+                        <ImageryPicker />
+                    </div>
                     <div className="pointer-events-auto"><ShaderOverlayPicker /></div>
                 </div>
                 <GeoNavigator />
@@ -255,6 +260,7 @@ export default function App() {
     return (
         <AuthProvider>
         <ShaderOverlayProvider>
+        <SceneProjectionProvider>
         <ImageryProvider>
         <LayerProvider>
         <HistoryProvider>
@@ -290,6 +296,7 @@ export default function App() {
         </HistoryProvider>
         </LayerProvider>
         </ImageryProvider>
+        </SceneProjectionProvider>
         </ShaderOverlayProvider>
         </AuthProvider>
     );
