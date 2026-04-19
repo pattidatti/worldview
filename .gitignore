@@ -25,3 +25,6 @@ npm-debug.log*
 # Firebase
 functions/node_modules/
 functions/lib/
+
+# Playwright / MCP
+.playwright-mcp/
