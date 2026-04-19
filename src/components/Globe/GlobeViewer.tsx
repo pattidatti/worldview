@@ -3,7 +3,7 @@ import {
     Viewer, Color, Ion, Entity, CameraEventType, Cartesian2, Cartesian3,
     ScreenSpaceEventHandler, ScreenSpaceEventType, defined,
     UrlTemplateImageryProvider, Math as CesiumMath, Cesium3DTileset, ImageryLayer,
-    JulianDate, HeadingPitchRange, Matrix4, PostProcessStage,
+    JulianDate, HeadingPitchRange, Matrix4, PostProcessStage, SceneMode,
 } from 'cesium';
 import { reverseGeocode } from '@/services/geocoding';
 import { ViewerProvider } from '@/context/ViewerContext';
@@ -206,7 +206,24 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
                 }
 
                 const amount = height * zoomVelocity;
-                if (cursorWorldPos) {
+
+                if (scene.mode === SceneMode.SCENE2D || scene.mode === SceneMode.COLUMBUS_VIEW) {
+                    // 2D-modus: camera.move() virker ikke i flat projeksjonsrom — bruk zoomIn/zoomOut
+                    if (amount > 0) {
+                        v.camera.zoomIn(amount);
+                    } else {
+                        v.camera.zoomOut(-amount);
+                    }
+                    // Cursor-sentrert korreksjon: pane mot cursor proporsjonalt med zoom-faktoren
+                    if (cursorWorldPos) {
+                        const zoomRatio = 1 - Math.abs(zoomVelocity);
+                        const camPos = v.camera.position;
+                        const panX = (cursorWorldPos.x - camPos.x) * (1 - zoomRatio);
+                        const panY = (cursorWorldPos.y - camPos.y) * (1 - zoomRatio);
+                        v.camera.moveRight(-panX);
+                        v.camera.moveUp(-panY);
+                    }
+                } else if (cursorWorldPos) {
                     Cartesian3.subtract(cursorWorldPos, v.camera.position, dirScratch);
                     Cartesian3.normalize(dirScratch, dirScratch);
                     v.camera.move(dirScratch, amount);
