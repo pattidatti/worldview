@@ -37,6 +37,7 @@ import {
     detectEntityCrossings,
     type EntityPosition,
 } from '@/utils/crossingDetector';
+import { TrailBuffer } from '@/utils/trailBuffer';
 import {
     getShipTypeName,
     getNavStatusText,
@@ -119,7 +120,7 @@ export function ShipLayer() {
     const dataSourceRef = useRef<CustomDataSource | null>(null);
     const superDsRef = useRef<CustomDataSource | null>(null);
     const trailDsRef = useRef<CustomDataSource | null>(null);
-    const trailHistoryRef = useRef<Map<string, Cartesian3[]>>(new Map());
+    const trailHistoryRef = useRef<Map<string, TrailBuffer<Cartesian3>>>(new Map());
     const connRef = useRef<AISStreamConnection | null>(null);
     const shipTimestampsRef = useRef<Map<number, number>>(new Map());
     const [ships, setShips] = useState<Map<number, Ship>>(new Map());
@@ -522,19 +523,22 @@ export function ShipLayer() {
             }
 
             if (trailDs) {
-                const history = trailHistoryRef.current.get(id) ?? [];
+                let history = trailHistoryRef.current.get(id);
+                if (!history) {
+                    history = new TrailBuffer<Cartesian3>(MAX_SHIP_TRAIL);
+                    trailHistoryRef.current.set(id, history);
+                }
                 history.push(seaPos.clone());
-                if (history.length > MAX_SHIP_TRAIL) history.shift();
-                trailHistoryRef.current.set(id, history);
+                const positions = history.toArray();
                 const trailId = `trail-${id}`;
                 const trailEntity = trailDs.entities.getById(trailId);
                 if (trailEntity?.polyline?.positions) {
-                    (trailEntity.polyline.positions as ConstantProperty).setValue([...history]);
-                } else if (history.length >= 2) {
+                    (trailEntity.polyline.positions as ConstantProperty).setValue(positions);
+                } else if (positions.length >= 2) {
                     trailDs.entities.add(new Entity({
                         id: trailId,
                         polyline: {
-                            positions: new ConstantProperty([...history]),
+                            positions: new ConstantProperty(positions),
                             width: 1.5,
                             material: new PolylineGlowMaterialProperty({
                                 glowPower: 0.2,

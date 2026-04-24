@@ -1,6 +1,7 @@
-import { useLayers } from '@/context/LayerContext';
+import { useActiveLayerIds, useLayerStatus, useLayerStore } from '@/store/layerStore';
 import { useTimelineMode } from '@/context/TimelineModeContext';
 import { AnimatedCount } from './AnimatedCount';
+import type { LayerId } from '@/types/layers';
 
 function formatReplayTime(ts: number): string {
     return new Date(ts).toLocaleString('nb-NO', {
@@ -19,10 +20,38 @@ function formatAge(ts: number | null): string {
     return ` ${Math.floor(s / 3600)}t`;
 }
 
+function TickerEntry({ id, first }: { id: LayerId; first: boolean }) {
+    const status = useLayerStatus(id);
+    const meta = useLayerStore((s) => s.meta[id]);
+    const name = meta.name;
+    const color = meta.color;
+    return (
+        <span className="flex items-center">
+            {!first && (
+                <span style={{ color: 'rgba(255,255,255,0.15)', margin: '0 10px' }}>·</span>
+            )}
+            <span style={{ color, opacity: 0.8 }}>{name.toUpperCase()}</span>
+            <span style={{ marginLeft: '5px' }}>
+                {status.error ? (
+                    <span style={{ color: 'var(--accent-orange, #ff6b35)' }}>⚠</span>
+                ) : status.loading && status.count === 0 ? (
+                    <span className="animate-pulse" style={{ color: 'rgba(255,255,255,0.35)' }}>···</span>
+                ) : (
+                    <AnimatedCount value={status.count} color="rgba(255,255,255,0.35)" flashColor={color} />
+                )}
+            </span>
+            {status.lastUpdated && !status.error && (
+                <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: '8px', marginLeft: '3px' }}>
+                    {formatAge(status.lastUpdated)}
+                </span>
+            )}
+        </span>
+    );
+}
+
 export function StatusTicker() {
-    const { layers } = useLayers();
+    const active = useActiveLayerIds();
     const { mode, cursor } = useTimelineMode();
-    const active = layers.filter((l) => l.visible && (l.count > 0 || l.loading || l.error));
 
     if (active.length === 0 && mode === 'live') return null;
 
@@ -44,11 +73,7 @@ export function StatusTicker() {
         >
             {mode === 'replay' ? (
                 <span
-                    style={{
-                        color: 'var(--accent-orange)',
-                        marginRight: '12px',
-                        fontWeight: 600,
-                    }}
+                    style={{ color: 'var(--accent-orange)', marginRight: '12px', fontWeight: 600 }}
                     title="Replay-modus"
                 >
                     ▶ REPLAY · {formatReplayTime(cursor)}
@@ -57,31 +82,8 @@ export function StatusTicker() {
                 <span style={{ color: 'rgba(0, 212, 255, 0.5)', marginRight: '12px' }}>◈</span>
             )}
             <div className="flex items-center gap-0 overflow-hidden" style={{ whiteSpace: 'nowrap' }}>
-                {active.map((l, i) => (
-                    <span key={l.id} className="flex items-center">
-                        {i > 0 && (
-                            <span style={{ color: 'rgba(255,255,255,0.15)', margin: '0 10px' }}>·</span>
-                        )}
-                        <span style={{ color: l.color, opacity: 0.8 }}>{l.name.toUpperCase()}</span>
-                        <span style={{ marginLeft: '5px' }}>
-                            {l.error ? (
-                                <span style={{ color: 'var(--accent-orange, #ff6b35)' }}>⚠</span>
-                            ) : l.loading && l.count === 0 ? (
-                                <span className="animate-pulse" style={{ color: 'rgba(255,255,255,0.35)' }}>···</span>
-                            ) : (
-                                <AnimatedCount
-                                    value={l.count}
-                                    color="rgba(255,255,255,0.35)"
-                                    flashColor={l.color}
-                                />
-                            )}
-                        </span>
-                        {l.lastUpdated && !l.error && (
-                            <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: '8px', marginLeft: '3px' }}>
-                                {formatAge(l.lastUpdated)}
-                            </span>
-                        )}
-                    </span>
+                {active.map((id, i) => (
+                    <TickerEntry key={id} id={id} first={i === 0} />
                 ))}
             </div>
         </div>

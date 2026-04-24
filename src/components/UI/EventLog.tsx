@@ -99,7 +99,8 @@ function DiffBadge({ diff, total }: { diff: number; total: number }) {
 
 export function EventLog() {
     const events = useEventLog();
-    const [collapsed, setCollapsed] = useState(false);
+    // Start kollapset for å redusere visuell støy — bruker utvider manuelt.
+    const [collapsed, setCollapsed] = useState(true);
 
     if (events.length === 0) return null;
 

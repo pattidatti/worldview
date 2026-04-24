@@ -33,6 +33,7 @@ import {
     detectEntityCrossings,
     type EntityPosition,
 } from '@/utils/crossingDetector';
+import { TrailBuffer } from '@/utils/trailBuffer';
 
 const FLIGHT_COLOR = Color.fromCssColorString('#ffa500');
 const POLL_MS = 10_000;
@@ -133,7 +134,7 @@ export function FlightLayer() {
     const dataSourceRef = useRef<CustomDataSource | null>(null);
     const trailDsRef = useRef<CustomDataSource | null>(null);
     const pulseDsRef = useRef<CustomDataSource | null>(null);
-    const trailHistoryRef = useRef<Map<string, Cartesian3[]>>(new Map());
+    const trailHistoryRef = useRef<Map<string, TrailBuffer<Cartesian3>>>(new Map());
     const firstPollDoneRef = useRef(false);
     const [flights, setFlights] = useState<Flight[]>([]);
     const viewportRef = useRef(viewport);
@@ -347,43 +348,31 @@ export function FlightLayer() {
         if (pulseDsRef.current) pulseDsRef.current.show = visible;
     }, [visible]);
 
-    // --- Dead-reckoning: preRender listener ---
-    // Each frame: extrapolate every airborne flight forward from its last known position.
-    // We only extrapolate up to DR_MAX_AGE_MS to avoid runaway drift on stale data.
+    // --- Dead-reckoning via setInterval ---
+    // 4 Hz er nok: selv raske fly (~300 m/s) flytter seg ~75 m per tick, subpixel
+    // på typisk zoom. Dette erstatter den gamle 60 fps rAF-løkken som drev
+    // requestRender hvert frame — 93 % færre frames per sekund uten synlig forskjell.
     // Skipped i replay-modus (vi ekstrapolerer ikke gamle posisjoner).
     useEffect(() => {
-        if (!viewer || viewer.isDestroyed()) return;
+        if (!visible || !viewer || viewer.isDestroyed()) return;
         if (isReplay) return;
-        const handle = viewer.scene.preRender.addEventListener(() => {
+        const intervalId = setInterval(() => {
             const ds = dataSourceRef.current;
             if (!ds?.show) return;
             const nowMs = Date.now();
+            let changed = false;
             for (const [id, state] of drStateRef.current) {
                 const ageMs = nowMs - state.lastUpdateMs;
-                if (ageMs < 100 || ageMs > DR_MAX_AGE_MS) continue; // skip brand-new or stale
+                if (ageMs < 100 || ageMs > DR_MAX_AGE_MS) continue;
                 const entity = ds.entities.getById(id);
                 if (!entity?.position) continue;
                 const extrapolated = extrapolatePosition(state, ageMs / 1000);
                 (entity.position as ConstantPositionProperty).setValue(extrapolated);
+                changed = true;
             }
-        });
-        return () => handle();
-    }, [viewer, isReplay]);
-
-    // --- rAF loop: drives rendering at ~60fps while flights are visible ---
-    // This is what makes dead-reckoning actually smooth — requestRenderMode
-    // won't re-render unless asked, so we ask every animation frame.
-    // I replay-modus trenger vi ikke rAF — replay-entiteter oppdateres via state-change.
-    useEffect(() => {
-        if (!visible || !viewer) return;
-        if (isReplay) return;
-        let rafId: number;
-        const tick = () => {
-            if (viewer && !viewer.isDestroyed()) viewer.scene.requestRender();
-            rafId = requestAnimationFrame(tick);
-        };
-        rafId = requestAnimationFrame(tick);
-        return () => cancelAnimationFrame(rafId);
+            if (changed && !viewer.isDestroyed()) viewer.scene.requestRender();
+        }, 250);
+        return () => clearInterval(intervalId);
     }, [visible, viewer, isReplay]);
 
     // Entity sync + DR state update
@@ -470,10 +459,12 @@ export function FlightLayer() {
             }
 
             if (trailDs) {
-                const history = trailHistoryRef.current.get(id) ?? [];
+                let history = trailHistoryRef.current.get(id);
+                if (!history) {
+                    history = new TrailBuffer<Cartesian3>(MAX_FLIGHT_TRAIL);
+                    trailHistoryRef.current.set(id, history);
+                }
                 history.push(pos.clone());
-                if (history.length > MAX_FLIGHT_TRAIL) history.shift();
-                trailHistoryRef.current.set(id, history);
 
                 const trailColor = flight.isMilitary
                     ? Color.fromCssColorString(MILITARY_COLOR)
@@ -481,15 +472,15 @@ export function FlightLayer() {
 
                 // Fersk hale: siste 8 posisjoner — lys og tydelig
                 const freshId = `trail-fresh-${id}`;
-                const fresh = history.slice(-8);
+                const fresh = history.tail(8);
                 const freshEntity = trailDs.entities.getById(freshId);
                 if (freshEntity?.polyline?.positions) {
-                    (freshEntity.polyline.positions as ConstantProperty).setValue([...fresh]);
+                    (freshEntity.polyline.positions as ConstantProperty).setValue(fresh);
                 } else if (fresh.length >= 2) {
                     trailDs.entities.add(new Entity({
                         id: freshId,
                         polyline: {
-                            positions: new ConstantProperty([...fresh]),
+                            positions: new ConstantProperty(fresh),
                             width: 2.5,
                             material: new PolylineGlowMaterialProperty({
                                 glowPower: 0.4,
@@ -502,16 +493,16 @@ export function FlightLayer() {
 
                 // Gammel hale: resten — mørk og diskret
                 const oldId = `trail-old-${id}`;
-                const old = history.slice(0, -8);
+                const old = history.head(8);
                 const oldEntity = trailDs.entities.getById(oldId);
                 if (old.length >= 2) {
                     if (oldEntity?.polyline?.positions) {
-                        (oldEntity.polyline.positions as ConstantProperty).setValue([...old]);
+                        (oldEntity.polyline.positions as ConstantProperty).setValue(old);
                     } else {
                         trailDs.entities.add(new Entity({
                             id: oldId,
                             polyline: {
-                                positions: new ConstantProperty([...old]),
+                                positions: new ConstantProperty(old),
                                 width: 1,
                                 material: new PolylineGlowMaterialProperty({
                                     glowPower: 0.1,

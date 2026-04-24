@@ -18,7 +18,13 @@ interface AuthContextValue {
     signIn: () => Promise<void>;
     signOut: () => Promise<void>;
     configured: boolean;
+    /** Bruker har valgt gjeste-modus: live-lag funker, gates/history er lokale. */
+    guestMode: boolean;
+    enterGuestMode: () => void;
+    exitGuestMode: () => void;
 }
+
+const GUEST_STORAGE_KEY = 'worldview-guest-mode';
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
@@ -44,6 +50,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
     const [loading, setLoading] = useState<boolean>(configured);
     const [error, setError] = useState<string | null>(null);
+    const [guestMode, setGuestMode] = useState<boolean>(() => {
+        try { return localStorage.getItem(GUEST_STORAGE_KEY) === '1'; } catch { return false; }
+    });
+
+    const enterGuestMode = () => {
+        try { localStorage.setItem(GUEST_STORAGE_KEY, '1'); } catch { /* ignore */ }
+        setGuestMode(true);
+    };
+    const exitGuestMode = () => {
+        try { localStorage.removeItem(GUEST_STORAGE_KEY); } catch { /* ignore */ }
+        setGuestMode(false);
+    };
 
     useEffect(() => {
         if (!auth) {
@@ -96,8 +114,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     const value = useMemo<AuthContextValue>(
-        () => ({ user, loading, error, signIn, signOut, configured }),
-        [user, loading, error, configured]
+        () => ({
+            user,
+            loading,
+            error,
+            signIn,
+            signOut,
+            configured,
+            guestMode,
+            enterGuestMode,
+            exitGuestMode,
+        }),
+        [user, loading, error, configured, guestMode]
     );
 
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -52,7 +52,20 @@ export function InfoPopup({ content, onClose, onFollow, isFollowing }: InfoPopup
 
     return (
         <>
-            <div className={`absolute top-6 right-6 z-20 ${isLarge ? 'w-[28rem]' : 'w-80'}`}>
+            {/*
+              Plassert under LayerPanel på venstre side for å unngå kollisjon med
+              GatePanel + EventLog i top-right. Maks-høyde + scroll så popup aldri
+              presser TimelineBar/StatusTicker ut av viewport.
+            */}
+            <div
+                className={`absolute z-20 ${isLarge ? 'w-[28rem]' : 'w-80'}`}
+                style={{
+                    left: 'calc(11rem + 1.25rem + 1rem)',
+                    top: '5rem',
+                    maxHeight: 'calc(100vh - 10.5rem)',
+                    overflowY: 'auto',
+                }}
+            >
                 <div
                     className="bg-[var(--bg-ui)] backdrop-blur-md border rounded-xl overflow-hidden shadow-2xl"
                     style={{

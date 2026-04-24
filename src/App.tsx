@@ -1,12 +1,8 @@
 import { useState, useCallback, useRef, useMemo, useEffect } from 'react';
-import { AuthProvider } from './context/AuthContext';
-import { HistoryProvider } from './context/HistoryContext';
-import { TimelineModeProvider } from './context/TimelineModeContext';
+import { AppProviders } from './app/AppProviders';
 import { TimelineBar } from './components/UI/Timeline/TimelineBar';
 import { SignInGate } from './components/UI/SignInGate';
-import { AnalysisPanelProvider } from './components/UI/AnalysisPanel/AnalysisPanelHost';
-import { GateProvider, useGates } from './context/GateContext';
-import { TimelineEventProvider } from './context/TimelineEventContext';
+import { useGates } from './context/GateContext';
 import { GateLayer } from './components/Layers/GateLayer/GateLayer';
 import { GateNameModal } from './components/UI/GateNameModal';
 import { GateDrawHud } from './components/UI/GateDrawHud';
@@ -14,9 +10,8 @@ import { GatePanel } from './components/UI/GatePanel';
 import { addToast } from './components/UI/Toast';
 import type { LatLon } from './types/gate';
 import { GlobeViewer } from './components/Globe/GlobeViewer';
-import { LayerProvider, useLayers } from './context/LayerContext';
-import { PopupRegistryProvider } from './context/PopupRegistry';
-import { TooltipRegistryProvider, useTooltipRegistry } from './context/TooltipRegistry';
+import { useLayers } from './context/LayerContext';
+import { useTooltipRegistry } from './context/TooltipRegistry';
 import { TopBar } from './components/UI/TopBar';
 import { LayerPanel } from './components/UI/LayerPanel';
 import { InfoPopup } from './components/UI/InfoPopup';
@@ -47,29 +42,17 @@ import { NewsLayer } from './components/Layers/NewsLayer/NewsLayer';
 import { ConflictLayer } from './components/Layers/ConflictLayer/ConflictLayer';
 import { WeatherRadarLayer } from './components/Layers/WeatherRadarLayer/WeatherRadarLayer';
 import { WeatherRadarControls } from './components/UI/WeatherRadarControls';
-import { WeatherRadarProvider } from './context/WeatherRadarContext';
 import { SigmetLayer } from './components/Layers/SigmetLayer/SigmetLayer';
 import { RoadCameraLayer } from './components/Layers/RoadCameraLayer/RoadCameraLayer';
 import { GPSJamLayer } from './components/Layers/GPSJamLayer/GPSJamLayer';
 import { ChokepointLayer } from './components/Layers/ChokepointLayer/ChokepointLayer';
 import { PlaceLabels } from './components/Globe/PlaceLabels';
-import { ImageryProvider } from './context/ImageryContext';
-import { ImageryPicker } from './components/UI/ImageryPicker';
-import { SceneProjectionProvider } from './context/SceneProjectionContext';
-import { DimensionToggle } from './components/UI/DimensionToggle';
-import { ShaderOverlayProvider } from './context/ShaderOverlayContext';
-import { ShaderOverlayPicker } from './components/UI/ShaderOverlayPicker';
 import { HudOverlay } from './components/UI/HudOverlay';
 import { PortholeOverlay } from './components/UI/PortholeOverlay';
-import { CameraHud } from './components/UI/CameraHud';
 import { StatusTicker } from './components/UI/StatusTicker';
 import { EventLog } from './components/UI/EventLog';
-import { TrackingProvider, useTracking } from './context/TrackingContext';
-import { OrbitProvider } from './context/OrbitContext';
-import { GeointProvider } from './context/GeointContext';
-import { MissionControl } from './components/UI/MissionControl';
-import { OrbitButton } from './components/UI/OrbitButton';
-import { ResetCameraButton } from './components/UI/ResetCameraButton';
+import { useTracking } from './context/TrackingContext';
+import { HudDock } from './components/UI/HudDock/HudDock';
 import { GeoNavigator } from './components/UI/GeoNavigator';
 import { KeyboardHelpModal } from './components/UI/KeyboardHelpModal';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
@@ -204,26 +187,15 @@ function AppContent({
                 <PlaceLabels />
                 <TopBar searchRef={searchRef} />
                 <LayerPanel />
-                {/* Top-right panel: GatePanel + EventLog i felles kolonne */}
-                <div className="absolute top-20 right-4 z-10 flex flex-col gap-2 w-56">
+                {/* Top-right panel: GatePanel + EventLog i smal felles kolonne */}
+                <div className="absolute top-20 right-4 z-10 flex flex-col gap-2 w-48">
                     <GatePanel />
                     <EventLog />
                 </div>
                 <GateDrawHud />
                 <PortholeOverlay />
                 <HudOverlay />
-                {/* Høyre-side bunn-kolonne — alle kontroller i én flex-stack */}
-                <div className="absolute bottom-20 right-6 z-10 flex flex-col gap-2 items-end pointer-events-none">
-                    <div className="pointer-events-auto"><ResetCameraButton /></div>
-                    <div className="pointer-events-auto"><MissionControl /></div>
-                    <div className="pointer-events-auto"><OrbitButton /></div>
-                    <CameraHud />
-                    <div className="pointer-events-auto flex flex-row gap-2 items-center">
-                        <DimensionToggle />
-                        <ImageryPicker />
-                    </div>
-                    <div className="pointer-events-auto"><ShaderOverlayPicker /></div>
-                </div>
+                <HudDock />
                 <GeoNavigator />
                 <StatusTicker />
                 <TimelineBar />
@@ -258,46 +230,16 @@ export default function App() {
     const searchRef = useRef<SearchBarHandle>(null);
 
     return (
-        <AuthProvider>
-        <ShaderOverlayProvider>
-        <SceneProjectionProvider>
-        <ImageryProvider>
-        <LayerProvider>
-        <HistoryProvider>
-        <TimelineModeProvider>
-        <GateProvider>
-        <TimelineEventProvider>
-        <TrackingProvider>
-        <OrbitProvider>
-        <GeointProvider>
-        <WeatherRadarProvider>
-            <PopupRegistryProvider>
-            <TooltipRegistryProvider>
-            <AnalysisPanelProvider>
-                <AppContent
-                    popup={popup}
-                    setPopup={setPopup}
-                    onSelect={onSelect}
-                    searchRef={searchRef}
-                    showHelp={showHelp}
-                    setShowHelp={setShowHelp}
-                />
-                <SignInGate />
-            </AnalysisPanelProvider>
-            </TooltipRegistryProvider>
-            </PopupRegistryProvider>
-        </WeatherRadarProvider>
-        </GeointProvider>
-        </OrbitProvider>
-        </TrackingProvider>
-        </TimelineEventProvider>
-        </GateProvider>
-        </TimelineModeProvider>
-        </HistoryProvider>
-        </LayerProvider>
-        </ImageryProvider>
-        </SceneProjectionProvider>
-        </ShaderOverlayProvider>
-        </AuthProvider>
+        <AppProviders>
+            <AppContent
+                popup={popup}
+                setPopup={setPopup}
+                onSelect={onSelect}
+                searchRef={searchRef}
+                showHelp={showHelp}
+                setShowHelp={setShowHelp}
+            />
+            <SignInGate />
+        </AppProviders>
     );
 }

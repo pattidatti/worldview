@@ -1,10 +1,11 @@
 import { useAuth } from '@/context/AuthContext';
 
 export function SignInGate() {
-    const { user, loading, error, signIn, configured } = useAuth();
+    const { user, loading, error, signIn, configured, guestMode, enterGuestMode } = useAuth();
 
     if (loading) return null;
     if (user) return null;
+    if (guestMode) return null;
 
     return (
         <div
@@ -16,7 +17,7 @@ export function SignInGate() {
             }}
         >
             <div
-                className="flex flex-col items-center gap-6 px-10 py-10 rounded"
+                className="flex flex-col items-center gap-5 px-10 py-10 rounded"
                 style={{
                     background: 'rgba(6,8,18,0.95)',
                     border: '1px solid rgba(0,255,136,0.2)',
@@ -35,20 +36,37 @@ export function SignInGate() {
                     className="font-mono text-xs uppercase tracking-wider text-center"
                     style={{ color: 'var(--text-muted)', letterSpacing: '0.08em' }}
                 >
-                    Logg inn for å få tilgang
+                    Logg inn for full tilgang — eller fortsett som gjest
                 </p>
 
                 {!configured ? (
-                    <div
-                        className="font-mono text-xs px-4 py-3 rounded"
-                        style={{
-                            color: 'var(--accent-red, #ff6666)',
-                            background: 'rgba(255,100,100,0.08)',
-                            border: '1px solid rgba(255,100,100,0.25)',
-                        }}
-                    >
-                        Firebase-config mangler. Sjekk <code>.env</code> (VITE_FIREBASE_*).
-                    </div>
+                    <>
+                        <div
+                            className="font-mono text-xs px-4 py-3 rounded w-full"
+                            style={{
+                                color: 'var(--accent-red, #ff6666)',
+                                background: 'rgba(255,100,100,0.08)',
+                                border: '1px solid rgba(255,100,100,0.25)',
+                            }}
+                        >
+                            Firebase-config mangler. Sjekk <code>.env</code> (VITE_FIREBASE_*).
+                        </div>
+                        <button
+                            onClick={enterGuestMode}
+                            className="w-full px-4 py-2 font-mono text-sm tracking-wider cursor-pointer transition-colors"
+                            style={{
+                                background: 'rgba(10,10,20,0.65)',
+                                border: '1px solid rgba(255,255,255,0.12)',
+                                borderLeft: '2px solid var(--accent-blue)',
+                                color: 'var(--text-primary, #fff)',
+                                letterSpacing: '0.08em',
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(0,212,255,0.08)')}
+                            onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(10,10,20,0.65)')}
+                        >
+                            FORTSETT SOM GJEST
+                        </button>
+                    </>
                 ) : (
                     <>
                         <button
@@ -66,6 +84,32 @@ export function SignInGate() {
                         >
                             LOGG INN MED GOOGLE
                         </button>
+                        <button
+                            onClick={enterGuestMode}
+                            className="w-full px-4 py-2 font-mono text-xs tracking-wider cursor-pointer transition-colors"
+                            style={{
+                                background: 'transparent',
+                                border: '1px solid rgba(255,255,255,0.08)',
+                                color: 'var(--text-muted)',
+                                letterSpacing: '0.08em',
+                            }}
+                            onMouseEnter={(e) => {
+                                e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
+                                e.currentTarget.style.color = 'var(--text-primary, #fff)';
+                            }}
+                            onMouseLeave={(e) => {
+                                e.currentTarget.style.background = 'transparent';
+                                e.currentTarget.style.color = 'var(--text-muted)';
+                            }}
+                        >
+                            FORTSETT SOM GJEST
+                        </button>
+                        <p
+                            className="font-mono text-[10px] text-center"
+                            style={{ color: 'var(--text-muted)', opacity: 0.6 }}
+                        >
+                            Gjeste-modus: live-lag funker, porter og historikk lagres kun lokalt.
+                        </p>
                         {error && (
                             <p
                                 className="font-mono text-xs text-center"

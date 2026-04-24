@@ -8,10 +8,19 @@ interface PollingResult<T> {
     refresh: () => void;
 }
 
+interface PollingOptions {
+    /**
+     * Sprer startup-tidspunktet for flere lag med opptil denne mengden ms (jittered).
+     * Unngår at alle synlige lag fyrer nettverkskall i samme tick.
+     */
+    startupJitterMs?: number;
+}
+
 export function usePollingData<T>(
     fetchFn: () => Promise<T>,
     intervalMs: number,
-    enabled: boolean = true
+    enabled: boolean = true,
+    options: PollingOptions = {}
 ): PollingResult<T> {
     const [data, setData] = useState<T | null>(null);
     const [loading, setLoading] = useState(false);
@@ -19,6 +28,9 @@ export function usePollingData<T>(
     const [lastUpdated, setLastUpdated] = useState<number | null>(null);
     const fetchRef = useRef(fetchFn);
     fetchRef.current = fetchFn;
+    // Default ~1.5s jitter sprer første fetch for 11 polling-lag så de ikke alle
+    // treffer nettverket i samme tick når appen lastes. Konsumenter kan overstyre.
+    const { startupJitterMs = 1500 } = options;
 
     const doFetch = useCallback(async () => {
         setLoading(true);
@@ -36,11 +48,17 @@ export function usePollingData<T>(
 
     useEffect(() => {
         if (!enabled) return;
-
-        doFetch();
-        const id = setInterval(doFetch, intervalMs);
-        return () => clearInterval(id);
-    }, [enabled, intervalMs, doFetch]);
+        let intervalId: ReturnType<typeof setInterval> | null = null;
+        const jitter = startupJitterMs > 0 ? Math.random() * startupJitterMs : 0;
+        const startTimeout = setTimeout(() => {
+            doFetch();
+            intervalId = setInterval(doFetch, intervalMs);
+        }, jitter);
+        return () => {
+            clearTimeout(startTimeout);
+            if (intervalId !== null) clearInterval(intervalId);
+        };
+    }, [enabled, intervalMs, doFetch, startupJitterMs]);
 
     return { data, loading, error, lastUpdated, refresh: doFetch };
 }

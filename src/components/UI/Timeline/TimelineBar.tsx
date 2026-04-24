@@ -80,6 +80,7 @@ export function TimelineBar() {
         return () => window.removeEventListener('keydown', handler);
     }, [mode, cursor, speed, setCursor, setSpeed, setMode, jumpToNow]);
 
+    const isReplay = mode === 'replay';
     return (
         <div
             className="fixed left-0 right-0 z-[11] flex items-center gap-3 px-4"
@@ -88,9 +89,13 @@ export function TimelineBar() {
                 height: 44,
                 background: 'rgba(10,10,20,0.82)',
                 backdropFilter: 'blur(10px)',
-                borderTop: '1px solid rgba(255,255,255,0.08)',
+                borderTop: isReplay
+                    ? '1px solid rgba(255,107,53,0.35)'
+                    : '1px solid rgba(255,255,255,0.08)',
                 borderBottom: '1px solid rgba(255,255,255,0.04)',
                 fontFamily: 'var(--font-mono)',
+                boxShadow: isReplay ? '0 -8px 32px -8px rgba(255,107,53,0.25)' : 'none',
+                transition: 'border-top 200ms ease-out, box-shadow 200ms ease-out',
             }}
             data-mode={mode}
         >

@@ -96,6 +96,10 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
     const setTrackedIdRef = useRef(setTrackedEntityId);
     setTrackedIdRef.current = setTrackedEntityId;
     const trackDistRef = useRef(500_000);
+    // Cacher forrige vellykkede (trackedId, dataSource) par slik at preRender
+    // slipper å itere alle dataSources per frame. Tilbakestilles når id endres eller
+    // entiteten forsvinner.
+    const trackedEntityCacheRef = useRef<{ id: string; dsIndex: number } | null>(null);
     const orbitActiveRef = useRef(false);
     const orbitTargetRef = useRef<Cartesian3 | null>(null);
     const orbitDistRef = useRef(500_000);
@@ -236,33 +240,41 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
                 return;
             }
 
-            // Camera tracking: find entity in all dataSources and lock camera onto it
+            // Camera tracking: cached dataSource-lookup, kun lineær fallback når cache bommer.
+            const tryApply = (entity: import('cesium').Entity | undefined): boolean => {
+                if (!entity?.position) return false;
+                const pos = entity.position.getValue(JulianDate.now(julianDateScratch));
+                if (!pos) return false;
+                if (orbitActiveRef.current) {
+                    const now = performance.now();
+                    const dt = orbitLastTimeMsRef.current === 0 ? 0 : Math.min((now - orbitLastTimeMsRef.current) / 16.67, 3);
+                    orbitLastTimeMsRef.current = now;
+                    orbitHeadingRef.current += orbitSpeedRef.current * dt;
+                    orbitHprScratch.heading = orbitHeadingRef.current;
+                    orbitHprScratch.range = trackDistRef.current;
+                    v.camera.lookAt(pos, orbitHprScratch);
+                } else {
+                    trackHprScratch.heading = v.camera.heading;
+                    trackHprScratch.range = trackDistRef.current;
+                    v.camera.lookAt(pos, trackHprScratch);
+                }
+                scene.requestRender();
+                return true;
+            };
+
+            const cached = trackedEntityCacheRef.current;
+            if (cached && cached.id === tracking && cached.dsIndex < v.dataSources.length) {
+                const entity = v.dataSources.get(cached.dsIndex).entities.getById(tracking);
+                if (tryApply(entity)) return;
+            }
             for (let i = 0; i < v.dataSources.length; i++) {
                 const entity = v.dataSources.get(i).entities.getById(tracking);
-                if (entity?.position) {
-                    const pos = entity.position.getValue(JulianDate.now(julianDateScratch));
-                    if (pos) {
-                        if (orbitActiveRef.current) {
-                            // Orbit around the moving entity
-                            const now = performance.now();
-                            const dt = orbitLastTimeMsRef.current === 0 ? 0 : Math.min((now - orbitLastTimeMsRef.current) / 16.67, 3);
-                            orbitLastTimeMsRef.current = now;
-                            orbitHeadingRef.current += orbitSpeedRef.current * dt;
-                            orbitHprScratch.heading = orbitHeadingRef.current;
-                            orbitHprScratch.range = trackDistRef.current;
-                            v.camera.lookAt(pos, orbitHprScratch);
-                        } else {
-                            // Static-angle follow
-                            trackHprScratch.heading = v.camera.heading;
-                            trackHprScratch.range = trackDistRef.current;
-                            v.camera.lookAt(pos, trackHprScratch);
-                        }
-                        scene.requestRender();
-                    }
+                if (tryApply(entity)) {
+                    trackedEntityCacheRef.current = { id: tracking, dsIndex: i };
                     return;
                 }
             }
-            // Entity not found — stop tracking
+            trackedEntityCacheRef.current = null;
             setTrackedIdRef.current(null);
         });
 
