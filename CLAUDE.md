@@ -11,13 +11,15 @@ See `DESIGN.md` for full vision, API sources, color palette, and implementation 
 ## Commands
 
 ```bash
-npm run dev       # Vite dev server with HMR
-npm run build     # TypeScript type-check (tsc -b) + Vite production build
-npm run lint      # ESLint
-npm run preview   # Preview production build locally
+npm run dev         # Vite dev server with HMR
+npm run build       # TypeScript type-check (tsc -b) + Vite production build
+npm run lint        # ESLint
+npm run preview     # Preview production build locally
+npm test            # Vitest — kjører alle .test.ts i src/
+npm run test:watch  # Vitest watch mode
 ```
 
-No test framework is configured.
+Tester ligger i `src/**/__tests__/*.test.ts` (foreløpig kun `utils/geofence`, `utils/crossingDetector`, `utils/trailBuffer`).
 
 ## Environment Variables
 
@@ -48,7 +50,7 @@ All env vars use Vite's `import.meta.env.VITE_*` convention.
 - **airplaneslive.ts erstatter opensky.ts** for flightlaget — viewport-aware via center-point + radius i nautiske mil (maks 250nm).
 - **WeatherRadarLayer er unntaket** — det eneste laget som returnerer JSX (animasjonskontroller) og bruker CesiumJS `ImageryLayer` i stedet for `CustomDataSource`. Fjern gammelt lag fra viewer før nytt legges til (unngå stacking).
 - **ACLED krever nøkkel + e-post** — begge `VITE_ACLED_API_KEY` og `VITE_ACLED_EMAIL` må være satt. Mangler én av dem returneres tomt array stille.
-- **Firebase påkrevd fase 2+** — `SignInGate` blokkerer all UI til Google-innlogging. `VITE_FIREBASE_*` må være satt; ellers vises "Firebase ikke konfigurert".
+- **Firebase valgfritt med gjeste-modus** — `SignInGate` tilbyr "FORTSETT SOM GJEST" ved siden av Google-innlogging. I gjeste-modus funker live-lag, men porter og historikk lagres kun i localStorage (ingen Firestore-writes). `guestMode`-flagget persisteres i localStorage-nøkkel `worldview-guest-mode`. Mangler `VITE_FIREBASE_*` er kun gjeste-modus tilgjengelig.
 - **Lag-skop for historikk** — kun `flights`, `ships`, `conflicts`, `disasters`, `news` (og senere alle count-bærende lag) får snapshots. Satellitter propageres deterministisk fra TLE. Værradar, asteroider, trafikk og resten får ingen historikk-writes.
 - **UTC i storage, lokal i UI** — Firestore-doc-IDer bruker `YYYY-MM-DD_UTC`. `expiresAt`-felt er 30d etter ts.
 - **schemaVersion på alle writes** — firestore.rules avviser writes uten `schemaVersion == CURRENT`. Migratorer kjører ved lesing (se `src/utils/schemaMigrators.ts`).
@@ -97,12 +99,12 @@ Fase 3 introduserer tidslinje-scrubber + playback. Entity-snapshots skrives av C
 Each data layer (`src/components/Layers/*/`) is a React component that **returns `null`** and operates entirely through side effects:
 
 1. Fetches data via a **service** (`src/services/`) using `usePollingData` hook
-2. Reports loading/count state to **LayerContext** (`src/context/LayerContext.tsx`)
+2. Leser sin egen synlighet via `useLayerVisibility('<id>')` og setter status via `useLayerActions()` (begge fra `@/store/layerStore`)
 3. Creates a Cesium `CustomDataSource`, syncs entities by ID (add/update/remove)
 4. Registers a popup builder via **PopupRegistry** (NOT via `selectedEntityChanged` listener)
 5. Calls `viewer.scene.requestRender()` after entity updates (requestRenderMode is on)
 
-To add a new layer: create a type in `src/types/`, a service in `src/services/`, a layer component following the existing pattern, register the layer ID in `src/types/layers.ts`, add default config in `LayerContext`, and mount in `App.tsx`.
+To add a new layer: create a type in `src/types/`, a service in `src/services/`, a layer component following the existing pattern, register the layer ID in `src/types/layers.ts`, add default config i `LAYER_DEFAULTS`, og mount i `App.tsx`.
 
 **Exception:** WeatherRadarLayer returns JSX and uses `ImageryLayer` — see gotchas above.
 
@@ -113,6 +115,14 @@ All layers use the same pattern for updating Cesium entities without recreating 
 - Iterate new data: update position via `ConstantPositionProperty.setValue()` for existing, `ds.entities.add()` for new
 - Remove entities not seen in current data batch
 
+### Ytelses-mønstre
+
+- **Dead-reckoning-kadens**: `FlightLayer` ekstrapolerer posisjoner via `setInterval(250ms)` (4 Hz), IKKE via 60fps `requestAnimationFrame`. Ringer `viewer.scene.requestRender()` kun når minst én posisjon faktisk endret seg. Rask nok for subpixel-nøyaktighet ved typisk zoom, ~96 % færre frames enn gammel RAF-løkke.
+- **Trail-lagring**: Bruk `TrailBuffer<Cartesian3>` med fast kapasitet (`MAX_FLIGHT_TRAIL = 40`, `MAX_SHIP_TRAIL = 60`). Unngår array-kloning ved push/shift på hver poll.
+- **Tracking-lookup**: `GlobeViewer` cacher `(trackedId, dsIndex)` mellom frames. Lineært søk gjennom alle dataSources gjøres kun på cache-miss.
+- **Polling-jitter**: `usePollingData` har default 1.5s startup-jitter som sprer nettverkskallene til ~11 polling-lag så de ikke alle fyrer i samme tick ved oppstart.
+- **Zustand over context for høy-frekvens-state**: Lag-status oppdateres hver 5–30s per synlige lag. Context-arkitektur ville forårsaket cascade-renders av 28 lag-komponenter. Zustand med granulære selektorer subscriber per lag-id slik at kun de komponentene som faktisk leser endrede felt re-renders.
+
 ### Clustering pattern
 
 ConflictLayer and NewsLayer use clustering via `configureCluster(ds, { pixelRange, minimumClusterSize, color })`:
@@ -120,14 +130,25 @@ ConflictLayer and NewsLayer use clustering via `configureCluster(ds, { pixelRang
 - Size by count: <10 = 32px, <50 = 40px, ≥50 = 48px
 - Cache keyed by `count-color` to avoid redundant SVG generation
 
+### State management
+
+**Layer-state: Zustand-store (`src/store/layerStore.ts`)** — IKKE context.
+- Normalisert state: `visibility: Record<LayerId, boolean>` + `status: Record<LayerId, { loading, count, error, lastUpdated }>` + `meta: Record<LayerId, { name, color }>` (statisk fra `LAYER_DEFAULTS`).
+- Granulære selektorer: `useLayerVisibility(id)`, `useLayerStatus(id)`, `useLayerActions()`, `useActiveLayerIds()`, `useVisibleLayerIds()`, `useLayerConfig(id)`. Hver selektor subscriber kun til det den leser → ingen cascading re-renders.
+- Actions (fra `useLayerActions()`): `toggleLayer`, `toggleCategory`, `setLayerLoading`, `setLayerCount`, `setLayerError`, `setLayerLastUpdated`. Stabile referanser, trygge i useEffect-deps.
+- `LayerContext.tsx` beholder en `useLayers()`-shim for bakoverkompatibilitet — brukes KUN av `TopBar`, `EventLog`, `LayerErrorWatcher` som legitimt trenger hele lag-arrayet. Alle andre komponenter (alle 28 lag, `StatusTicker`, `LayerPanel`, `SearchBar`, `AnalysisMenu`, `DeltaPanel`, `GatePanel`, `WeatherRadarControls`, `App.tsx`) bruker granulære selektorer direkte.
+- Synlighet persisteres til localStorage-nøkkel `worldview-layer-visibility`.
+- For engangslesing utenfor komponenter (f.eks. i intervallet i `HistoryContext`): bruk `useLayerStore.getState().status` — ingen subscription, ingen re-render-trigger.
+
 ### React contexts
 
 - **ViewerContext** (`src/context/ViewerContext.tsx`) — provides the Cesium `Viewer` instance after initialization
-- **LayerContext** (`src/context/LayerContext.tsx`) — manages layer visibility, loading, count, error, and lastUpdated state; provides `toggleLayer()`, `isVisible()`, `setLayerLoading()`, `setLayerCount()`, `setLayerError()`, `setLayerLastUpdated()`; visibility persisted to localStorage
+- **AppProviders** (`src/app/AppProviders.tsx`) — wrapper som grupperer alle contexts i fire logiske bolker (Auth, ViewProviders, TimelineStateProviders, InteractionProviders, UiProviders). Brukes i `App.tsx` i stedet for 13-nivåers inline nesting.
+- **AuthContext** (`src/context/AuthContext.tsx`) — Firebase-auth + `guestMode`. Eksponerer `enterGuestMode`/`exitGuestMode`.
 - **PopupRegistry** (`src/context/PopupRegistry.tsx`) — centralized entity click handling. Each layer calls `register(dataSourceName, builderFn)` with a function that takes an Entity and returns PopupContent or null. GlobeViewer has ONE `selectedEntityChanged` listener that calls `resolve(entity)`. Builders use refs for data to avoid re-render dependencies.
 - **TooltipRegistry** — centralized hover handling, same pattern as PopupRegistry
 - **OrbitContext** (`src/context/OrbitContext.tsx`) — boolean flag `orbitActive` + `setOrbitActive`; camera orbit implementation lives in GlobeViewer (not yet implemented)
-- **GateContext** (`src/context/GateContext.tsx`) — user-drawn polyline "gates" used for geofencing. CRUD + localStorage-persistens (key `worldview-gates`, schema v1). Eksponerer også draw-modus (`isDrawing`, `isDrawingRef`, `startDrawing/pushDrawVertex/popDrawVertex/finishDrawing/cancelDrawing`). `isDrawingRef` leses av GlobeViewer og `useHoverTooltip` for å suspendere entity-valg og tooltips under tegning.
+- **GateContext** (`src/context/GateContext.tsx`) — user-drawn polyline "gates" used for geofencing. CRUD + localStorage-persistens (key `worldview-gates`, schema v1). Eksponerer også draw-modus (`isDrawing`, `isDrawingRef`, `startDrawing/pushDrawVertex/popDrawVertex/finishDrawing/cancelDrawing`). `isDrawingRef` leses av GlobeViewer og `useHoverTooltip` for å suspendere entity-valg og tooltips under tegning. Faller pent tilbake til localStorage når `uid == null` (guest-modus).
 - **TimelineEventContext** (`src/context/TimelineEventContext.tsx`) — bounded queue (cap 1000, LIFO) for strukturerte hendelser (`gate-crossing`, `layer-alert`, `data-gap`). `append(events)` er idempotent på `id`-feltet. Dette er IKKE EventLog — som kun er count-delta-snapshot per lag.
 
 ### Porter (gates) + crossing-deteksjon
@@ -139,8 +160,12 @@ ConflictLayer and NewsLayer use clustering via `configureCluster(ds, { pixelRang
 
 ### Key hooks
 
-- **`usePollingData<T>(fetchFn, intervalMs, enabled)`** — generic polling with auto-cleanup; only polls when `enabled` is true (tied to layer visibility)
+- **`usePollingData<T>(fetchFn, intervalMs, enabled, options?)`** — generic polling with auto-cleanup; only polls when `enabled` is true (tied to layer visibility). `options.startupJitterMs` (default 1500ms) sprer første fetch for å unngå at alle synlige lag treffer nettverket samtidig ved oppstart.
 - **`useViewport(viewer, debounceMs)`** — tracks camera bounding box (`{west, south, east, north}` in degrees); used by AIS/flights to request only visible-area data
+
+### Key utils
+
+- **`TrailBuffer<T>`** (`src/utils/trailBuffer.ts`) — fixed-size circular buffer brukt av `FlightLayer` og `ShipLayer` for posisjons-trails. O(1) push, `tail(n)` / `head(n)` / `toArray()` returnerer kronologisk rekkefølge uten array-kloning per poll. Enhetstester i `__tests__/trailBuffer.test.ts`.
 
 ### Services
 
@@ -173,11 +198,16 @@ Services are pure async functions (except `AISStreamConnection` which is a state
 
 ### UI components
 
+- **HudDock** (`src/components/UI/HudDock/HudDock.tsx`) — bottom-right dock som samler scene-/kamera-/effekt-kontroller bak tre ikon-knapper med drawers. Inneholder `MissionControl` permanent + tre drawere (Kamera: `CameraHud` + `ResetCameraButton` + `OrbitButton`; Scene: `DimensionToggle` + `ImageryPicker`; Effekter: `ShaderOverlayPicker`). Én drawer åpen om gangen, Escape eller klikk-utenfor lukker.
+- **LayerPanel** (`src/components/UI/LayerPanel.tsx`) — venstre-side kategorisert lag-liste med søk, smart default-åpne kategorier (Trafikk + Maritim), aggregert status per kategori-header (`3/7 · 421 enheter`), og rød prikk om noe lag har feil.
+- **TimelineBar** (`src/components/UI/Timeline/TimelineBar.tsx`) — fixed bottom bar med `ModePill` (LIVE↔REPLAY tab), timeline-track, datovalg og playback-kontroller. Oransje glow rundt baren når replay er aktiv.
 - **ShaderOverlayPicker** (`src/components/UI/ShaderOverlayPicker.tsx`) — switches between 5 visual effects: `none`, `nightvision`, `crt`, `thermal`, `anime`. Clicking active mode turns it off.
 - **HudOverlay** (`src/components/UI/HudOverlay.tsx`) — decorative HUD corner brackets always visible; tactical scope/crosshair overlay appears when any shader is active (color matches shader mode)
-- **StatusTicker** (`src/components/UI/StatusTicker.tsx`) — fixed bottom bar showing visible layers + entity counts (`◈ FLIGHTS 427 · SHIPS 156`)
-- **EventLog** (`src/components/UI/EventLog.tsx`) — collapsible live event stream (top-right), shows data changes per layer as they occur (max 8 events, LIFO)
-- **CameraHud** (`src/components/UI/CameraHud.tsx`) — LAT/LON/ALT/HDG display, updates every 800ms; smart altitude formatting (m/km/Mm)
+- **StatusTicker** (`src/components/UI/StatusTicker.tsx`) — fixed bottom bar showing visible layers + entity counts (`◈ FLIGHTS 427 · SHIPS 156`). Hver oppføring subscriber via `useLayerStatus(id)` individuelt — ingen cascade-renders.
+- **EventLog** (`src/components/UI/EventLog.tsx`) — collapsible live event stream (top-right), shows data changes per layer as they occur (max 12 events, LIFO). Starter kollapset.
+- **GateDrawHud** (`src/components/UI/GateDrawHud.tsx`) — banner på toppen under port-tegning med vertex-teller og kbd-hints (Klikk/↵/⌫/Esc).
+- **InfoPopup** (`src/components/UI/InfoPopup.tsx`) — entity-detaljer plassert ved venstre side (`left-52 top-20`) for å unngå kollisjon med GatePanel/EventLog i top-right.
+- **CameraHud** (`src/components/UI/CameraHud.tsx`) — LAT/LON/ALT/HDG display, updates every 800ms; smart altitude formatting (m/km/Mm). Vises inne i HudDock's kamera-drawer.
 - **OrbitButton** (`src/components/UI/OrbitButton.tsx`) — toggle for orbit camera mode; reads/writes OrbitContext
 
 ### Shaders
@@ -189,7 +219,7 @@ GLSL fragment shaders applied as post-process stages to the entire Cesium viewpo
 
 ### UI layering (z-index)
 
-TopBar (z-10) > InfoPopup (z-20) > search dropdown (z-50). All UI uses `backdrop-blur-md` frosted glass over the globe.
+TopBar / LayerPanel / GatePanel / EventLog / HudDock (z-10) > InfoPopup / GateDrawHud (z-20 / z-30) > TimelineBar (z-11) > modals (z-50) > SignInGate (z-60). All UI uses `backdrop-blur-md` frosted glass over the globe.
 
 ### Styling
 

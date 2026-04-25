@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { useLayers } from '@/context/LayerContext';
 import { useGates } from '@/context/GateContext';
-import { LAYER_ICONS, type LayerId } from '@/types/layers';
+import { LAYER_ICONS, type LayerId, LAYER_DEFAULTS } from '@/types/layers';
+
+const SELECTABLE_LAYERS = LAYER_DEFAULTS.filter((l) => l.id !== 'gates');
 
 interface AnalysisMenuProps {
     onAddDelta: (layerId: LayerId) => void;
@@ -13,7 +14,6 @@ interface AnalysisMenuProps {
 type Submenu = 'root' | 'delta-pick' | 'trend-pick';
 
 export function AnalysisMenu({ onAddDelta, onAddTrend, onHideAll, onClose }: AnalysisMenuProps) {
-    const { layers } = useLayers();
     const { gates } = useGates();
     const [view, setView] = useState<Submenu>('root');
     const ref = useRef<HTMLDivElement>(null);
@@ -26,7 +26,7 @@ export function AnalysisMenu({ onAddDelta, onAddTrend, onHideAll, onClose }: Ana
         return () => window.removeEventListener('mousedown', handler);
     }, [onClose]);
 
-    const visibleLayers = layers.filter((l) => l.id !== 'gates');
+    const visibleLayers = SELECTABLE_LAYERS;
 
     const rowStyle: React.CSSProperties = {
         padding: '6px 12px',

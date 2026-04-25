@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useGates } from '@/context/GateContext';
-import { useLayers } from '@/context/LayerContext';
+import { useLayerVisibility } from '@/store/layerStore';
 import { useTimelineEvents } from '@/context/TimelineEventContext';
 
 function countCrossings24h(gateId: string, events: ReturnType<typeof useTimelineEvents>['events']): number {
@@ -116,9 +116,8 @@ function GateRow({
 
 export function GatePanel() {
     const { gates, toggleVisibility, removeGate, updateGate, startDrawing, isDrawing } = useGates();
-    const { isVisible } = useLayers();
     const { events } = useTimelineEvents();
-    const layerVisible = isVisible('gates');
+    const layerVisible = useLayerVisibility('gates');
 
     const counts = useMemo(() => {
         const map = new Map<string, number>();

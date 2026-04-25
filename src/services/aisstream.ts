@@ -1,5 +1,6 @@
 import { type Ship } from '@/types/ship';
 import { type Viewport } from '@/hooks/useViewport';
+import { isValidLatLon } from '@/utils/coords';
 
 type ShipCallback = (ships: Map<number, Ship>) => void;
 
@@ -83,6 +84,7 @@ export class AISStreamConnection {
                 if (msg.MessageType === 'PositionReport' || msg.MessageType === 'StandardClassBPositionReport') {
                     const pos = msg.Message?.[msg.MessageType];
                     if (!pos) return;
+                    if (!isValidLatLon(pos.Latitude, pos.Longitude)) return;
 
                     const existing = this.ships.get(mmsi);
                     this.ships.set(mmsi, {
@@ -122,14 +124,19 @@ export class AISStreamConnection {
                         existing.draught = sd.MaximumStaticDraught ?? 0;
                         existing.destination = (sd.Destination ?? '').trim();
                     } else {
+                        // Uten gyldige meta-koordinater har vi ingen posisjon å vise skipet på.
+                        // AIS re-broadcaster static data ~hvert 6. min — vent til da, eller til en
+                        // PositionReport har etablert skipet.
+                        if (!isValidLatLon(meta.Latitude, meta.Longitude)) return;
+
                         // Cache static data for when position report arrives
                         this.ships.set(mmsi, {
                             mmsi,
                             name: (sd.Name ?? meta.ShipName ?? '').trim(),
                             callSign: (sd.CallSign ?? '').trim(),
                             imo: sd.ImoNumber ?? 0,
-                            lat: meta.Latitude ?? 0,
-                            lon: meta.Longitude ?? 0,
+                            lat: meta.Latitude,
+                            lon: meta.Longitude,
                             speed: 0, course: 0, heading: 0,
                             rateOfTurn: 0, navStatus: 15,
                             shipType: sd.Type ?? 0,

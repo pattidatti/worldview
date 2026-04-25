@@ -6,6 +6,7 @@ interface KeyboardShortcutOptions {
     closePopup: () => void;
     focusSearch: () => void;
     toggleHelp: () => void;
+    openCommandPalette: () => void;
     layerIds: LayerId[];
 }
 
@@ -14,6 +15,7 @@ export function useKeyboardShortcuts({
     closePopup,
     focusSearch,
     toggleHelp,
+    openCommandPalette,
     layerIds,
 }: KeyboardShortcutOptions) {
     useEffect(() => {
@@ -31,10 +33,10 @@ export function useKeyboardShortcuts({
                 return;
             }
 
-            // Ctrl+K / Cmd+K to focus search
+            // Ctrl+K / Cmd+K to open command palette
             if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
                 e.preventDefault();
-                focusSearch();
+                openCommandPalette();
                 return;
             }
 
@@ -64,5 +66,5 @@ export function useKeyboardShortcuts({
 
         document.addEventListener('keydown', handler);
         return () => document.removeEventListener('keydown', handler);
-    }, [toggleLayer, closePopup, focusSearch, toggleHelp, layerIds]);
+    }, [toggleLayer, closePopup, focusSearch, toggleHelp, openCommandPalette, layerIds]);
 }

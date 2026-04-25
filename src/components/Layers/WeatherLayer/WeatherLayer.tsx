@@ -11,7 +11,7 @@ import {
     Cartesian2,
 } from 'cesium';
 import { useViewer } from '@/context/ViewerContext';
-import { useLayers } from '@/context/LayerContext';
+import { useLayerActions, useLayerVisibility } from '@/store/layerStore';
 import { usePopupRegistry } from '@/context/PopupRegistry';
 import { useTooltipRegistry } from '@/context/TooltipRegistry';
 import { usePollingData } from '@/hooks/usePollingData';
@@ -23,10 +23,10 @@ const POLL_MS = 10 * 60 * 1000;
 
 export function WeatherLayer() {
     const viewer = useViewer();
-    const { isVisible, setLayerLoading, setLayerCount, setLayerError, setLayerLastUpdated } = useLayers();
+    const { setLayerLoading, setLayerCount, setLayerError, setLayerLastUpdated } = useLayerActions();
     const { register, unregister } = usePopupRegistry();
     const { register: tooltipRegister, unregister: tooltipUnregister } = useTooltipRegistry();
-    const visible = isVisible('weather');
+    const visible = useLayerVisibility('weather');
     const dataSourceRef = useRef<CustomDataSource | null>(null);
     const weatherRef = useRef<WeatherPoint[]>([]);
 

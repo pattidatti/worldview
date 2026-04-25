@@ -13,7 +13,8 @@ const LAYER_SHORTCUTS = LAYER_DEFAULTS.slice(0, 6).map((l, i) => ({
 const SHORTCUTS = [
     { key: '?', label: 'Vis/skjul denne hjelpen' },
     { key: 'Escape', label: 'Lukk popup / avbryt søk' },
-    { key: 'Ctrl+K  /  /', label: 'Fokuser søkefelt' },
+    { key: 'Ctrl+K', label: 'Åpne kommandopalett (lag, enheter, steder)' },
+    { key: '/', label: 'Fokuser søkefelt' },
     ...LAYER_SHORTCUTS,
 ];
 

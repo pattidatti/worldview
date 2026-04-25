@@ -55,6 +55,16 @@ service cloud.firestore {
       allow delete: if false; // TTL rydder opp
     }
 
+    // Static data cache: delt Overpass- og SODIR-cache på tvers av brukere.
+    // Klient populerer ved cache-miss; TTL via expiresAt (sett TTL-policy i Firebase Console).
+    match /static_cache/{docId} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null
+                            && !killSwitchOn()
+                            && request.resource.data.schemaVersion == 1;
+      allow delete: if false;
+    }
+
     // Alt annet — default deny.
     match /{document=**} {
       allow read, write: if false;

@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
-import { useTimelineMode, TIMELINE_WINDOW_MS } from '@/context/TimelineModeContext';
+import { useTimelineMode, useCursor, TIMELINE_WINDOW_MS } from '@/context/TimelineModeContext';
 import { EventMarkers } from './EventMarkers';
 
 function formatCursorTime(ts: number): string {
@@ -16,7 +16,8 @@ interface Props {
 }
 
 export function TimelineTrack({ nowRef }: Props) {
-    const { mode, cursor, setCursor, setMode } = useTimelineMode();
+    const { mode, setCursor, setMode } = useTimelineMode();
+    const cursor = useCursor();
     const trackRef = useRef<HTMLDivElement | null>(null);
     const [dragging, setDragging] = useState(false);
     const [hoverTs, setHoverTs] = useState<number | null>(null);

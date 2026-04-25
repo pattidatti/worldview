@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { UrlTemplateImageryProvider, ImageryLayer } from 'cesium';
 import { useViewer } from '@/context/ViewerContext';
-import { useLayers } from '@/context/LayerContext';
+import { useLayerActions, useLayerVisibility } from '@/store/layerStore';
 import { usePollingData } from '@/hooks/usePollingData';
 import { useWeatherRadar } from '@/context/WeatherRadarContext';
 import { fetchRadarTimestamps, radarTileUrl } from '@/services/rainviewer';
@@ -10,8 +10,8 @@ const POLL_MS = 5 * 60 * 1000; // 5 min
 
 export function WeatherRadarLayer() {
     const viewer = useViewer();
-    const { isVisible, setLayerLoading, setLayerError, setLayerLastUpdated } = useLayers();
-    const visible = isVisible('weatherRadar');
+    const { setLayerLoading, setLayerError, setLayerLastUpdated } = useLayerActions();
+    const visible = useLayerVisibility('weatherRadar');
     const layerRef = useRef<ImageryLayer | null>(null);
 
     const { setFrameData, currentIndex, stopAnimation } = useWeatherRadar();

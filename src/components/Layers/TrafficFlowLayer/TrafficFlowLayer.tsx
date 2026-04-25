@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { UrlTemplateImageryProvider, ImageryLayer } from 'cesium';
 import { useViewer } from '@/context/ViewerContext';
-import { useLayers } from '@/context/LayerContext';
+import { useLayerVisibility } from '@/store/layerStore';
 
 const API_KEY = import.meta.env.VITE_TOMTOM_API_KEY || '';
 
@@ -10,8 +10,8 @@ const MAX_CAMERA_HEIGHT = 300_000;
 
 export function TrafficFlowLayer() {
     const viewer = useViewer();
-    const { isVisible } = useLayers();
-    const visible = isVisible('trafficFlow');
+    
+    const visible = useLayerVisibility('trafficFlow');
     const layerRef = useRef<ImageryLayer | null>(null);
 
     // Opprett imagery-laget én gang når viewer er klar

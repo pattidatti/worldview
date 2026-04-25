@@ -7,7 +7,7 @@ import {
     HeightReference,
 } from 'cesium';
 import { useViewer } from '@/context/ViewerContext';
-import { useLayers } from '@/context/LayerContext';
+import { useLayerActions, useLayerVisibility } from '@/store/layerStore';
 import { usePopupRegistry } from '@/context/PopupRegistry';
 import { useTooltipRegistry } from '@/context/TooltipRegistry';
 import { useViewport } from '@/hooks/useViewport';
@@ -32,10 +32,10 @@ const TOWER_SVG = `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://w
 
 export function TelecomLayer() {
     const viewer = useViewer();
-    const { isVisible, setLayerLoading, setLayerCount } = useLayers();
+    const { setLayerLoading, setLayerCount } = useLayerActions();
     const { register, unregister } = usePopupRegistry();
     const { register: tooltipRegister, unregister: tooltipUnregister } = useTooltipRegistry();
-    const visible = isVisible('telecom');
+    const visible = useLayerVisibility('telecom');
     const viewport = useViewport(viewer, 2000);
     const dsRef = useRef<CustomDataSource | null>(null);
     const dataRef = useRef<TelecomData>({ towers: [] });

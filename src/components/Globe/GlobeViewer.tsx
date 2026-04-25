@@ -3,7 +3,7 @@ import {
     Viewer, Color, Ion, Entity, CameraEventType, Cartesian2, Cartesian3,
     ScreenSpaceEventHandler, ScreenSpaceEventType, defined,
     UrlTemplateImageryProvider, Math as CesiumMath, Cesium3DTileset, ImageryLayer,
-    JulianDate, HeadingPitchRange, Matrix4, PostProcessStage, SceneMode,
+    JulianDate, HeadingPitchRange, Matrix4, PostProcessStage, SceneMode, Cartographic,
 } from 'cesium';
 import { reverseGeocode } from '@/services/geocoding';
 import { ViewerProvider } from '@/context/ViewerContext';
@@ -63,6 +63,16 @@ function applyBlendImagery(v: Viewer, tracked: ImageryLayer[]) {
     tracked.push(roads);
 }
 
+function applyCountryLabelsOverlay(v: Viewer, tracked: ImageryLayer[]) {
+    const layer = v.imageryLayers.addImageryProvider(new UrlTemplateImageryProvider({
+        url: 'https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}.png',
+        subdomains: 'abcd',
+        credit: 'CartoDB',
+    }));
+    layer.alpha = 0.75;
+    tracked.push(layer);
+}
+
 interface GlobeViewerProps {
     children?: ReactNode;
     onSelect?: (popup: PopupContent | null) => void;
@@ -86,7 +96,9 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
     useWASDNavigation(viewer, orbitActive);
     const tilesetRef = useRef<Cesium3DTileset | null>(null);
     const baseLayersRef = useRef<ImageryLayer[]>([]);
-    const shaderStageRef = useRef<PostProcessStage | null>(null);
+    // Cache én stage per shader-type — toggle enabled i stedet for destroy/recreate
+    const shaderStageMapRef = useRef<Map<string, PostProcessStage>>(new Map());
+    const activeShaderKeyRef = useRef<string>('none');
     const onSelectRef = useRef(onSelect);
     onSelectRef.current = onSelect;
     const resolveRef = useRef(resolve);
@@ -128,9 +140,16 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
             infoBox: false,
             requestRenderMode: true,
             maximumRenderTimeChange: 10,
+            // DepthPlane ellers klipper entiteter ved altitude 0 i SCENE3D.
+            // Sett til -500 slik at alle entiteter ≥ -500m passerer depth test.
+            depthPlaneEllipsoidOffset: -500,
         });
 
         const { scene } = v;
+
+        // DepthPlane blokkerer lavtliggende entiteter i SCENE3D uavhengig av offset.
+        // Erstatter med no-op for å sikre at skip, fly m.m. alltid er synlige over havet.
+        (scene as any)._depthPlane = { update: () => {}, execute: () => {} };
 
         v.camera.percentageChanged = 0.2;
 
@@ -139,12 +158,16 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
         scene.globe.baseColor = Color.fromCssColorString('#12121a');
         scene.globe.enableLighting = true;
 
-        // Clean dark sky
-        if (scene.skyAtmosphere) scene.skyAtmosphere.show = false;
+        // Stjernehimmel og atmosfære — gir romfølelse
+        if (scene.skyAtmosphere) {
+            scene.skyAtmosphere.show = true;
+            scene.skyAtmosphere.hueShift = 0.05;      // svak neon-tint
+            scene.skyAtmosphere.saturationShift = 0.3;
+        }
         scene.fog.enabled = false;
-        if (scene.skyBox) scene.skyBox.show = false;
-        if (scene.sun) scene.sun.show = false;
-        if (scene.moon) scene.moon.show = false;
+        if (scene.skyBox) scene.skyBox.show = true;   // Cesium standardstjerner
+        if (scene.sun) scene.sun.show = true;
+        if (scene.moon) scene.moon.show = false;       // månen beholder vi skjult
 
         // Zoom — egen handler med zoom-mot-markør og momentum
         const controller = scene.screenSpaceCameraController;
@@ -164,6 +187,7 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
         const orbitHprScratch = new HeadingPitchRange(0, ORBIT_PITCH, 500_000);
         const trackHprScratch = new HeadingPitchRange(0, CesiumMath.toRadians(-45), 500_000);
         const julianDateScratch = new JulianDate();
+        const cartographicScratch = new Cartographic();
 
         v.canvas.addEventListener('wheel', (e) => {
             e.preventDefault();
@@ -218,14 +242,16 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
                     } else {
                         v.camera.zoomOut(-amount);
                     }
-                    // Cursor-sentrert korreksjon: pane mot cursor proporsjonalt med zoom-faktoren
+                    // Cursor-sentrert korreksjon: konverter begge til kartografisk, beregn avstand i 2D-kartrom
                     if (cursorWorldPos) {
-                        const zoomRatio = 1 - Math.abs(zoomVelocity);
-                        const camPos = v.camera.position;
-                        const panX = (cursorWorldPos.x - camPos.x) * (1 - zoomRatio);
-                        const panY = (cursorWorldPos.y - camPos.y) * (1 - zoomRatio);
-                        v.camera.moveRight(-panX);
-                        v.camera.moveUp(-panY);
+                        const cursorCarto = Cartographic.fromCartesian(
+                            cursorWorldPos, scene.globe.ellipsoid, cartographicScratch
+                        );
+                        const camCarto = v.camera.positionCartographic;
+                        const R = scene.globe.ellipsoid.maximumRadius;
+                        const panFrac = Math.abs(zoomVelocity);
+                        v.camera.moveRight((cursorCarto.longitude - camCarto.longitude) * R * panFrac);
+                        v.camera.moveUp((cursorCarto.latitude - camCarto.latitude) * R * panFrac);
                     }
                 } else if (cursorWorldPos) {
                     Cartesian3.subtract(cursorWorldPos, v.camera.position, dirScratch);
@@ -413,10 +439,10 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
                     break;
                 }
             }
-            // Satellitter (alt > 100 km): orbit på 15% av høyden; ellers standard 4 km
+            // Satellitter (alt > 100 km): orbit på 15% av høyden; ellers standard 1 km
             trackDistRef.current = entityAltM > 100_000
                 ? Math.max(50_000, entityAltM * 0.15)
-                : 4_000;
+                : 1_000;
             orbitHeadingRef.current = viewer.camera.heading;
             setOrbitActive(true);
         }
@@ -495,9 +521,16 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
                 scene.globe.show = true;
                 if (tilesetRef.current) tilesetRef.current.show = false;
 
-                if (activeMode === 'satellite') applySatelliteImagery(viewer!, baseLayersRef.current);
-                else if (activeMode === 'map') applyMapImagery(viewer!, baseLayersRef.current);
-                else if (activeMode === 'blend') applyBlendImagery(viewer!, baseLayersRef.current);
+                if (activeMode === 'satellite') {
+                    applySatelliteImagery(viewer!, baseLayersRef.current);
+                    applyCountryLabelsOverlay(viewer!, baseLayersRef.current);
+                } else if (activeMode === 'map') {
+                    applyMapImagery(viewer!, baseLayersRef.current);
+                    applyCountryLabelsOverlay(viewer!, baseLayersRef.current);
+                } else if (activeMode === 'blend') {
+                    applyBlendImagery(viewer!, baseLayersRef.current);
+                    applyCountryLabelsOverlay(viewer!, baseLayersRef.current);
+                }
             }
 
             if (!cancelled) scene.requestRender();
@@ -507,25 +540,35 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
         return () => { cancelled = true; };
     }, [viewer, activeMode]);
 
-    // Shader overlay effect
+    // Shader overlay effect — gjenbruker stages via cache (ingen destroy/recreate per toggle)
     useEffect(() => {
         if (!viewer || viewer.isDestroyed()) return;
         const { scene } = viewer;
+        const stageMap = shaderStageMapRef.current;
 
-        if (shaderStageRef.current) {
-            scene.postProcessStages.remove(shaderStageRef.current);
-            if (!shaderStageRef.current.isDestroyed()) shaderStageRef.current.destroy();
-            shaderStageRef.current = null;
+        // Deaktiver forrige stage
+        const prevKey = activeShaderKeyRef.current;
+        if (prevKey !== 'none') {
+            const prev = stageMap.get(prevKey);
+            if (prev) prev.enabled = false;
         }
+        activeShaderKeyRef.current = activeOverlay;
 
         if (activeOverlay !== 'none') {
-            const src = activeOverlay === 'nightvision' ? NIGHT_VISION_SHADER
-                      : activeOverlay === 'crt'         ? CRT_SHADER
-                      : activeOverlay === 'anime'        ? ANIME_SHADER
-                      : THERMAL_SHADER;
-            const stage = new PostProcessStage({ fragmentShader: src });
-            scene.postProcessStages.add(stage);
-            shaderStageRef.current = stage;
+            let stage = stageMap.get(activeOverlay);
+            if (!stage) {
+                const src = activeOverlay === 'nightvision' ? NIGHT_VISION_SHADER
+                          : activeOverlay === 'crt'         ? CRT_SHADER
+                          : activeOverlay === 'anime'       ? ANIME_SHADER
+                          : THERMAL_SHADER;
+                stage = new PostProcessStage({ fragmentShader: src });
+                // u_time uniform for animerte shaders — kalles per frame av Cesium
+                (stage as PostProcessStage & { uniforms: Record<string, unknown> }).uniforms.u_time =
+                    () => performance.now() / 1000;
+                scene.postProcessStages.add(stage);
+                stageMap.set(activeOverlay, stage);
+            }
+            stage.enabled = true;
         }
 
         scene.requestRender();

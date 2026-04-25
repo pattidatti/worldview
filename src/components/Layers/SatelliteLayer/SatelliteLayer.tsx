@@ -12,11 +12,11 @@ import {
     PolygonHierarchy,
 } from 'cesium';
 import { useViewer } from '@/context/ViewerContext';
-import { useLayers } from '@/context/LayerContext';
+import { useLayerActions, useLayerVisibility } from '@/store/layerStore';
 import { usePopupRegistry } from '@/context/PopupRegistry';
 import { useTooltipRegistry } from '@/context/TooltipRegistry';
 import { useTracking } from '@/context/TrackingContext';
-import { useTimelineMode } from '@/context/TimelineModeContext';
+import { useTimelineMode, useCursor } from '@/context/TimelineModeContext';
 import { usePollingData } from '@/hooks/usePollingData';
 import { syncEntities } from '@/utils/syncEntities';
 import { configureCluster } from '@/utils/cluster';
@@ -35,13 +35,14 @@ const POSITION_REFRESH_MS = 10_000;
 
 export function SatelliteLayer() {
     const viewer = useViewer();
-    const { isVisible, setLayerLoading, setLayerCount, setLayerError, setLayerLastUpdated } = useLayers();
+    const { setLayerLoading, setLayerCount, setLayerError, setLayerLastUpdated } = useLayerActions();
     const { register, unregister } = usePopupRegistry();
     const { register: tooltipRegister, unregister: tooltipUnregister } = useTooltipRegistry();
     const { trackedEntityId } = useTracking();
-    const { mode, cursor } = useTimelineMode();
+    const { mode } = useTimelineMode();
+    const cursor = useCursor();
     const isReplay = mode === 'replay';
-    const visible = isVisible('satellites');
+    const visible = useLayerVisibility('satellites');
     const dataSourceRef = useRef<CustomDataSource | null>(null);
     const trackDsRef = useRef<CustomDataSource | null>(null);
     const [tleData, setTleData] = useState<SatelliteRecord[]>([]);

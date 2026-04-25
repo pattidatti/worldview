@@ -1,5 +1,6 @@
 import { type Flight, type PositionSource } from '@/types/flight';
 import { type Viewport } from '@/hooks/useViewport';
+import { isValidLatLon } from '@/utils/coords';
 
 const API_BASE = import.meta.env.DEV
     ? '/proxy/airplanes/v2'
@@ -36,7 +37,7 @@ function transponderType(ac: AcEntry): PositionSource {
 }
 
 function toFlight(ac: AcEntry): Flight | null {
-    if (ac.lat == null || ac.lon == null) return null;
+    if (!isValidLatLon(ac.lat, ac.lon)) return null;
     if ((ac.seen ?? 0) > 60) return null; // posisjonsdata eldre enn 60s er upålitelig
     const onGround = ac.alt_baro === 'ground';
     const altFt = onGround ? 0 : (ac.alt_geom ?? (ac.alt_baro as number) ?? 0);
@@ -44,8 +45,8 @@ function toFlight(ac: AcEntry): Flight | null {
         icao24: (ac.hex ?? '').toLowerCase(),
         callsign: (ac.flight ?? '').trim(),
         originCountry: '',                        // not provided by airplanes.live
-        lon: ac.lon,
-        lat: ac.lat,
+        lon: ac.lon!,
+        lat: ac.lat!,
         altitude: altFt * 0.3048,                // feet → meters
         velocity: (ac.gs ?? 0) * 0.514444,       // knots → m/s
         heading: ac.track ?? 0,

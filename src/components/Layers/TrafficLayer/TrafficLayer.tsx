@@ -9,7 +9,7 @@ import {
     ConstantProperty,
 } from 'cesium';
 import { useViewer } from '@/context/ViewerContext';
-import { useLayers } from '@/context/LayerContext';
+import { useLayerActions, useLayerVisibility } from '@/store/layerStore';
 import { usePopupRegistry } from '@/context/PopupRegistry';
 import { useTooltipRegistry } from '@/context/TooltipRegistry';
 import { useViewport } from '@/hooks/useViewport';
@@ -26,10 +26,10 @@ const POLL_MS = 2 * 60 * 1000;
 
 export function TrafficLayer() {
     const viewer = useViewer();
-    const { isVisible, setLayerLoading, setLayerCount, setLayerError, setLayerLastUpdated } = useLayers();
+    const { setLayerLoading, setLayerCount, setLayerError, setLayerLastUpdated } = useLayerActions();
     const { register, unregister } = usePopupRegistry();
     const { register: tooltipRegister, unregister: tooltipUnregister } = useTooltipRegistry();
-    const visible = isVisible('traffic');
+    const visible = useLayerVisibility('traffic');
     const viewport = useViewport(viewer);
     const dataSourceRef = useRef<CustomDataSource | null>(null);
     const eventsRef = useRef<TrafficEvent[]>([]);

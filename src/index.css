@@ -9,7 +9,7 @@
     /* Background */
     --bg-primary: #0a0a0f;
     --bg-secondary: #12121a;
-    --bg-ui: rgba(26, 26, 46, 0.8);
+    --bg-ui: rgba(12, 12, 22, 0.88);
 
     /* Text */
     --text-primary: #ffffff;
@@ -20,6 +20,12 @@
     --accent-blue: #00d4ff;
     --accent-green: #00ff88;
     --accent-orange: #ff6b35;
+
+    /* Glass system */
+    --glass-border: rgba(255, 255, 255, 0.07);
+    --shadow-panel: 0 24px 64px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.06);
+    --glow-blue: 0 0 20px rgba(0, 212, 255, 0.18);
+    --glow-green: 0 0 20px rgba(0, 255, 136, 0.15);
 
     /* Layer colors */
     --color-flights: #ffa500;
@@ -43,6 +49,7 @@
     --color-conflicts: #ff1744;
     --color-weather-radar: #00e5ff;
     --color-gates: #4a9eff;
+    --color-chokepoints: #ff6b35;
 }
 
 html,
@@ -93,18 +100,23 @@ body {
     100% { transform: translateX(400%); }
 }
 
-/* Scanlines overlay — CRT/monitor feel */
-#root::after {
-    content: '';
-    position: fixed;
-    inset: 0;
-    background: repeating-linear-gradient(
-        to bottom,
-        transparent 0px,
-        transparent 2px,
-        rgba(0, 0, 0, 0.04) 2px,
-        rgba(0, 0, 0, 0.04) 4px
-    );
-    pointer-events: none;
-    z-index: 9999;
+@keyframes glitch-error {
+    0%, 100% { border-color: rgba(255, 51, 51, 0.7); opacity: 1; }
+    25%       { border-color: transparent; opacity: 0.7; }
+    50%       { border-color: rgba(255, 51, 51, 0.9); opacity: 1; }
+    75%       { border-color: transparent; opacity: 0.8; }
 }
+
+.animate-glitch-error {
+    animation: glitch-error 0.4s ease-in-out 2;
+}
+
+@keyframes fade-in-up {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in-up {
+    animation: fade-in-up 0.18s ease-out forwards;
+}
+

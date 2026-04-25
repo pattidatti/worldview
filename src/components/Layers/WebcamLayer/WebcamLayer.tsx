@@ -11,7 +11,7 @@ import {
     HeightReference,
 } from 'cesium';
 import { useViewer } from '@/context/ViewerContext';
-import { useLayers } from '@/context/LayerContext';
+import { useLayerActions, useLayerVisibility } from '@/store/layerStore';
 import { usePopupRegistry } from '@/context/PopupRegistry';
 import { useTooltipRegistry } from '@/context/TooltipRegistry';
 import { useViewport } from '@/hooks/useViewport';
@@ -43,10 +43,10 @@ const CAMERA_ICON = `data:image/svg+xml,${encodeURIComponent(
 
 export function WebcamLayer() {
     const viewer = useViewer();
-    const { isVisible, setLayerLoading, setLayerCount, setLayerError, setLayerLastUpdated } = useLayers();
+    const { setLayerLoading, setLayerCount, setLayerError, setLayerLastUpdated } = useLayerActions();
     const { register, unregister } = usePopupRegistry();
     const { register: tooltipRegister, unregister: tooltipUnregister } = useTooltipRegistry();
-    const visible = isVisible('webcams');
+    const visible = useLayerVisibility('webcams');
     const viewport = useViewport(viewer);
     const dataSourceRef = useRef<CustomDataSource | null>(null);
     const webcamsRef = useRef<Webcam[]>([]);

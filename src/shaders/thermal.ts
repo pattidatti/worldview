@@ -1,5 +1,6 @@
 export const THERMAL_SHADER = /*glsl*/`
     uniform sampler2D colorTexture;
+    uniform float u_time;
     in vec2 v_textureCoordinates;
 
     vec3 thermalPalette(float t) {
@@ -22,8 +23,25 @@ export const THERMAL_SHADER = /*glsl*/`
     void main() {
         vec4 color = texture(colorTexture, v_textureCoordinates);
         float lum = dot(color.rgb, vec3(0.299, 0.587, 0.114));
-        float noise = sin(v_textureCoordinates.x * 800.0) * sin(v_textureCoordinates.y * 600.0) * 0.03;
-        lum = clamp(lum + noise, 0.0, 1.0);
-        out_FragColor = vec4(thermalPalette(lum), 1.0);
+
+        // Heat-shimmer: vertikal bølgedistorsjon
+        float shimmerAmp = 0.0008;
+        float shimmerFreq = 40.0;
+        float shimmerSpeed = 1.5;
+        vec2 shimUV = v_textureCoordinates + vec2(
+            shimmerAmp * sin(v_textureCoordinates.y * shimmerFreq + u_time * shimmerSpeed),
+            0.0
+        );
+        vec4 shimColor = texture(colorTexture, shimUV);
+        float shimLum = dot(shimColor.rgb, vec3(0.299, 0.587, 0.114));
+
+        float noise = sin(shimUV.x * 800.0) * sin(shimUV.y * 600.0) * 0.03;
+        float finalLum = clamp(shimLum + noise, 0.0, 1.0);
+
+        // Temperatur-syklus — subtil varme-pust
+        float tempShift = 0.04 * sin(u_time * 0.5);
+        finalLum = clamp(finalLum + tempShift, 0.0, 1.0);
+
+        out_FragColor = vec4(thermalPalette(finalLum), 1.0);
     }
 `;

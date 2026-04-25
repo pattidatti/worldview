@@ -18,6 +18,27 @@ import { AnimatedCount } from './AnimatedCount';
 
 const CATEGORY_STORAGE_KEY = 'worldview-category-open';
 
+// Pulse duration in seconds, keyed to each layer's approximate polling interval
+const LAYER_PULSE_DURATION: Partial<Record<LayerId, number>> = {
+    flights: 1.0,
+    ships: 1.2,
+    simulatedTraffic: 1.3,
+    earthquakes: 1.5,
+    trafficFlow: 1.8,
+    traffic: 2.0,
+    roadCameras: 2.0,
+    sigmet: 2.0,
+    weatherRadar: 2.2,
+    news: 2.5,
+    weather: 2.8,
+    webcams: 3.0,
+    gpsjam: 3.0,
+    conflicts: 3.2,
+    disasters: 3.2,
+    satellites: 3.5,
+    asteroids: 4.0,
+};
+
 function loadOpenCategories(): Set<string> {
     try {
         const raw = localStorage.getItem(CATEGORY_STORAGE_KEY);
@@ -63,18 +84,20 @@ function LayerToggle({ id }: { id: LayerId }) {
     return (
         <button
             onClick={() => toggleLayer(id)}
-            className={`flex items-center gap-2 w-full px-3 py-1.5 rounded-lg transition-all duration-200 cursor-pointer
-                ${visible ? 'bg-white/5' : 'bg-transparent opacity-40'}
+            className={`flex items-center gap-2 w-full px-3 py-2 rounded-lg transition-all duration-200 cursor-pointer
+                ${visible ? 'bg-white/5' : 'bg-transparent opacity-[0.35]'}
+                ${status.error ? 'animate-glitch-error border border-red-500/40' : 'border border-transparent'}
                 hover:bg-white/10`}
         >
             <span className="text-sm w-5 text-center shrink-0">{LAYER_ICONS[id]}</span>
             <span
-                className="w-1.5 h-1.5 rounded-full shrink-0"
+                className={`w-2 h-2 rounded-full shrink-0${visible && status.count > 0 && !pulsing ? ' live-pulse-dot' : ''}`}
                 style={{
                     backgroundColor: visible ? meta.color : '#555',
                     boxShadow: pulsing && visible ? `0 0 7px 2px ${meta.color}` : 'none',
-                    transform: pulsing ? 'scale(1.5)' : 'scale(1)',
+                    transform: pulsing ? 'scale(1.5)' : undefined,
                     transition: 'transform 0.15s ease-out, box-shadow 0.15s ease-out',
+                    animationDuration: visible && status.count > 0 ? `${LAYER_PULSE_DURATION[id] ?? 1.8}s` : undefined,
                 }}
             />
             <span className="font-sans text-xs text-[var(--text-secondary)] flex-1 text-left truncate">
@@ -164,7 +187,7 @@ function CategorySection({
     const { toggleCategory } = useLayerActions();
 
     return (
-        <div>
+        <div style={{ borderLeft: `2px solid ${hasActive ? 'rgba(0, 212, 255, 0.3)' : 'transparent'}`, transition: 'border-color 0.3s' }}>
             <div className="flex items-center w-full hover:bg-white/5 transition-colors">
                 <button
                     onClick={() => toggleCategory(category.layers)}
@@ -208,7 +231,13 @@ function CategorySection({
                     onClick={onToggleOpen}
                     className="px-2 py-2 cursor-pointer text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors shrink-0"
                 >
-                    <span className="text-[10px]">{isOpen ? '▼' : '▶'}</span>
+                    <svg
+                        width="10" height="10" viewBox="0 0 10 10"
+                        fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"
+                        className={`transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`}
+                    >
+                        <path d="M3 2l4 3-4 3"/>
+                    </svg>
                 </button>
             </div>
 
@@ -230,7 +259,7 @@ function initialOpenCategories(): Set<string> {
     return new Set(['trafikk', 'maritim']);
 }
 
-export function LayerPanel() {
+export function LayerPanel({ mobileOpen = false }: { mobileOpen?: boolean }) {
     const [openCategories, setOpenCategories] = useState<Set<string>>(() => initialOpenCategories());
     const [query, setQuery] = useState('');
     const searchRef = useRef<HTMLInputElement>(null);
@@ -251,10 +280,10 @@ export function LayerPanel() {
         : null;
 
     return (
-        <div className="absolute left-4 top-20 z-10">
-            <div className="w-44 bg-[var(--bg-ui)] backdrop-blur-md border border-white/10 rounded-xl shadow-2xl overflow-hidden flex flex-col" style={{ maxHeight: 'calc(100vh - 10.5rem)' }}>
+        <div className={`absolute left-4 top-20 z-10 ${mobileOpen ? 'block' : 'hidden md:block'}`}>
+            <div className="w-56 bg-[var(--bg-ui)] backdrop-blur-xl border border-[var(--glass-border)] rounded-2xl overflow-hidden flex flex-col" style={{ maxHeight: 'calc(100vh - 10.5rem)', boxShadow: 'var(--shadow-panel)' }}>
                 <div className="px-3 pt-2 pb-1">
-                    <div className="flex items-center gap-1 bg-white/5 border border-white/10 rounded-lg px-2 py-1">
+                    <div className="flex items-center gap-1.5 bg-white/[0.04] border border-white/[0.08] rounded-full px-3 py-1.5">
                         <span className="text-[10px] text-[var(--text-muted)]">⌕</span>
                         <input
                             ref={searchRef}

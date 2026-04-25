@@ -7,7 +7,7 @@ import {
     HeightReference,
 } from 'cesium';
 import { useViewer } from '@/context/ViewerContext';
-import { useLayers } from '@/context/LayerContext';
+import { useLayerActions, useLayerVisibility } from '@/store/layerStore';
 import { usePopupRegistry } from '@/context/PopupRegistry';
 import { useTooltipRegistry } from '@/context/TooltipRegistry';
 import { useViewport } from '@/hooks/useViewport';
@@ -30,10 +30,10 @@ const LIGHTHOUSE_SVG = `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="htt
 
 export function LighthouseLayer() {
     const viewer = useViewer();
-    const { isVisible, setLayerLoading, setLayerCount } = useLayers();
+    const { setLayerLoading, setLayerCount } = useLayerActions();
     const { register, unregister } = usePopupRegistry();
     const { register: tooltipRegister, unregister: tooltipUnregister } = useTooltipRegistry();
-    const visible = isVisible('lighthouses');
+    const visible = useLayerVisibility('lighthouses');
     const viewport = useViewport(viewer, 2000);
     const dsRef = useRef<CustomDataSource | null>(null);
     const dataRef = useRef<LighthouseData>({ lighthouses: [] });

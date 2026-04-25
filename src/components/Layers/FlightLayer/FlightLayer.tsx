@@ -13,14 +13,14 @@ import {
     Math as CesiumMath,
 } from 'cesium';
 import { useViewer } from '@/context/ViewerContext';
-import { useLayers } from '@/context/LayerContext';
+import { useLayerActions, useLayerVisibility } from '@/store/layerStore';
 import { usePopupRegistry } from '@/context/PopupRegistry';
 import { useTooltipRegistry } from '@/context/TooltipRegistry';
 import { useGeointRegistry } from '@/context/GeointContext';
 import { useGates } from '@/context/GateContext';
 import { useTimelineEvents } from '@/context/TimelineEventContext';
 import { writeCrossings } from '@/services/crossingSync';
-import { useTimelineMode, CURSOR_JUMP_THRESHOLD_MS } from '@/context/TimelineModeContext';
+import { useTimelineMode, useCursor, CURSOR_JUMP_THRESHOLD_MS } from '@/context/TimelineModeContext';
 import { useReplayEntities } from '@/hooks/useReplayEntities';
 import { useViewport } from '@/hooks/useViewport';
 import { configureCluster } from '@/utils/cluster';
@@ -113,7 +113,7 @@ function extrapolatePosition(s: DrState, elapsedS: number): Cartesian3 {
 
 export function FlightLayer() {
     const viewer = useViewer();
-    const { isVisible, setLayerLoading, setLayerCount, setLayerError, setLayerLastUpdated } = useLayers();
+    const { setLayerLoading, setLayerCount, setLayerError, setLayerLastUpdated } = useLayerActions();
     const { register, unregister } = usePopupRegistry();
     const { register: tooltipRegister, unregister: tooltipUnregister } = useTooltipRegistry();
     const { register: geointRegister, unregister: geointUnregister } = useGeointRegistry();
@@ -124,9 +124,10 @@ export function FlightLayer() {
     const appendEventsRef = useRef(appendTimelineEvents);
     appendEventsRef.current = appendTimelineEvents;
     const lastEntityStateRef = useRef<Map<string, EntityPosition>>(new Map());
-    const visible = isVisible('flights');
+    const visible = useLayerVisibility('flights');
     const viewport = useViewport(viewer);
-    const { mode, cursor, modeEpoch } = useTimelineMode();
+    const { mode, modeEpoch } = useTimelineMode();
+    const cursor = useCursor();
     const isReplay = mode === 'replay';
     const replayResult = useReplayEntities('flight', cursor);
     const replayEntities = replayResult.entities;
@@ -147,6 +148,10 @@ export function FlightLayer() {
     const drStateRef = useRef<Map<string, DrState>>(new Map());
     // Sist gang hvert fly ble returnert av API — brukes for soft-removal TTL
     const lastSeenByApiRef = useRef<Map<string, number>>(new Map());
+    // Entity-IDs som er clustret i gjeldende frame — brukes for å skjule tilhørende trails
+    const clusteredIdsRef = useRef<Set<string>>(new Set());
+    // Settes true av clustering-event; postRender hopper over loop hvis false
+    const clusterDirtyRef = useRef(false);
 
     // GEOINT data provider
     useEffect(() => {
@@ -312,7 +317,41 @@ export function FlightLayer() {
         configureCluster(ds, { pixelRange: 40, minimumClusterSize: 3, color: '#ffa500' });
         viewer.dataSources.add(ds);
         dataSourceRef.current = ds;
+
+        // Samle clustrede entity-IDs per frame; sett dirty-flagg
+        const removeClusterListener = ds.clustering.clusterEvent.addEventListener((entities) => {
+            for (const e of entities) clusteredIdsRef.current.add(e.id);
+            clusterDirtyRef.current = true;
+        });
+
+        // Etter render: synkroniser trail-visibility med cluster-state.
+        // Early-exit hvis ingen clustering-event ble fyrt siden sist.
+        const removePostRender = viewer.scene.postRender.addEventListener(() => {
+            if (!clusterDirtyRef.current) return;
+            clusterDirtyRef.current = false;
+            const trailDs = trailDsRef.current;
+            if (!trailDs) return;
+            const clustered = clusteredIdsRef.current;
+            for (const entity of trailDs.entities.values) {
+                const eid = entity.id;
+                const planeId = eid.startsWith('trail-tip-')
+                    ? eid.slice('trail-tip-'.length)
+                    : eid.startsWith('trail-fresh-')
+                    ? eid.slice('trail-fresh-'.length)
+                    : eid.startsWith('trail-old-')
+                    ? eid.slice('trail-old-'.length)
+                    : null;
+                if (planeId !== null) {
+                    const shouldShow = !clustered.has(planeId);
+                    if (entity.show !== shouldShow) entity.show = shouldShow;
+                }
+            }
+            clusteredIdsRef.current.clear();
+        });
+
         return () => {
+            removeClusterListener();
+            removePostRender();
             if (!viewer.isDestroyed()) viewer.dataSources.remove(ds, true);
             dataSourceRef.current = null;
         };
@@ -470,30 +509,49 @@ export function FlightLayer() {
                     ? Color.fromCssColorString(MILITARY_COLOR)
                     : FLIGHT_COLOR;
 
-                // Fersk hale: siste 8 posisjoner — lys og tydelig
-                const freshId = `trail-fresh-${id}`;
-                const fresh = history.tail(8);
-                const freshEntity = trailDs.entities.getById(freshId);
-                if (freshEntity?.polyline?.positions) {
-                    (freshEntity.polyline.positions as ConstantProperty).setValue(fresh);
-                } else if (fresh.length >= 2) {
-                    trailDs.entities.add(new Entity({
-                        id: freshId,
-                        polyline: {
-                            positions: new ConstantProperty(fresh),
-                            width: 2.5,
-                            material: new PolylineGlowMaterialProperty({
-                                glowPower: 0.4,
-                                color: trailColor.withAlpha(0.9),
-                            }),
-                            clampToGround: false,
-                        },
-                    }));
-                }
+                // Spiss (tip): siste 4 posisjoner — knallys spiss
+                const tipId = `trail-tip-${id}`;
+                const tip = history.tail(4);
+                const tipEntity = trailDs.entities.getById(tipId);
+                if (tip.length >= 2) {
+                    if (tipEntity?.polyline?.positions) {
+                        (tipEntity.polyline.positions as ConstantProperty).setValue(tip);
+                    } else {
+                        trailDs.entities.add(new Entity({
+                            id: tipId,
+                            polyline: {
+                                positions: new ConstantProperty(tip),
+                                width: 3,
+                                material: new PolylineGlowMaterialProperty({ glowPower: 0.7, color: trailColor.withAlpha(1.0) }),
+                                clampToGround: false,
+                            },
+                        }));
+                    }
+                } else if (tipEntity) trailDs.entities.removeById(tipId);
 
-                // Gammel hale: resten — mørk og diskret
+                // Fersk hale: posisjoner 4-14 — tydelig men dempet
+                const freshId = `trail-fresh-${id}`;
+                const fresh = history.tail(14).slice(0, 10);
+                const freshEntity = trailDs.entities.getById(freshId);
+                if (fresh.length >= 2) {
+                    if (freshEntity?.polyline?.positions) {
+                        (freshEntity.polyline.positions as ConstantProperty).setValue(fresh);
+                    } else {
+                        trailDs.entities.add(new Entity({
+                            id: freshId,
+                            polyline: {
+                                positions: new ConstantProperty(fresh),
+                                width: 2,
+                                material: new PolylineGlowMaterialProperty({ glowPower: 0.25, color: trailColor.withAlpha(0.55) }),
+                                clampToGround: false,
+                            },
+                        }));
+                    }
+                } else if (freshEntity) trailDs.entities.removeById(freshId);
+
+                // Gammel hale: eldre posisjoner — nesten usynlig
                 const oldId = `trail-old-${id}`;
-                const old = history.head(8);
+                const old = history.head(Math.max(0, history.size - 14));
                 const oldEntity = trailDs.entities.getById(oldId);
                 if (old.length >= 2) {
                     if (oldEntity?.polyline?.positions) {
@@ -504,10 +562,7 @@ export function FlightLayer() {
                             polyline: {
                                 positions: new ConstantProperty(old),
                                 width: 1,
-                                material: new PolylineGlowMaterialProperty({
-                                    glowPower: 0.1,
-                                    color: trailColor.withAlpha(0.25),
-                                }),
+                                material: new PolylineGlowMaterialProperty({ glowPower: 0.05, color: trailColor.withAlpha(0.15) }),
                                 clampToGround: false,
                             },
                         }));
@@ -534,6 +589,7 @@ export function FlightLayer() {
             if (!keepAlive.has(id)) {
                 ds.entities.removeById(id);
                 if (trailDs) {
+                    trailDs.entities.removeById(`trail-tip-${id}`);
                     trailDs.entities.removeById(`trail-fresh-${id}`);
                     trailDs.entities.removeById(`trail-old-${id}`);
                 }
@@ -555,7 +611,9 @@ export function FlightLayer() {
         if (trailDs) {
             for (const entity of [...trailDs.entities.values]) {
                 const eid = entity.id;
-                const planeId = eid.startsWith('trail-fresh-')
+                const planeId = eid.startsWith('trail-tip-')
+                    ? eid.slice('trail-tip-'.length)
+                    : eid.startsWith('trail-fresh-')
                     ? eid.slice('trail-fresh-'.length)
                     : eid.startsWith('trail-old-')
                     ? eid.slice('trail-old-'.length)

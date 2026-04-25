@@ -12,7 +12,7 @@ import {
 } from 'cesium';
 import { type Viewport } from '@/hooks/useViewport';
 import { useViewer } from '@/context/ViewerContext';
-import { useLayers } from '@/context/LayerContext';
+import { useLayerActions, useLayerVisibility } from '@/store/layerStore';
 import { usePopupRegistry } from '@/context/PopupRegistry';
 import { useTooltipRegistry } from '@/context/TooltipRegistry';
 import { useViewport } from '@/hooks/useViewport';
@@ -32,11 +32,10 @@ const TOMTOM_POLL_MS = 90_000;
 
 export function SimulatedTrafficLayer() {
     const viewer = useViewer();
-    const { isVisible, setLayerLoading, setLayerCount, setLayerError, setLayerLastUpdated } =
-        useLayers();
+    const { setLayerLoading, setLayerCount, setLayerError, setLayerLastUpdated } = useLayerActions();
     const { register, unregister } = usePopupRegistry();
     const { register: tooltipRegister, unregister: tooltipUnregister } = useTooltipRegistry();
-    const visible = isVisible('simulatedTraffic');
+    const visible = useLayerVisibility('simulatedTraffic');
     const viewport = useViewport(viewer);
 
     const dataSourceRef = useRef<CustomDataSource | null>(null);

@@ -58,41 +58,40 @@ export function InfoPopup({ content, onClose, onFollow, isFollowing }: InfoPopup
               presser TimelineBar/StatusTicker ut av viewport.
             */}
             <div
-                className={`absolute z-20 ${isLarge ? 'w-[28rem]' : 'w-80'}`}
+                className={`absolute top-20 z-20 ${isLarge ? 'w-[28rem]' : 'w-80'} animate-fade-in-up`}
                 style={{
-                    left: 'calc(11rem + 1.25rem + 1rem)',
-                    top: '5rem',
+                    left: '16rem',
                     maxHeight: 'calc(100vh - 10.5rem)',
                     overflowY: 'auto',
                 }}
             >
                 <div
-                    className="bg-[var(--bg-ui)] backdrop-blur-md border rounded-xl overflow-hidden shadow-2xl"
+                    className="bg-[var(--bg-ui)] backdrop-blur-xl border rounded-2xl overflow-hidden"
                     style={{
                         borderColor: data.color ?? 'var(--accent-blue)',
                         borderWidth: '1px',
                         boxShadow: pinging
-                            ? `0 0 24px 4px ${data.color ?? 'var(--accent-blue)'}, 0 25px 50px -12px rgb(0 0 0 / 0.25)`
-                            : '0 25px 50px -12px rgb(0 0 0 / 0.25)',
+                            ? `0 0 0 1px ${data.color ?? 'var(--accent-blue)'}50, 0 0 32px 8px ${data.color ?? 'var(--accent-blue)'}20, var(--shadow-panel)`
+                            : 'var(--shadow-panel)',
                         transition: 'box-shadow 0.7s ease-out',
                     }}
                 >
                     {/* Header */}
-                    <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.07]">
                         <div className="flex items-center gap-2 min-w-0">
-                            {data.icon && <span className="text-lg shrink-0">{data.icon}</span>}
-                            <h3
-                                className="font-mono text-sm font-semibold truncate"
-                                style={{ color: data.color ?? 'var(--accent-blue)' }}
-                            >
+                            {data.icon && <span className="text-base shrink-0">{data.icon}</span>}
+                            <h3 className="font-sans text-sm font-semibold truncate text-white">
                                 {data.title}
                             </h3>
                         </div>
                         <button
                             onClick={onClose}
-                            className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors ml-2 shrink-0 cursor-pointer"
+                            className="w-6 h-6 rounded-full flex items-center justify-center ml-3 shrink-0 cursor-pointer transition-all hover:bg-white/10"
+                            style={{ color: 'var(--text-muted)' }}
                         >
-                            ✕
+                            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+                                <path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/>
+                            </svg>
                         </button>
                     </div>
 
@@ -145,16 +144,16 @@ export function InfoPopup({ content, onClose, onFollow, isFollowing }: InfoPopup
                     )}
 
                     {/* Fields */}
-                    <div className="px-4 py-3 flex flex-col gap-2">
+                    <div className="px-4 py-2 flex flex-col divide-y divide-white/5">
                         {data.fields.map((field) => (
-                            <div key={field.label} className="flex justify-between items-baseline">
-                                <span className="text-xs text-[var(--text-muted)] uppercase tracking-wide">
+                            <div key={field.label} className="flex justify-between items-baseline py-1.5 first:pt-0 last:pb-0">
+                                <span className="text-[11px] text-[var(--text-muted)] uppercase tracking-wider font-sans">
                                     {field.label}
                                 </span>
-                                <span className="font-mono text-sm text-[var(--text-primary)]">
+                                <span className="font-mono text-xs text-[var(--text-primary)] ml-4">
                                     {field.value}
                                     {field.unit && (
-                                        <span className="text-[var(--text-muted)] ml-1 text-xs">
+                                        <span className="text-[var(--text-muted)] ml-1 text-[10px]">
                                             {field.unit}
                                         </span>
                                     )}
@@ -170,7 +169,7 @@ export function InfoPopup({ content, onClose, onFollow, isFollowing }: InfoPopup
                                 href={data.linkUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="block w-full text-center py-2 rounded-lg text-sm font-mono transition-colors"
+                                className="block w-full text-center py-2.5 rounded-xl text-xs font-sans transition-colors hover:opacity-80"
                                 style={{
                                     backgroundColor: `${data.color ?? 'var(--accent-blue)'}20`,
                                     color: data.color ?? 'var(--accent-blue)',
@@ -186,7 +185,7 @@ export function InfoPopup({ content, onClose, onFollow, isFollowing }: InfoPopup
                         <div className={`px-4 ${data.linkUrl ? 'pt-0' : ''} pb-3`}>
                             <button
                                 onClick={() => onFollow(isFollowing ? null : data.followEntityId!)}
-                                className="block w-full text-center py-2 rounded-lg text-sm font-mono transition-colors cursor-pointer"
+                                className="block w-full text-center py-2.5 rounded-xl text-xs font-sans transition-colors cursor-pointer hover:opacity-80"
                                 style={{
                                     backgroundColor: isFollowing
                                         ? `${data.color ?? 'var(--accent-blue)'}40`

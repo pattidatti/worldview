@@ -7,7 +7,7 @@ import {
     useState,
     type ReactNode,
 } from 'react';
-import { useLayers } from './LayerContext';
+import { useLayerStore } from '@/store/layerStore';
 import { useAuth } from './AuthContext';
 import type { Snapshot } from '@/types/history';
 import type { LayerId } from '@/types/layers';
@@ -29,7 +29,6 @@ interface HistoryContextValue {
 const HistoryContext = createContext<HistoryContextValue | null>(null);
 
 export function HistoryProvider({ children }: { children: ReactNode }) {
-    const { layers } = useLayers();
     const { user } = useAuth();
     const uid = user?.uid ?? null;
 
@@ -37,13 +36,16 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
     const [loading, setLoading] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
 
-    // Latest counts-ref (hver snapshot leser denne).
-    const countsRef = useRef<Partial<Record<LayerId, number>>>({});
-    useEffect(() => {
-        const next: Partial<Record<LayerId, number>> = {};
-        for (const l of layers) next[l.id] = l.count;
-        countsRef.current = next;
-    }, [layers]);
+    // Les counts direkte fra layer-storen i intervallet — unngår at HistoryProvider
+    // re-renders per status-endring.
+    const readCountsSnapshot = (): Partial<Record<LayerId, number>> => {
+        const status = useLayerStore.getState().status;
+        const out: Partial<Record<LayerId, number>> = {};
+        for (const [id, s] of Object.entries(status)) {
+            out[id as LayerId] = s.count;
+        }
+        return out;
+    };
 
     // Pending writes (akkumulert mellom 5-min flush).
     const pendingRef = useRef<Snapshot[]>([]);
@@ -69,7 +71,7 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
     // Rolling 60s snapshot.
     useEffect(() => {
         const id = setInterval(() => {
-            const snap: Snapshot = { ts: Date.now(), counts: { ...countsRef.current } };
+            const snap: Snapshot = { ts: Date.now(), counts: readCountsSnapshot() };
             setSnapshots((prev) => {
                 const next = [...prev, snap];
                 if (next.length > MAX_SAMPLES) next.splice(0, next.length - MAX_SAMPLES);

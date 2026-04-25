@@ -21,6 +21,7 @@ export function spawnPulseRing(
     position: Cartesian3,
     color: Color,
     durationMs = 1400,
+    maxRadiusMeters = 50_000,
 ): void {
     const startMs = Date.now();
     const id = `pulse-${startMs}-${Math.random().toString(36).slice(2, 7)}`;
@@ -33,7 +34,7 @@ export function spawnPulseRing(
     const radius = new CallbackProperty((time: JulianDate | undefined) => {
         const elapsedS = time ? JulianDate.secondsDifference(time, startJd) : 0;
         const t = Math.min(Math.max(elapsedS / durationS, 0), 1);
-        return t * 50_000 + 1; // starter på 1m, vokser til ~50 km
+        return t * maxRadiusMeters + 1;
     }, false);
 
     const outlineColor = new CallbackProperty((time: JulianDate | undefined) => {

@@ -10,7 +10,7 @@ import {
     HeightReference,
 } from 'cesium';
 import { useViewer } from '@/context/ViewerContext';
-import { useLayers } from '@/context/LayerContext';
+import { useLayerActions, useLayerVisibility } from '@/store/layerStore';
 import { usePopupRegistry } from '@/context/PopupRegistry';
 import { useTooltipRegistry } from '@/context/TooltipRegistry';
 import { useGeointRegistry } from '@/context/GeointContext';
@@ -40,11 +40,11 @@ function toneLabel(tone: number): string {
 
 export function NewsLayer() {
     const viewer = useViewer();
-    const { isVisible, setLayerLoading, setLayerCount, setLayerError, setLayerLastUpdated } = useLayers();
+    const { setLayerLoading, setLayerCount, setLayerError, setLayerLastUpdated } = useLayerActions();
     const { register, unregister } = usePopupRegistry();
     const { register: tooltipRegister, unregister: tooltipUnregister } = useTooltipRegistry();
     const { register: geointRegister, unregister: geointUnregister } = useGeointRegistry();
-    const visible = isVisible('news');
+    const visible = useLayerVisibility('news');
     const dataSourceRef = useRef<CustomDataSource | null>(null);
     const newsRef = useRef<NewsEvent[]>([]);
     const visibleRef = useRef(visible);

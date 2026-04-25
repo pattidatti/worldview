@@ -1,4 +1,4 @@
-import { useTimelineMode } from '@/context/TimelineModeContext';
+import { useTimelineMode, useCursor } from '@/context/TimelineModeContext';
 
 function toInputValue(ts: number): string {
     // yyyy-mm-dd for <input type="date"> i lokal tidssone.
@@ -10,7 +10,8 @@ function toInputValue(ts: number): string {
 }
 
 export function TimelineDatePicker() {
-    const { mode, cursor, setCursor, setMode } = useTimelineMode();
+    const { mode, setCursor, setMode } = useTimelineMode();
+    const cursor = useCursor();
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const value = e.target.value;

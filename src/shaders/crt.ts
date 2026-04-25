@@ -1,5 +1,6 @@
 export const CRT_SHADER = /*glsl*/`
     uniform sampler2D colorTexture;
+    uniform float u_time;
     in vec2 v_textureCoordinates;
 
     vec2 barrelDistort(vec2 uv, float k) {
@@ -21,11 +22,15 @@ export const CRT_SHADER = /*glsl*/`
         float g = texture(colorTexture, uv).g;
         float b = texture(colorTexture, uv - off).b;
 
-        float scanline = mod(gl_FragCoord.y, 2.0) < 1.0 ? 0.70 : 1.0;
+        // Scanlines drifter nedover med u_time
+        float scanline = mod(gl_FragCoord.y + u_time * 8.0, 2.0) < 1.0 ? 0.70 : 1.0;
 
         vec2 centered = v_textureCoordinates - 0.5;
         float vignette = 1.0 - smoothstep(0.45, 0.75, length(centered));
 
-        out_FragColor = vec4(vec3(r, g, b) * scanline * vignette, 1.0);
+        // Horisontal signal-flicker
+        float flicker = 1.0 + 0.015 * sin(u_time * 60.0 + v_textureCoordinates.y * 100.0);
+
+        out_FragColor = vec4(vec3(r, g, b) * scanline * vignette * flicker, 1.0);
     }
 `;

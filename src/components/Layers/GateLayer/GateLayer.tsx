@@ -8,7 +8,7 @@ import {
     PolylineGlowMaterialProperty,
 } from 'cesium';
 import { useViewer } from '@/context/ViewerContext';
-import { useLayers } from '@/context/LayerContext';
+import { useLayerActions, useLayerVisibility } from '@/store/layerStore';
 import { usePopupRegistry } from '@/context/PopupRegistry';
 import { useTooltipRegistry } from '@/context/TooltipRegistry';
 import { useGates } from '@/context/GateContext';
@@ -54,7 +54,7 @@ interface GateLayerProps {
 
 export function GateLayer({ onRequestName }: GateLayerProps = {}) {
     const viewer = useViewer();
-    const { isVisible, setLayerCount } = useLayers();
+    const { setLayerCount } = useLayerActions();
     const { register, unregister } = usePopupRegistry();
     const { register: tooltipRegister, unregister: tooltipUnregister } = useTooltipRegistry();
     const {
@@ -67,7 +67,7 @@ export function GateLayer({ onRequestName }: GateLayerProps = {}) {
         finishDrawing,
     } = useGates();
     const { events } = useTimelineEvents();
-    const visible = isVisible('gates');
+    const visible = useLayerVisibility('gates');
 
     const dataSourceRef = useRef<CustomDataSource | null>(null);
     const entitiesRef = useRef<Map<string, GateEntityRecord>>(new Map());

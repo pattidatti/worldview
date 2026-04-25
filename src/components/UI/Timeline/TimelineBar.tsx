@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useTimelineMode } from '@/context/TimelineModeContext';
+import { useTimelineMode, useCursor } from '@/context/TimelineModeContext';
 import { addToast } from '@/components/UI/Toast';
 import { ModePill } from './ModePill';
 import { PlaybackControls } from './PlaybackControls';
@@ -9,7 +9,8 @@ import { TimelineTrack } from './TimelineTrack';
 const FLIGHT_BUCKET_MS = 10 * 60 * 1000;
 
 export function TimelineBar() {
-    const { mode, cursor, speed, setCursor, setSpeed, setMode, jumpToNow } = useTimelineMode();
+    const { mode, speed, setCursor, setSpeed, setMode, jumpToNow } = useTimelineMode();
+    const cursor = useCursor();
     const [now, setNow] = useState(() => Date.now());
     const nowRef = useRef(now);
     nowRef.current = now;

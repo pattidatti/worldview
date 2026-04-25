@@ -9,7 +9,7 @@ import {
     ConstantProperty,
 } from 'cesium';
 import { useViewer } from '@/context/ViewerContext';
-import { useLayers } from '@/context/LayerContext';
+import { useLayerActions, useLayerVisibility } from '@/store/layerStore';
 import { usePopupRegistry } from '@/context/PopupRegistry';
 import { useTooltipRegistry } from '@/context/TooltipRegistry';
 import { useGeointRegistry } from '@/context/GeointContext';
@@ -45,11 +45,11 @@ function formatTime(ms: number): string {
 
 export function EarthquakeLayer() {
     const viewer = useViewer();
-    const { isVisible, setLayerLoading, setLayerCount, setLayerError, setLayerLastUpdated } = useLayers();
+    const { setLayerLoading, setLayerCount, setLayerError, setLayerLastUpdated } = useLayerActions();
     const { register, unregister } = usePopupRegistry();
     const { register: tooltipRegister, unregister: tooltipUnregister } = useTooltipRegistry();
     const { register: geointRegister, unregister: geointUnregister } = useGeointRegistry();
-    const visible = isVisible('earthquakes');
+    const visible = useLayerVisibility('earthquakes');
     const dataSourceRef = useRef<CustomDataSource | null>(null);
     const quakesRef = useRef<Earthquake[]>([]);
     const visibleRef = useRef(visible);

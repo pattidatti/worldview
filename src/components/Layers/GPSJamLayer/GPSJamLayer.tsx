@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { UrlTemplateImageryProvider, ImageryLayer } from 'cesium';
 import { useViewer } from '@/context/ViewerContext';
-import { useLayers } from '@/context/LayerContext';
+import { useLayerActions, useLayerVisibility } from '@/store/layerStore';
 
 // gpsjam.org — daglig heatmap av GPS-forstyrrelser globalt.
 // Data fra ADS-B Exchange: fly som rapporterer GPS-konfidensfall avslører
@@ -16,8 +16,8 @@ function getYesterday(): string {
 
 export function GPSJamLayer() {
     const viewer = useViewer();
-    const { isVisible, setLayerLoading, setLayerError } = useLayers();
-    const visible = isVisible('gpsjam');
+    const { setLayerLoading, setLayerError } = useLayerActions();
+    const visible = useLayerVisibility('gpsjam');
     const layerRef = useRef<ImageryLayer | null>(null);
 
     useEffect(() => {

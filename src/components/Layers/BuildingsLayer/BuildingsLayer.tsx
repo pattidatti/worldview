@@ -1,12 +1,12 @@
 import { useEffect, useRef } from 'react';
 import { Cesium3DTileset } from 'cesium';
 import { useViewer } from '@/context/ViewerContext';
-import { useLayers } from '@/context/LayerContext';
+import { useLayerActions, useLayerVisibility } from '@/store/layerStore';
 
 export function BuildingsLayer() {
     const viewer = useViewer();
-    const { isVisible, setLayerLoading, setLayerError } = useLayers();
-    const visible = isVisible('buildings');
+    const { setLayerLoading, setLayerError } = useLayerActions();
+    const visible = useLayerVisibility('buildings');
     const tilesetRef = useRef<Cesium3DTileset | null>(null);
 
     useEffect(() => {

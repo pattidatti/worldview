@@ -1,7 +1,10 @@
-import { useLayers } from '@/context/LayerContext';
 import { useHistory } from '@/context/HistoryContext';
 import { useRollingStats } from '@/hooks/useRollingStats';
-import { LAYER_ICONS, type LayerId } from '@/types/layers';
+import { LAYER_ICONS, type LayerId, LAYER_DEFAULTS } from '@/types/layers';
+
+const LAYER_NAME_BY_ID: Record<LayerId, string> = Object.fromEntries(
+    LAYER_DEFAULTS.map((l) => [l.id, l.name])
+) as Record<LayerId, string>;
 import { AnalysisPanelFrame } from './AnalysisPanelFrame';
 import { Sparkline } from './Sparkline';
 import type { DragPosition } from '@/hooks/useDrag';
@@ -21,12 +24,10 @@ function formatDelta(delta: number | null): { text: string; color: string } {
 }
 
 export function DeltaPanel({ layerId, position, onPositionChange, onClose }: DeltaPanelProps) {
-    const { layers } = useLayers();
     const { loading, error } = useHistory();
     const stats = useRollingStats(layerId);
 
-    const layer = layers.find((l) => l.id === layerId);
-    const name = layer?.name ?? layerId;
+    const name = LAYER_NAME_BY_ID[layerId] ?? layerId;
     const icon = LAYER_ICONS[layerId] ?? '◆';
 
     const samples = stats.samples.slice(-360); // siste 6t ved 60s-kadens

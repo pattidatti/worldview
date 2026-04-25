@@ -1,4 +1,5 @@
 import { type Asteroid } from '@/types/asteroid';
+import { getJsonCache, setJsonCache } from './firestoreCache';
 
 const API_KEY = import.meta.env.VITE_NASA_API_KEY ?? 'DEMO_KEY';
 const LS_KEY = 'wv_neo';
@@ -46,7 +47,15 @@ export async function fetchAsteroids(): Promise<Asteroid[]> {
     const cached = lsGet();
     if (cached) return cached;
 
-    const start = todayStr();
+    // L2.5: Firestore shared cache (asteroidedata er identisk for alle brukere samme dag)
+    const today = todayStr();
+    const fsData = await getJsonCache<Asteroid[]>(`neo:${today}`, CACHE_TTL_MS);
+    if (fsData) {
+        lsSet(fsData);
+        return fsData;
+    }
+
+    const start = today;
     const end = plusDays(7);
     const url = `https://api.nasa.gov/neo/rest/v1/feed?start_date=${start}&end_date=${end}&api_key=${API_KEY}`;
     const response = await fetch(url);
@@ -73,5 +82,6 @@ export async function fetchAsteroids(): Promise<Asteroid[]> {
     }
     results.sort((a, b) => a.missDistanceKm - b.missDistanceKm);
     lsSet(results);
+    setJsonCache(`neo:${today}`, CACHE_TTL_MS, results);
     return results;
 }

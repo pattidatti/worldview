@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from 'react';
+import { useMemo } from 'react';
 import { type LayerId, type LayerConfig, LAYER_DEFAULTS } from '@/types/layers';
 import {
     useLayerStore,
@@ -18,15 +18,10 @@ interface LayerContextValue {
     isVisible: (id: LayerId) => boolean;
 }
 
-// Provider beholdes som no-op wrapper for ryggelengdskompatibilitet med App.tsx.
-export function LayerProvider({ children }: { children: ReactNode }) {
-    return <>{children}</>;
-}
-
 /**
- * Ryggelengds-API for eksisterende komponenter. Nye komponenter bør bruke
- * granulære selektorer (useLayerVisibility, useLayerStatus, useActiveLayerIds) fra
- * `@/store/layerStore` for å unngå unødvendige re-renders.
+ * Bakoverkompatibelt API for komponenter som enda ikke er migrert til granulære
+ * selektorer. Nye kall bør bruke `useLayerVisibility(id)`, `useLayerStatus(id)` og
+ * `useLayerActions()` fra `@/store/layerStore` for å unngå re-render-kaskader.
  */
 export function useLayers(): LayerContextValue {
     const visibility = useLayerStore((s) => s.visibility);
@@ -58,5 +53,5 @@ export function useLayers(): LayerContextValue {
     };
 }
 
-// Re-eksporter granulære selektorer for nye call sites.
+// Re-eksporter granulær selektor for call sites som importerer fra denne filen.
 export { useLayerVisibilityStore as useLayerVisibility };

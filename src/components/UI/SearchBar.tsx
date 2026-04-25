@@ -1,9 +1,13 @@
 import { useState, useRef, useEffect, useCallback, forwardRef, useImperativeHandle, useMemo } from 'react';
 import { Cartesian3, JulianDate } from 'cesium';
 import { useViewer } from '@/context/ViewerContext';
-import { useLayers } from '@/context/LayerContext';
+import { useVisibleLayerIds } from '@/store/layerStore';
 import { geocode, type GeoResult } from '@/services/geocoding';
-import { type LayerId, LAYER_ICONS } from '@/types/layers';
+import { type LayerId, LAYER_ICONS, LAYER_DEFAULTS } from '@/types/layers';
+
+const LAYER_NAME_BY_ID: Record<LayerId, string> = Object.fromEntries(
+    LAYER_DEFAULTS.map((l) => [l.id, l.name])
+) as Record<LayerId, string>;
 
 interface EntityResult {
     type: 'entity';
@@ -92,7 +96,7 @@ export interface SearchBarHandle {
 
 export const SearchBar = forwardRef<SearchBarHandle>(function SearchBar(_, ref) {
     const viewer = useViewer();
-    const { layers } = useLayers();
+    const visibleIds = useVisibleLayerIds();
     const [query, setQuery] = useState('');
     const [results, setResults] = useState<SearchResult[]>([]);
     const [open, setOpen] = useState(false);
@@ -107,8 +111,8 @@ export const SearchBar = forwardRef<SearchBarHandle>(function SearchBar(_, ref) 
     }));
 
     const visibleLayerIds = useMemo(
-        () => new Set(layers.filter((l) => l.visible).map((l) => l.id)),
-        [layers]
+        () => new Set<LayerId>(visibleIds),
+        [visibleIds]
     );
 
     const flyTo = useCallback((result: GeoResult) => {
@@ -239,7 +243,7 @@ export const SearchBar = forwardRef<SearchBarHandle>(function SearchBar(_, ref) 
     let flatIndex = 0;
 
     return (
-        <div ref={containerRef} className="relative w-72">
+        <div ref={containerRef} className="relative w-full max-w-xs md:w-72 md:max-w-none">
             <div className="flex items-center bg-[var(--bg-ui)] backdrop-blur-md border border-white/10 rounded-lg overflow-hidden">
                 <span className="pl-3 text-[var(--text-muted)] text-sm">🔍</span>
                 <input
@@ -265,7 +269,7 @@ export const SearchBar = forwardRef<SearchBarHandle>(function SearchBar(_, ref) 
                                 className="px-3 py-1 text-xs font-mono uppercase tracking-wider"
                                 style={{ color: LAYER_COLORS[layerId] }}
                             >
-                                {LAYER_ICONS[layerId]} {layers.find((l) => l.id === layerId)?.name}
+                                {LAYER_ICONS[layerId]} {LAYER_NAME_BY_ID[layerId]}
                             </div>
                             {items.map((r) => {
                                 const idx = flatIndex++;

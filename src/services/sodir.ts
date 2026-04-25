@@ -1,4 +1,5 @@
 import { type Facility, type Pipeline, type Field, type InfrastructureData } from '@/types/infrastructure';
+import { getSodirCache, setSodirCache } from './firestoreCache';
 
 interface SodirGeometryPoint    { x: number; y: number }
 interface SodirGeometryPolyline { paths: number[][][] }
@@ -163,6 +164,13 @@ export async function fetchInfrastructure(): Promise<InfrastructureData> {
     const cached = loadCache();
     if (cached) return cached;
 
+    // L2.5: Firestore shared cache
+    const firestoreCached = await getSodirCache();
+    if (firestoreCached) {
+        saveCache(firestoreCached);
+        return firestoreCached;
+    }
+
     const [facilities, pipelines, fields] = await Promise.all([
         fetchFacilities(),
         fetchPipelines(),
@@ -172,6 +180,7 @@ export async function fetchInfrastructure(): Promise<InfrastructureData> {
 
     if (facilities.length || pipelines.length || fields.length) {
         saveCache(result);
+        setSodirCache(result); // write-behind, deler med andre brukere
     }
     return result;
 }

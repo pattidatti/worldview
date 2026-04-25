@@ -1,4 +1,5 @@
 import { type Viewport } from '@/hooks/useViewport';
+import { getOsmTile, setOsmTile, getJsonCache, setJsonCache } from './firestoreCache';
 import {
     type OverpassPipeline,
     type OverpassPlatform,
@@ -182,6 +183,14 @@ export function fetchOverpassElements(
             return persisted2;
         }
 
+        // L2.5: Firestore shared tile cache (delt på tvers av alle brukere)
+        const firestoreData = await getOsmTile(cacheKey, maxAgeMs);
+        if (firestoreData) {
+            _genericCache.set(cacheKey, firestoreData);
+            lsSet(cacheKey, firestoreData);
+            return firestoreData;
+        }
+
         try {
             const res = await fetch(ENDPOINT, {
                 method: 'POST',
@@ -195,6 +204,7 @@ export function fetchOverpassElements(
             const elements: OverpassElement[] = json.elements ?? [];
             _genericCache.set(cacheKey, elements);
             lsSet(cacheKey, elements);
+            setOsmTile(cacheKey, elements); // write-behind, deler med andre brukere
             return elements;
         } catch {
             return [];
@@ -209,12 +219,59 @@ export function fetchOverpassElements(
     return myRequest;
 }
 
+const INFRA_LS_PREFIX = 'wv_ov_infra:';
+const INFRA_MAX_AGE_MS = 7 * DAY_MS;
+
+function lsGetInfra(key: string): OverpassInfrastructureData | null {
+    try {
+        const raw = localStorage.getItem(INFRA_LS_PREFIX + key);
+        if (!raw) return null;
+        const entry: { ts: number; data: OverpassInfrastructureData } = JSON.parse(raw);
+        if (Date.now() - entry.ts > INFRA_MAX_AGE_MS) {
+            localStorage.removeItem(INFRA_LS_PREFIX + key);
+            return null;
+        }
+        return entry.data;
+    } catch { return null; }
+}
+
+function lsSetInfra(key: string, data: OverpassInfrastructureData): void {
+    try {
+        localStorage.setItem(INFRA_LS_PREFIX + key, JSON.stringify({ ts: Date.now(), data }));
+    } catch { /* quota exceeded */ }
+}
+
 export function fetchOverpassInfrastructure(viewport: Viewport): Promise<OverpassInfrastructureData> {
     const key = viewportKey(viewport);
     if (key === cachedKey && cachedData !== EMPTY) return Promise.resolve(cachedData);
 
+    // L2: localStorage
+    const persisted = lsGetInfra(key);
+    if (persisted) {
+        cachedKey = key;
+        cachedData = persisted;
+        return Promise.resolve(persisted);
+    }
+
     const myRequest = _queueTail.then(async () => {
         if (key === cachedKey && cachedData !== EMPTY) return cachedData;
+
+        const persisted2 = lsGetInfra(key);
+        if (persisted2) {
+            cachedKey = key;
+            cachedData = persisted2;
+            return persisted2;
+        }
+
+        // L2.5: Firestore shared cache
+        const fsData = await getJsonCache<OverpassInfrastructureData>(`osm_infra:${key}`, INFRA_MAX_AGE_MS);
+        if (fsData) {
+            cachedKey = key;
+            cachedData = fsData;
+            lsSetInfra(key, fsData);
+            return fsData;
+        }
+
         try {
             const res = await fetch(ENDPOINT, {
                 method: 'POST',
@@ -227,6 +284,8 @@ export function fetchOverpassInfrastructure(viewport: Viewport): Promise<Overpas
             const result = parseElements(json.elements ?? []);
             cachedKey = key;
             cachedData = result;
+            lsSetInfra(key, result);
+            setJsonCache(`osm_infra:${key}`, INFRA_MAX_AGE_MS, result);
             return result;
         } catch {
             return EMPTY;

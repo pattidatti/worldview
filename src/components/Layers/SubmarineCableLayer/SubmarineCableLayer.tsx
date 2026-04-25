@@ -1,17 +1,17 @@
 import { useEffect, useRef } from 'react';
 import { GeoJsonDataSource, Color, JulianDate } from 'cesium';
 import { useViewer } from '@/context/ViewerContext';
-import { useLayers } from '@/context/LayerContext';
+import { useLayerActions, useLayerVisibility } from '@/store/layerStore';
 import { usePopupRegistry } from '@/context/PopupRegistry';
 import { useTooltipRegistry } from '@/context/TooltipRegistry';
 
 export function SubmarineCableLayer() {
     const viewer = useViewer();
-    const { isVisible, setLayerLoading, setLayerCount, setLayerError } = useLayers();
+    const { setLayerLoading, setLayerCount, setLayerError } = useLayerActions();
     const { register, unregister } = usePopupRegistry();
     const { register: tooltipRegister, unregister: tooltipUnregister } = useTooltipRegistry();
     const dsRef = useRef<GeoJsonDataSource | null>(null);
-    const visible = isVisible('submarineCables');
+    const visible = useLayerVisibility('submarineCables');
 
     // Register popup builder
     useEffect(() => {

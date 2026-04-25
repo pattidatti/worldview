@@ -3,6 +3,7 @@ import {
     CustomDataSource,
     Entity,
     Cartesian3,
+    Cartographic,
     Color,
     ConstantPositionProperty,
     ConstantProperty,
@@ -20,14 +21,14 @@ import {
     Cartesian2,
 } from 'cesium';
 import { useViewer } from '@/context/ViewerContext';
-import { useLayers } from '@/context/LayerContext';
+import { useLayerActions, useLayerVisibility } from '@/store/layerStore';
 import { usePopupRegistry } from '@/context/PopupRegistry';
 import { useTooltipRegistry } from '@/context/TooltipRegistry';
 import { useGeointRegistry } from '@/context/GeointContext';
 import { useGates } from '@/context/GateContext';
 import { useTimelineEvents } from '@/context/TimelineEventContext';
 import { writeCrossings } from '@/services/crossingSync';
-import { useTimelineMode, CURSOR_JUMP_THRESHOLD_MS } from '@/context/TimelineModeContext';
+import { useTimelineMode, useCursor, CURSOR_JUMP_THRESHOLD_MS } from '@/context/TimelineModeContext';
 import { useReplayEntities } from '@/hooks/useReplayEntities';
 import { useViewport } from '@/hooks/useViewport';
 import { configureCluster } from '@/utils/cluster';
@@ -101,7 +102,7 @@ function computeShipOffset(
 
 export function ShipLayer() {
     const viewer = useViewer();
-    const { isVisible, setLayerLoading, setLayerCount, setLayerError, setLayerLastUpdated } = useLayers();
+    const { setLayerLoading, setLayerCount, setLayerError, setLayerLastUpdated } = useLayerActions();
     const { register, unregister } = usePopupRegistry();
     const { register: tooltipRegister, unregister: tooltipUnregister } = useTooltipRegistry();
     const { register: geointRegister, unregister: geointUnregister } = useGeointRegistry();
@@ -112,7 +113,7 @@ export function ShipLayer() {
     const appendEventsRef = useRef(appendTimelineEvents);
     appendEventsRef.current = appendTimelineEvents;
     const lastEntityStateRef = useRef<Map<string, EntityPosition>>(new Map());
-    const visible = isVisible('ships');
+    const visible = useLayerVisibility('ships');
     const viewport = useViewport(viewer);
     const viewportRef = useRef(viewport);
     viewportRef.current = viewport;
@@ -120,6 +121,7 @@ export function ShipLayer() {
     const dataSourceRef = useRef<CustomDataSource | null>(null);
     const superDsRef = useRef<CustomDataSource | null>(null);
     const trailDsRef = useRef<CustomDataSource | null>(null);
+    const labelDsRef = useRef<CustomDataSource | null>(null);
     const trailHistoryRef = useRef<Map<string, TrailBuffer<Cartesian3>>>(new Map());
     const connRef = useRef<AISStreamConnection | null>(null);
     const shipTimestampsRef = useRef<Map<number, number>>(new Map());
@@ -128,7 +130,8 @@ export function ShipLayer() {
     shipsRef.current = ships;
     const visibleRef = useRef(visible);
     visibleRef.current = visible;
-    const { mode, cursor, modeEpoch } = useTimelineMode();
+    const { mode, modeEpoch } = useTimelineMode();
+    const cursor = useCursor();
     const isReplay = mode === 'replay';
     const replayResult = useReplayEntities('ship', cursor);
     const replayEntities = replayResult.entities;
@@ -254,9 +257,21 @@ export function ShipLayer() {
     }, [viewer]);
 
     useEffect(() => {
+        if (!viewer || viewer.isDestroyed()) return;
+        const labelDs = new CustomDataSource('ships-labels');
+        viewer.dataSources.add(labelDs);
+        labelDsRef.current = labelDs;
+        return () => {
+            if (!viewer.isDestroyed()) viewer.dataSources.remove(labelDs, true);
+            labelDsRef.current = null;
+        };
+    }, [viewer]);
+
+    useEffect(() => {
         if (dataSourceRef.current) dataSourceRef.current.show = visible;
         if (superDsRef.current) superDsRef.current.show = visible;
         if (trailDsRef.current) trailDsRef.current.show = visible;
+        if (labelDsRef.current) labelDsRef.current.show = visible;
     }, [visible]);
 
     // Connect to AIS stream — pauses i replay-modus.
@@ -350,6 +365,7 @@ export function ShipLayer() {
         const ds = dataSourceRef.current;
         const superDs = superDsRef.current;
         const trailDs = trailDsRef.current;
+        const labelDs = labelDsRef.current;
         if (!ds) return;
         setLayerCount('ships', ships.size);
         const existing = new Map<string, Entity>();
@@ -393,11 +409,20 @@ export function ShipLayer() {
             const navStatusColor = getNavStatusColor(ship.navStatus);
             const shipBillboard = createShipIconWithStatus(effectiveH, ship.shipType, navStatusColor, isDark);
 
-            // Havnivå-posisjon (basis for offset-beregninger)
-            const seaPos = Cartesian3.fromDegrees(ship.lon, ship.lat, 0);
-            // Skrogets sentrum: halvparten av skroghøyden over vannlinjen
-            const hullPos = Cartesian3.fromDegrees(ship.lon, ship.lat, dims.height / 2);
+            // Bruk globens faktiske terreng-høyde som base for å kompensere for ikke-uniform ellipsoide
+            const SEA_OFFSET = 1;
+            const _carto = Cartographic.fromDegrees(ship.lon, ship.lat);
+            const terrainH = viewer?.scene.globe.getHeight(_carto) ?? 50;
+            const baseAlt = Math.max(0, terrainH) + SEA_OFFSET;
+            const seaPos = Cartesian3.fromDegrees(ship.lon, ship.lat, baseAlt);
+            const hullPos = Cartesian3.fromDegrees(ship.lon, ship.lat, baseAlt + dims.height / 2);
             const orientation = buildOrientation(seaPos, effectiveH);
+            const maxCompTop = components.reduce(
+                (max, c) => Math.max(max, c.vertBase + c.height),
+                dims.height,
+            );
+            const labelPos = Cartesian3.fromDegrees(ship.lon, ship.lat, baseAlt + maxCompTop + 10);
+            const labelId = `${id}-lbl`;
 
             const entity = existing.get(id);
             if (entity) {
@@ -406,8 +431,34 @@ export function ShipLayer() {
                 if (entity.billboard?.image) {
                     (entity.billboard.image as ConstantProperty).setValue(shipBillboard);
                 }
-                if (entity.label?.text) {
-                    (entity.label.text as ConstantProperty).setValue(ship.name || `MMSI ${mmsi}`);
+                if (entity.billboard && !entity.billboard.alignedAxis) {
+                    entity.billboard.alignedAxis = new ConstantProperty(Cartesian3.UNIT_Z);
+                }
+                const labelEntity = labelDs?.entities.getById(labelId);
+                if (labelEntity) {
+                    (labelEntity.position as ConstantPositionProperty).setValue(labelPos);
+                    if (labelEntity.label?.text) {
+                        (labelEntity.label.text as ConstantProperty).setValue(ship.name || `MMSI ${mmsi}`);
+                    }
+                } else if (labelDs) {
+                    labelDs.entities.add(new Entity({
+                        id: labelId,
+                        position: labelPos,
+                        label: {
+                            text: ship.name || `MMSI ${mmsi}`,
+                            font: '11px Inter, sans-serif',
+                            fillColor: Color.WHITE,
+                            outlineColor: Color.BLACK.withAlpha(0.8),
+                            outlineWidth: 2,
+                            style: LabelStyle.FILL_AND_OUTLINE,
+                            verticalOrigin: VerticalOrigin.BOTTOM,
+                            horizontalOrigin: HorizontalOrigin.CENTER,
+                            pixelOffset: new Cartesian2(0, -18),
+                            scaleByDistance: LABEL_SCALE,
+                            distanceDisplayCondition: LABEL_RANGE,
+                            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+                        },
+                    }));
                 }
                 if (entity.box?.dimensions) {
                     (entity.box.dimensions as ConstantProperty).setValue(
@@ -482,22 +533,29 @@ export function ShipLayer() {
                         horizontalOrigin: HorizontalOrigin.CENTER,
                         heightReference: HeightReference.NONE,
                         disableDepthTestDistance: Number.POSITIVE_INFINITY,
-                    },
-                    label: {
-                        text: ship.name || `MMSI ${mmsi}`,
-                        font: '11px Inter, sans-serif',
-                        fillColor: Color.WHITE,
-                        outlineColor: Color.BLACK.withAlpha(0.8),
-                        outlineWidth: 2,
-                        style: LabelStyle.FILL_AND_OUTLINE,
-                        verticalOrigin: VerticalOrigin.BOTTOM,
-                        horizontalOrigin: HorizontalOrigin.CENTER,
-                        pixelOffset: new Cartesian2(0, -18),
-                        scaleByDistance: LABEL_SCALE,
-                        distanceDisplayCondition: LABEL_RANGE,
-                        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+                        alignedAxis: Cartesian3.UNIT_Z,
                     },
                 }));
+                if (labelDs) {
+                    labelDs.entities.add(new Entity({
+                        id: labelId,
+                        position: labelPos,
+                        label: {
+                            text: ship.name || `MMSI ${mmsi}`,
+                            font: '11px Inter, sans-serif',
+                            fillColor: Color.WHITE,
+                            outlineColor: Color.BLACK.withAlpha(0.8),
+                            outlineWidth: 2,
+                            style: LabelStyle.FILL_AND_OUTLINE,
+                            verticalOrigin: VerticalOrigin.BOTTOM,
+                            horizontalOrigin: HorizontalOrigin.CENTER,
+                            pixelOffset: new Cartesian2(0, -18),
+                            scaleByDistance: LABEL_SCALE,
+                            distanceDisplayCondition: LABEL_RANGE,
+                            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+                        },
+                    }));
+                }
                 // Overbygningskomponenter — lagvise bokser i 'ships-super'
                 if (superDs) {
                     for (let i = 0; i < components.length; i++) {
@@ -530,23 +588,46 @@ export function ShipLayer() {
                 }
                 history.push(seaPos.clone());
                 const positions = history.toArray();
+                // Spiss: siste 5 posisjoner
+                const tipId = `trail-tip-${id}`;
+                const tip = history.tail(5);
+                const tipEntity = trailDs.entities.getById(tipId);
+                if (tip.length >= 2) {
+                    if (tipEntity?.polyline?.positions) {
+                        (tipEntity.polyline.positions as ConstantProperty).setValue(tip);
+                    } else {
+                        trailDs.entities.add(new Entity({
+                            id: tipId,
+                            polyline: {
+                                positions: new ConstantProperty(tip),
+                                width: 2.5,
+                                material: new PolylineGlowMaterialProperty({ glowPower: 0.5, color: SHIP_TRAIL_COLOR.withAlpha(0.9) }),
+                                clampToGround: false,
+                            },
+                        }));
+                    }
+                } else if (tipEntity) trailDs.entities.removeById(tipId);
+
+                // Kropp: posisjoner 5-20
                 const trailId = `trail-${id}`;
+                const body = positions.slice(0, Math.max(0, positions.length - 5));
                 const trailEntity = trailDs.entities.getById(trailId);
-                if (trailEntity?.polyline?.positions) {
-                    (trailEntity.polyline.positions as ConstantProperty).setValue(positions);
-                } else if (positions.length >= 2) {
-                    trailDs.entities.add(new Entity({
-                        id: trailId,
-                        polyline: {
-                            positions: new ConstantProperty(positions),
-                            width: 1.5,
-                            material: new PolylineGlowMaterialProperty({
-                                glowPower: 0.2,
-                                color: SHIP_TRAIL_COLOR.withAlpha(0.7),
-                            }),
-                            clampToGround: false,
-                        },
-                    }));
+                if (body.length >= 2) {
+                    if (trailEntity?.polyline?.positions) {
+                        (trailEntity.polyline.positions as ConstantProperty).setValue(body);
+                    } else {
+                        trailDs.entities.add(new Entity({
+                            id: trailId,
+                            polyline: {
+                                positions: new ConstantProperty(body),
+                                width: 1.5,
+                                material: new PolylineGlowMaterialProperty({ glowPower: 0.1, color: SHIP_TRAIL_COLOR.withAlpha(0.3) }),
+                                clampToGround: false,
+                            },
+                        }));
+                    }
+                } else if (trailEntity) {
+                    trailDs.entities.removeById(trailId);
                 }
             }
         }
@@ -555,7 +636,8 @@ export function ShipLayer() {
             if (!seen.has(id)) {
                 ds.entities.removeById(id);
                 for (let i = 1; i <= 7; i++) superDs?.entities.removeById(`${id}::c${i}`);
-                if (trailDs) trailDs.entities.removeById(`trail-${id}`);
+                if (trailDs) { trailDs.entities.removeById(`trail-tip-${id}`); trailDs.entities.removeById(`trail-${id}`); }
+                labelDs?.entities.removeById(`${id}-lbl`);
                 trailHistoryRef.current.delete(id);
                 lastEntityStateRef.current.delete(id);
             }

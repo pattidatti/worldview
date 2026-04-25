@@ -10,7 +10,7 @@ import { GatePanel } from './components/UI/GatePanel';
 import { addToast } from './components/UI/Toast';
 import type { LatLon } from './types/gate';
 import { GlobeViewer } from './components/Globe/GlobeViewer';
-import { useLayers } from './context/LayerContext';
+import { useLayerActions, useLayerVisibility } from './store/layerStore';
 import { useTooltipRegistry } from './context/TooltipRegistry';
 import { TopBar } from './components/UI/TopBar';
 import { LayerPanel } from './components/UI/LayerPanel';
@@ -50,9 +50,10 @@ import { PlaceLabels } from './components/Globe/PlaceLabels';
 import { HudOverlay } from './components/UI/HudOverlay';
 import { PortholeOverlay } from './components/UI/PortholeOverlay';
 import { StatusTicker } from './components/UI/StatusTicker';
-import { EventLog } from './components/UI/EventLog';
 import { useTracking } from './context/TrackingContext';
 import { HudDock } from './components/UI/HudDock/HudDock';
+import { OnboardingTour } from './components/UI/OnboardingTour';
+import { CommandPalette } from './components/UI/CommandPalette';
 import { GeoNavigator } from './components/UI/GeoNavigator';
 import { KeyboardHelpModal } from './components/UI/KeyboardHelpModal';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
@@ -87,10 +88,13 @@ function AppContent({
     showHelp: boolean;
     setShowHelp: (v: boolean) => void;
 }) {
-    const { toggleLayer, isVisible } = useLayers();
+    const { toggleLayer } = useLayerActions();
+    const gatesVisible = useLayerVisibility('gates');
     const { trackedEntityId, setTrackedEntityId } = useTracking();
     const { addGate, startDrawing, isDrawing } = useGates();
     const [pendingVertices, setPendingVertices] = useState<LatLon[] | null>(null);
+    const [showCommandPalette, setShowCommandPalette] = useState(false);
+    const [mobileLayersOpen, setMobileLayersOpen] = useState(false);
 
     const closePopup = useCallback(() => {
         setPopup(null);
@@ -98,6 +102,7 @@ function AppContent({
     }, [setPopup, setTrackedEntityId]);
     const focusSearch = useCallback(() => searchRef.current?.focus(), [searchRef]);
     const toggleHelp = useCallback(() => setShowHelp(!showHelp), [showHelp, setShowHelp]);
+    const openCommandPalette = useCallback(() => setShowCommandPalette(true), []);
     const layerIds = useMemo(() => LAYER_IDS, []);
 
     useKeyboardShortcuts({
@@ -105,6 +110,7 @@ function AppContent({
         closePopup,
         focusSearch,
         toggleHelp,
+        openCommandPalette,
         layerIds,
     });
 
@@ -114,16 +120,15 @@ function AppContent({
             if (e.key !== 'g' && e.key !== 'G') return;
             const target = e.target as HTMLElement | null;
             if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
-            if (!isVisible('gates') || isDrawing) return;
+            if (!gatesVisible || isDrawing) return;
             e.preventDefault();
             startDrawing();
         };
         window.addEventListener('keydown', handler);
         return () => window.removeEventListener('keydown', handler);
-    }, [isVisible, isDrawing, startDrawing]);
+    }, [gatesVisible, isDrawing, startDrawing]);
 
     // Onboarding toast when the gates layer is first toggled visible.
-    const gatesVisible = isVisible('gates');
     useEffect(() => {
         if (!gatesVisible) return;
         try {
@@ -185,12 +190,11 @@ function AppContent({
                 <ChokepointLayer />
                 <GateLayer onRequestName={handleRequestName} />
                 <PlaceLabels />
-                <TopBar searchRef={searchRef} />
-                <LayerPanel />
-                {/* Top-right panel: GatePanel + EventLog i smal felles kolonne */}
-                <div className="absolute top-20 right-4 z-10 flex flex-col gap-2 w-48">
+                <TopBar searchRef={searchRef} onToggleHelp={toggleHelp} onToggleMobileLayers={() => setMobileLayersOpen((v) => !v)} mobileLayersOpen={mobileLayersOpen} />
+                <LayerPanel mobileOpen={mobileLayersOpen} />
+                {/* Top-right panel: GatePanel */}
+                <div className="absolute top-20 right-4 z-10 w-48">
                     <GatePanel />
-                    <EventLog />
                 </div>
                 <GateDrawHud />
                 <PortholeOverlay />
@@ -211,6 +215,7 @@ function AppContent({
                 <TooltipHandler />
             </GlobeViewer>
             {showHelp && <KeyboardHelpModal onClose={() => setShowHelp(false)} />}
+            {showCommandPalette && <CommandPalette onClose={() => setShowCommandPalette(false)} />}
             {pendingVertices && (
                 <GateNameModal
                     vertices={pendingVertices}
@@ -218,6 +223,7 @@ function AppContent({
                     onCancel={handleCancelName}
                 />
             )}
+            <OnboardingTour />
             <ToastContainer />
         </div>
     );

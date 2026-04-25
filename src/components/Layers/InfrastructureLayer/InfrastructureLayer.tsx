@@ -4,6 +4,7 @@ import {
     Entity,
     Cartesian3,
     Color,
+    ArcType,
     PointGraphics,
     PolylineGraphics,
     PolygonGraphics,
@@ -14,7 +15,7 @@ import {
     HeightReference,
 } from 'cesium';
 import { useViewer } from '@/context/ViewerContext';
-import { useLayers } from '@/context/LayerContext';
+import { useLayerActions, useLayerVisibility } from '@/store/layerStore';
 import { usePopupRegistry } from '@/context/PopupRegistry';
 import { useTooltipRegistry } from '@/context/TooltipRegistry';
 import { usePollingData } from '@/hooks/usePollingData';
@@ -70,13 +71,13 @@ function getSubstanceColor(substance: string): Color {
 
 export function InfrastructureLayer() {
     const viewer = useViewer();
-    const { isVisible, setLayerLoading, setLayerCount, setLayerError, setLayerLastUpdated } = useLayers();
+    const { setLayerLoading, setLayerCount, setLayerError, setLayerLastUpdated } = useLayerActions();
     const { register, unregister } = usePopupRegistry();
     const { register: tooltipRegister, unregister: tooltipUnregister } = useTooltipRegistry();
 
-    const visibleInstallations = isVisible('infrastructure');
-    const visiblePipelines = isVisible('infrastructurePipelines');
-    const visibleFields = isVisible('infrastructureFields');
+    const visibleInstallations = useLayerVisibility('infrastructure');
+    const visiblePipelines = useLayerVisibility('infrastructurePipelines');
+    const visibleFields = useLayerVisibility('infrastructureFields');
     const anyVisible = visibleInstallations || visiblePipelines || visibleFields;
 
     const viewport = useViewport(viewer, 2000);
@@ -440,6 +441,8 @@ export function InfrastructureLayer() {
                         polyline: new PolylineGraphics({
                             positions,
                             width: new ConstantProperty(3),
+                            clampToGround: new ConstantProperty(false),
+                            arcType: new ConstantProperty(ArcType.NONE),
                             material: ppl.phase === 'IN SERVICE'
                                 ? new ColorMaterialProperty(getMediumColor(ppl.medium))
                                 : new PolylineDashMaterialProperty({
@@ -492,11 +495,14 @@ export function InfrastructureLayer() {
             if (cancelled) return;
             osmDataRef.current = osmData;
 
-            // OSM Pipelines → osmPipelinesDsRef
+            // OSM Pipelines → osmPipelinesDsRef (incremental)
             if (osmPipelinesDsRef.current) {
                 const ds = osmPipelinesDsRef.current;
-                ds.entities.removeAll();
+                const existingPplIds = new Set(ds.entities.values.map((e) => e.id));
+                const newPplIds = new Set<string>();
                 for (const ppl of osmData.pipelines) {
+                    newPplIds.add(ppl.id);
+                    if (existingPplIds.has(ppl.id)) continue;
                     try {
                         const positions = ppl.positions
                             .filter(([lon, lat]) => isFinite(lon) && isFinite(lat))
@@ -508,20 +514,28 @@ export function InfrastructureLayer() {
                             polyline: new PolylineGraphics({
                                 positions,
                                 width: new ConstantProperty(2),
+                                clampToGround: new ConstantProperty(false),
+                                arcType: new ConstantProperty(ArcType.NONE),
                                 material: new ColorMaterialProperty(getSubstanceColor(ppl.substance).withAlpha(0.7)),
                             }),
                         }));
                     } catch { /* skip */ }
                 }
+                for (const id of existingPplIds) {
+                    if (!newPplIds.has(id)) ds.entities.removeById(id);
+                }
             }
             setLayerCount('infrastructurePipelines', dataRef.current.pipelines.length + osmData.pipelines.length);
 
-            // OSM Installations (platforms + wells) → osmInstallationsDsRef
+            // OSM Installations (platforms + wells) → osmInstallationsDsRef (incremental)
             if (osmInstallationsDsRef.current) {
                 const ds = osmInstallationsDsRef.current;
-                ds.entities.removeAll();
+                const existingInstIds = new Set(ds.entities.values.map((e) => e.id));
+                const newInstIds = new Set<string>();
 
                 for (const plat of osmData.platforms) {
+                    newInstIds.add(plat.id);
+                    if (existingInstIds.has(plat.id)) continue;
                     try {
                         if (!isFinite(plat.lon) || !isFinite(plat.lat)) continue;
                         ds.entities.add(new Entity({
@@ -539,6 +553,8 @@ export function InfrastructureLayer() {
                 }
 
                 for (const well of osmData.wells) {
+                    newInstIds.add(well.id);
+                    if (existingInstIds.has(well.id)) continue;
                     try {
                         if (!isFinite(well.lon) || !isFinite(well.lat)) continue;
                         ds.entities.add(new Entity({
@@ -553,6 +569,10 @@ export function InfrastructureLayer() {
                             }),
                         }));
                     } catch { /* skip */ }
+                }
+
+                for (const id of existingInstIds) {
+                    if (!newInstIds.has(id)) ds.entities.removeById(id);
                 }
             }
             setLayerCount('infrastructure', dataRef.current.facilities.length + osmData.platforms.length + osmData.wells.length);

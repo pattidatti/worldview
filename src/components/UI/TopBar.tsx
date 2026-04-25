@@ -22,9 +22,12 @@ function SystemClock() {
 
 interface TopBarProps {
     searchRef?: React.RefObject<SearchBarHandle | null>;
+    onToggleHelp?: () => void;
+    onToggleMobileLayers?: () => void;
+    mobileLayersOpen?: boolean;
 }
 
-export function TopBar({ searchRef }: TopBarProps) {
+export function TopBar({ searchRef, onToggleHelp, onToggleMobileLayers, mobileLayersOpen }: TopBarProps) {
     const { layers } = useLayers();
     const { addDelta, addTrend, hideAll, count } = useAnalysisPanels();
     const [menuOpen, setMenuOpen] = useState(false);
@@ -45,42 +48,57 @@ export function TopBar({ searchRef }: TopBarProps) {
 
     return (
         <div className="absolute top-0 left-0 right-0 z-10">
-            <div className="flex items-center justify-between px-5 py-3 bg-[var(--bg-ui)] backdrop-blur-md border-b border-white/10">
-                {/* Logo */}
+            <div className="flex items-center justify-between px-5 py-2.5 bg-[var(--bg-ui)] backdrop-blur-xl border-b border-white/[0.06]">
+                {/* Logo + mobile layers toggle */}
                 <div className="flex items-center gap-3">
-                    <h1 className="font-mono text-base font-bold tracking-wider text-[var(--accent-blue)]">
-                        WORLDVIEW
+                    <h1 className="font-sans text-base font-semibold tracking-tight text-white flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-[var(--accent-blue)] shrink-0" style={{ boxShadow: 'var(--glow-blue)' }} />
+                        <span>Worldview</span>
                     </h1>
+                    {onToggleMobileLayers && (
+                        <button
+                            onClick={onToggleMobileLayers}
+                            className="md:hidden flex items-center justify-center w-8 h-8 rounded-lg cursor-pointer transition-colors"
+                            style={{
+                                background: mobileLayersOpen ? 'rgba(0,212,255,0.12)' : 'rgba(255,255,255,0.05)',
+                                border: `1px solid ${mobileLayersOpen ? 'rgba(0,212,255,0.35)' : 'rgba(255,255,255,0.12)'}`,
+                                color: mobileLayersOpen ? 'var(--accent-blue)' : 'var(--text-muted)',
+                            }}
+                            title="Vis/skjul lag"
+                        >
+                            <span className="text-xs">☰</span>
+                        </button>
+                    )}
                 </div>
 
                 {/* Search */}
                 <SearchBar ref={searchRef} />
 
                 {/* Status */}
-                <div className="hidden md:flex items-center gap-4 font-mono text-xs text-[var(--text-muted)]">
-                    <span>
+                <div className="hidden md:flex items-center gap-2 font-mono text-xs">
+                    <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/[0.04] border border-white/[0.08]">
                         <AnimatedCount
                             value={totalObjects}
                             color="var(--accent-green)"
                             className="text-[var(--accent-green)]"
                         />
-                        {' '}objekter
+                        <span className="text-white/30 text-[10px]">obj</span>
                     </span>
-                    <span>
+                    <span className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-white/[0.04] border border-white/[0.08] text-white/50">
                         <span className="text-[var(--accent-blue)]">{activeLayers.length}</span>
-                        /{layers.length} lag
+                        <span className="text-white/25">/</span>
+                        <span>{layers.length}</span>
                     </span>
 
                     <div className="relative">
                         <button
                             onClick={handleMenuToggle}
-                            className="px-2 py-1 cursor-pointer"
+                            className="px-3.5 py-1.5 rounded-full font-mono text-xs tracking-widest cursor-pointer transition-all duration-200"
                             style={{
-                                background: menuOpen ? 'rgba(0,255,136,0.08)' : 'rgba(10,10,20,0.65)',
-                                border: '1px solid rgba(255,255,255,0.12)',
-                                borderLeft: '2px solid var(--accent-green)',
-                                color: 'var(--text-primary, #fff)',
-                                letterSpacing: '0.08em',
+                                background: menuOpen ? 'rgba(0,255,136,0.12)' : 'rgba(0,255,136,0.06)',
+                                border: '1px solid rgba(0,255,136,0.22)',
+                                color: 'var(--accent-green)',
+                                boxShadow: menuOpen ? 'var(--glow-green)' : 'none',
                             }}
                             title="Analyse-paneler"
                         >
@@ -97,6 +115,20 @@ export function TopBar({ searchRef }: TopBarProps) {
                     </div>
 
                     <SystemClock />
+                    {onToggleHelp && (
+                        <button
+                            onClick={onToggleHelp}
+                            title="Tastatursnarveier (?)"
+                            className="w-7 h-7 rounded-full flex items-center justify-center cursor-pointer transition-all font-mono text-xs"
+                            style={{
+                                background: 'rgba(255,255,255,0.04)',
+                                border: '1px solid rgba(255,255,255,0.1)',
+                                color: 'var(--text-muted)',
+                            }}
+                        >
+                            ?
+                        </button>
+                    )}
                     <SignOutButton />
                 </div>
             </div>

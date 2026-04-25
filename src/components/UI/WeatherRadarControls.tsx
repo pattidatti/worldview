@@ -1,4 +1,4 @@
-import { useLayers } from '@/context/LayerContext';
+import { useLayerVisibility } from '@/store/layerStore';
 import { useWeatherRadar } from '@/context/WeatherRadarContext';
 
 function formatRadarTime(unix: number): string {
@@ -6,8 +6,7 @@ function formatRadarTime(unix: number): string {
 }
 
 export function WeatherRadarControls() {
-    const { isVisible } = useLayers();
-    const visible = isVisible('weatherRadar');
+    const visible = useLayerVisibility('weatherRadar');
     const {
         allFrames, pastCount,
         currentIndex, setCurrentIndex,
