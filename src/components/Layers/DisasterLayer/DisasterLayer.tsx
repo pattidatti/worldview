@@ -16,6 +16,8 @@ import { useTooltipRegistry } from '@/context/TooltipRegistry';
 import { useGeointRegistry } from '@/context/GeointContext';
 import { usePollingData } from '@/hooks/usePollingData';
 import { syncEntities } from '@/utils/syncEntities';
+import { spawnPulseRing } from '@/utils/pulseRing';
+import { fadeInEntity } from '@/utils/entityFade';
 import { fetchDisasters } from '@/services/eonet';
 import { type Disaster } from '@/types/disaster';
 
@@ -66,6 +68,8 @@ export function DisasterLayer() {
     const { register: geointRegister, unregister: geointUnregister } = useGeointRegistry();
     const visible = useLayerVisibility('disasters');
     const dataSourceRef = useRef<CustomDataSource | null>(null);
+    const pulseDsRef = useRef<CustomDataSource | null>(null);
+    const firstLoadRef = useRef(false);
     const disastersRef = useRef<Disaster[]>([]);
     const visibleRef = useRef(visible);
     visibleRef.current = visible;
@@ -125,9 +129,16 @@ export function DisasterLayer() {
         const ds = new CustomDataSource('disasters');
         viewer.dataSources.add(ds);
         dataSourceRef.current = ds;
+        const pulseDs = new CustomDataSource('disasters-pulses');
+        viewer.dataSources.add(pulseDs);
+        pulseDsRef.current = pulseDs;
         return () => {
-            if (!viewer.isDestroyed()) viewer.dataSources.remove(ds, true);
+            if (!viewer.isDestroyed()) {
+                viewer.dataSources.remove(ds, true);
+                viewer.dataSources.remove(pulseDs, true);
+            }
             dataSourceRef.current = null;
+            pulseDsRef.current = null;
         };
     }, [viewer]);
 
@@ -139,6 +150,8 @@ export function DisasterLayer() {
         const ds = dataSourceRef.current;
         if (!ds || !disasters) return;
         setLayerCount('disasters', disasters.length);
+        const isFirstLoad = !firstLoadRef.current;
+        if (isFirstLoad && disasters.length > 0) firstLoadRef.current = true;
         syncEntities({
             ds,
             items: disasters,
@@ -163,6 +176,19 @@ export function DisasterLayer() {
                         heightReference: HeightReference.CLAMP_TO_GROUND,
                     },
                 });
+            },
+            onAfterCreate: (entity, d) => {
+                if (viewer) fadeInEntity(entity, viewer, 500);
+                if (!isFirstLoad && pulseDsRef.current) {
+                    const { color } = getStyle(d.category);
+                    spawnPulseRing(
+                        pulseDsRef.current,
+                        Cartesian3.fromDegrees(d.lon, d.lat),
+                        Color.fromCssColorString(color),
+                        1600,
+                        80_000,
+                    );
+                }
             },
             viewer,
         });

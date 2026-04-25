@@ -48,12 +48,15 @@ All env vars use Vite's `import.meta.env.VITE_*` convention.
 - **StrictMode er fjernet** — dobbeltmonterer Cesium Viewer og forårsaker krasj.
 - **ALDRI legg til `selectedEntityChanged` listeners i lag** — bruk PopupRegistry-mønsteret (se under). Listener-stacking var hovedårsak til krasj.
 - **airplaneslive.ts erstatter opensky.ts** for flightlaget — viewport-aware via center-point + radius i nautiske mil (maks 250nm).
-- **WeatherRadarLayer er unntaket** — det eneste laget som returnerer JSX (animasjonskontroller) og bruker CesiumJS `ImageryLayer` i stedet for `CustomDataSource`. Fjern gammelt lag fra viewer før nytt legges til (unngå stacking).
+- **WeatherRadarLayer og GPSJamLayer er unntakene** — de eneste lagene som bruker `ImageryLayer`/`UrlTemplateImageryProvider` i stedet for `CustomDataSource`. WeatherRadarLayer returnerer også JSX. Fjern gammelt lag fra viewer før nytt legges til (unngå stacking).
 - **ACLED krever nøkkel + e-post** — begge `VITE_ACLED_API_KEY` og `VITE_ACLED_EMAIL` må være satt. Mangler én av dem returneres tomt array stille.
 - **Firebase valgfritt med gjeste-modus** — `SignInGate` tilbyr "FORTSETT SOM GJEST" ved siden av Google-innlogging. I gjeste-modus funker live-lag, men porter og historikk lagres kun i localStorage (ingen Firestore-writes). `guestMode`-flagget persisteres i localStorage-nøkkel `worldview-guest-mode`. Mangler `VITE_FIREBASE_*` er kun gjeste-modus tilgjengelig.
 - **Lag-skop for historikk** — kun `flights`, `ships`, `conflicts`, `disasters`, `news` (og senere alle count-bærende lag) får snapshots. Satellitter propageres deterministisk fra TLE. Værradar, asteroider, trafikk og resten får ingen historikk-writes.
 - **UTC i storage, lokal i UI** — Firestore-doc-IDer bruker `YYYY-MM-DD_UTC`. `expiresAt`-felt er 30d etter ts.
 - **schemaVersion på alle writes** — firestore.rules avviser writes uten `schemaVersion == CURRENT`. Migratorer kjører ved lesing (se `src/utils/schemaMigrators.ts`).
+- **Bruk `syncEntities<T>()`** for all entity-reconciliation (`src/utils/syncEntities.ts`) — erstatter manuell Map-bygging + loop + slett-gammel. `onAfterCreate` callback brukes til fade/bounce-animasjoner.
+- **Bruk `entityFade.ts`** for entity-animasjoner (`src/utils/entityFade.ts`) — `fadeInEntity`, `fadeOutEntity`, `bounceInEntity` bruker Cesiums `CallbackProperty`. Ikke implement egne animasjonsløkker.
+- **AIS WebSocket proxy i dev** — `aisstream.ts` kobler til `/ais-ws` lokalt; Vite-konfigens `aisProxy()`-plugin tunneler dette til `wss://stream.aisstream.io/v0/stream`. I prod: direkte WSS-tilkobling.
 
 ## History schemas (fase 3)
 
@@ -110,7 +113,18 @@ To add a new layer: create a type in `src/types/`, a service in `src/services/`,
 
 ### Entity update pattern (performance-critical)
 
-All layers use the same pattern for updating Cesium entities without recreating them:
+Bruk `syncEntities<T>()` fra `src/utils/syncEntities.ts` for standard entity-reconciliation:
+
+```ts
+syncEntities({ ds, items, getId, onUpdate, onCreate, onAfterCreate, viewer })
+```
+
+- `onUpdate` — muterér eksisterende entity in-place (position, label, color, etc.)
+- `onCreate` — lager ny entity, legger den til `ds.entities`
+- `onAfterCreate` — valgfri, kjøres etter entity er lagt til (typisk `fadeInEntity` eller `bounceInEntity`)
+- Én `requestRender()` på slutten for batch-effektivitet
+
+Manuelt mønster (brukes kun i komplekse lag som FlightLayer der dead-reckoning krever tettere kontroll):
 - Build a `Map<id, Entity>` from existing entities
 - Iterate new data: update position via `ConstantPositionProperty.setValue()` for existing, `ds.entities.add()` for new
 - Remove entities not seen in current data batch
@@ -122,6 +136,8 @@ All layers use the same pattern for updating Cesium entities without recreating 
 - **Tracking-lookup**: `GlobeViewer` cacher `(trackedId, dsIndex)` mellom frames. Lineært søk gjennom alle dataSources gjøres kun på cache-miss.
 - **Polling-jitter**: `usePollingData` har default 1.5s startup-jitter som sprer nettverkskallene til ~11 polling-lag så de ikke alle fyrer i samme tick ved oppstart.
 - **Zustand over context for høy-frekvens-state**: Lag-status oppdateres hver 5–30s per synlige lag. Context-arkitektur ville forårsaket cascade-renders av 28 lag-komponenter. Zustand med granulære selektorer subscriber per lag-id slik at kun de komponentene som faktisk leser endrede felt re-renders.
+- **Multi-datasource-mønster**: Komplekse lag bruker 2–5 separate `CustomDataSource`-instanser for z-ordering og synlighetskontroll. ShipLayer: 5 (hull, superstructure, trails, labels, wakes). FlightLayer: 3 (entities, trails, pulses). InfrastructureLayer: 5 (facilities, pipelines, fields, osm-installations, osm-pipelines). Separate datasources gir riktig z-rekkefølge uten at entity-properties kolliderer.
+- **Overpass serial queue**: `overpass.ts` serialiserer alle Overpass-kall med 400ms gap for å unngå 429-feil. Backoff til 30s ved 429, reset til 400ms ved suksess. Samtidige identiske spørringer dedupes til én in-flight promise.
 
 ### Clustering pattern
 
@@ -150,6 +166,7 @@ ConflictLayer and NewsLayer use clustering via `configureCluster(ds, { pixelRang
 - **OrbitContext** (`src/context/OrbitContext.tsx`) — boolean flag `orbitActive` + `setOrbitActive`; camera orbit implementation lives in GlobeViewer (not yet implemented)
 - **GateContext** (`src/context/GateContext.tsx`) — user-drawn polyline "gates" used for geofencing. CRUD + localStorage-persistens (key `worldview-gates`, schema v1). Eksponerer også draw-modus (`isDrawing`, `isDrawingRef`, `startDrawing/pushDrawVertex/popDrawVertex/finishDrawing/cancelDrawing`). `isDrawingRef` leses av GlobeViewer og `useHoverTooltip` for å suspendere entity-valg og tooltips under tegning. Faller pent tilbake til localStorage når `uid == null` (guest-modus).
 - **TimelineEventContext** (`src/context/TimelineEventContext.tsx`) — bounded queue (cap 1000, LIFO) for strukturerte hendelser (`gate-crossing`, `layer-alert`, `data-gap`). `append(events)` er idempotent på `id`-feltet. Dette er IKKE EventLog — som kun er count-delta-snapshot per lag.
+- **TrackingContext** (`src/context/TrackingContext.tsx`) — global kamera-følging av entitet. Eksponerer `trackedEntityId` og `setTrackedEntityId`. Styres av InfoPopup's "Følg"-knapp; GlobeViewer leser den for å holde kamera låst til valgt entitet.
 
 ### Porter (gates) + crossing-deteksjon
 
@@ -162,10 +179,13 @@ ConflictLayer and NewsLayer use clustering via `configureCluster(ds, { pixelRang
 
 - **`usePollingData<T>(fetchFn, intervalMs, enabled, options?)`** — generic polling with auto-cleanup; only polls when `enabled` is true (tied to layer visibility). `options.startupJitterMs` (default 1500ms) sprer første fetch for å unngå at alle synlige lag treffer nettverket samtidig ved oppstart.
 - **`useViewport(viewer, debounceMs)`** — tracks camera bounding box (`{west, south, east, north}` in degrees); used by AIS/flights to request only visible-area data
+- **`useEntityScreenPos(viewer, entity)`** (`src/hooks/useEntityScreenPos.ts`) — konverterer en Cesium-entitets 3D-posisjon til 2D skjermkoordinater (`{x, y} | null`) via `preRender`-event. Oppdaterer kun state ved ≥0.5px endring (hysterese). Brukes av `EntitySelector` for bracket-overlay-plassering.
 
 ### Key utils
 
 - **`TrailBuffer<T>`** (`src/utils/trailBuffer.ts`) — fixed-size circular buffer brukt av `FlightLayer` og `ShipLayer` for posisjons-trails. O(1) push, `tail(n)` / `head(n)` / `toArray()` returnerer kronologisk rekkefølge uten array-kloning per poll. Enhetstester i `__tests__/trailBuffer.test.ts`.
+- **`syncEntities<T>()`** (`src/utils/syncEntities.ts`) — generisk entity-reconciliation: bygg/oppdater/slett Cesium-entiteter mot ny datamengde. Se Entity update pattern over.
+- **`entityFade.ts`** (`src/utils/entityFade.ts`) — animasjoner via Cesiums `CallbackProperty`: `fadeInEntity(entity, viewer, ms=600)`, `fadeOutEntity(entity, viewer, ms=400, onDone?)`, `bounceInEntity(entity, viewer, ms=450)`. Rydder opp med `ConstantProperty` etter ferdig animasjon.
 
 ### Services
 
@@ -183,18 +203,23 @@ Services are pure async functions (except `AISStreamConnection` which is a state
 - `nasa-neo.ts` — NASA NeoWs, asteroid close approaches next 7 days, optional key (DEMO_KEY fallback)
 - `rainviewer.ts` — RainViewer weather radar, fetches frame timestamps + tile URL helper, no key
 - `wikipedia.ts` — OSM Nominatim + Wikipedia summary for popups; tries Norwegian first, falls back to English; two-tier cache (memory + sessionStorage, 1h TTL)
+- `overpass.ts` — Overpass API wrapper for OpenStreetMap-data (brukt av InfrastructureLayer og PowerLayer). 3-nivå cache: in-memory → localStorage LRU (200KB/entry) → Firestore delt tile-cache. Serial request queue med 400ms gap, 30s backoff ved 429, dedup av samtidige identiske spørringer. Eksporterer `DAY_MS` og `fetchOverpassInfrastructure(viewport)`.
 
 ### Layers reference
 
 | Layer | Service | Polling | API key | Display |
 |-------|---------|---------|---------|---------|
-| Flights | airplaneslive.ts | 15s | None | SVG plane icons + trails, clustering |
-| Ships | aisstream.ts | WS/5s | Required | 3D boxes + billboard icons + trails |
+| Flights | airplaneslive.ts | 15s | None | SVG plane icons + trails, clustering (3 datasources) |
+| Ships | aisstream.ts | WS/5s | Required | 3D boxes + labels + trails + wakes (5 datasources) |
 | Asteroids | nasa-neo.ts | 24h | Optional | Point ring above globe (altitude ∝ miss dist) |
 | Conflicts | acled.ts | 30m | Required | Ground points, clustering, size ∝ fatalities |
-| Disasters | eonet.ts | 30m | None | Billboard SVG emoji icons (11 categories) |
+| Disasters | eonet.ts | 30m | None | Billboard SVG emoji icons, pulse rings (2 datasources) |
 | News | gdelt.ts | 10m | None | Billboard icons, clustering |
 | WeatherRadar | rainviewer.ts | 5m | None | ImageryLayer tile animation (JSX controls) |
+| GPSJam | gpsjam.org tiles | daglig | None | UrlTemplateImageryProvider heatmap (imagery-lag, ikke CustomDataSource) |
+| Infrastructure | sodir.ts + overpass.ts | 24h (SODIR) / viewport (OSM) | None | Clustered points, polylines, polygons (5 datasources) |
+| Power | overpass.ts | viewport-triggered | None | OSM kraftlinjer, stasjoner og kraftverk |
+| SubmarineCables | Static GeoJSON | én gang | None | GeoJSON polylinjer med per-kabel farger |
 
 ### UI components
 
@@ -206,7 +231,10 @@ Services are pure async functions (except `AISStreamConnection` which is a state
 - **StatusTicker** (`src/components/UI/StatusTicker.tsx`) — fixed bottom bar showing visible layers + entity counts (`◈ FLIGHTS 427 · SHIPS 156`). Hver oppføring subscriber via `useLayerStatus(id)` individuelt — ingen cascade-renders.
 - **EventLog** (`src/components/UI/EventLog.tsx`) — collapsible live event stream (top-right), shows data changes per layer as they occur (max 12 events, LIFO). Starter kollapset.
 - **GateDrawHud** (`src/components/UI/GateDrawHud.tsx`) — banner på toppen under port-tegning med vertex-teller og kbd-hints (Klikk/↵/⌫/Esc).
-- **InfoPopup** (`src/components/UI/InfoPopup.tsx`) — entity-detaljer plassert ved venstre side (`left-52 top-20`) for å unngå kollisjon med GatePanel/EventLog i top-right.
+- **InfoPopup** (`src/components/UI/InfoPopup.tsx`) — entity-detaljer plassert ved venstre side (`left-52 top-20`) for å unngå kollisjon med GatePanel/EventLog i top-right. Støtter `enrichAsync()` (valgfri async-enrichment med shimmer-indikator), lightbox for store bilder, og "Følg"-knapp som skriver til TrackingContext.
+- **GeoNavigator** (`src/components/UI/GeoNavigator.tsx`) — hierarkisk geo-navigasjon (Region → Land → By → Sted) med favorites (localStorage), breadcrumb-header og avstandssortering. Fly-to deaktiverer orbit-modus under animasjon og re-aktiverer etter.
+- **PortholeOverlay** (`src/components/UI/PortholeOverlay.tsx`) — dekorativ vignette-effekt via radial-gradient, mørker kantene for dybde-illusjon. `z-index: 1`, `pointer-events-none`, `inset-0`.
+- **EntitySelector** (`src/components/UI/EntitySelector.tsx`) — rendrer gylne SVG corner-brackets (56×56px) i skjermkoordinater. `selectedPos` = full opacity, `hoverPos` = 0.55 opacity. Plasseres via `useEntityScreenPos`-hook i App.tsx.
 - **CameraHud** (`src/components/UI/CameraHud.tsx`) — LAT/LON/ALT/HDG display, updates every 800ms; smart altitude formatting (m/km/Mm). Vises inne i HudDock's kamera-drawer.
 - **OrbitButton** (`src/components/UI/OrbitButton.tsx`) — toggle for orbit camera mode; reads/writes OrbitContext
 

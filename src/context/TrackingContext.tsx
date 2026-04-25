@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, type ReactNode } from 'react';
+import { createContext, useContext, useState, useMemo, type ReactNode } from 'react';
 
 interface TrackingContextValue {
     trackedEntityId: string | null;
@@ -10,7 +10,7 @@ const TrackingContext = createContext<TrackingContextValue | null>(null);
 export function TrackingProvider({ children }: { children: ReactNode }) {
     const [trackedEntityId, setTrackedEntityId] = useState<string | null>(null);
     return (
-        <TrackingContext.Provider value={{ trackedEntityId, setTrackedEntityId }}>
+        <TrackingContext.Provider value={useMemo(() => ({ trackedEntityId, setTrackedEntityId }), [trackedEntityId, setTrackedEntityId])}>
             {children}
         </TrackingContext.Provider>
     );

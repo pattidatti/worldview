@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
     CustomDataSource,
     Entity,
@@ -16,6 +16,7 @@ import { fetchTelecomData } from '@/services/osmFeatures';
 import { type TelecomData } from '@/types/osmFeatures';
 
 const COLOR = '#AB47BC';
+const MAX_CAMERA_HEIGHT = 150_000;
 
 const TOWER_SVG = `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="18" height="24" viewBox="0 0 18 24">
   <line x1="9" y1="22" x2="9" y2="4" stroke="${COLOR}" stroke-width="1.5" stroke-linecap="round"/>
@@ -37,6 +38,7 @@ export function TelecomLayer() {
     const { register: tooltipRegister, unregister: tooltipUnregister } = useTooltipRegistry();
     const visible = useLayerVisibility('telecom');
     const viewport = useViewport(viewer, 2000);
+    const [isBelowAlt, setIsBelowAlt] = useState(false);
     const dsRef = useRef<CustomDataSource | null>(null);
     const dataRef = useRef<TelecomData>({ towers: [] });
 
@@ -75,6 +77,14 @@ export function TelecomLayer() {
 
     useEffect(() => {
         if (!viewer || viewer.isDestroyed()) return;
+        const check = () => setIsBelowAlt(viewer.camera.positionCartographic.height < MAX_CAMERA_HEIGHT);
+        check();
+        const rm = viewer.camera.changed.addEventListener(check);
+        return () => rm();
+    }, [viewer]);
+
+    useEffect(() => {
+        if (!viewer || viewer.isDestroyed()) return;
         const ds = new CustomDataSource('telecom');
         viewer.dataSources.add(ds);
         dsRef.current = ds;
@@ -85,11 +95,11 @@ export function TelecomLayer() {
     }, [viewer]);
 
     useEffect(() => {
-        if (dsRef.current) dsRef.current.show = visible;
-    }, [visible]);
+        if (dsRef.current) dsRef.current.show = visible && isBelowAlt;
+    }, [visible, isBelowAlt]);
 
     useEffect(() => {
-        if (!visible || !viewport || !dsRef.current) return;
+        if (!visible || !isBelowAlt || !viewport || !dsRef.current) return;
         let cancelled = false;
         setLayerLoading('telecom', true);
 

@@ -13,6 +13,7 @@ import { useTooltipRegistry } from '@/context/TooltipRegistry';
 import { useGeointRegistry } from '@/context/GeointContext';
 import { usePollingData } from '@/hooks/usePollingData';
 import { syncEntities } from '@/utils/syncEntities';
+import { fadeInEntity } from '@/utils/entityFade';
 import { fetchAsteroids } from '@/services/nasa-neo';
 import { type Asteroid } from '@/types/asteroid';
 
@@ -170,6 +171,9 @@ export function AsteroidLayer() {
                     position: pos,
                     point: { pixelSize: size, color, outlineColor: color.withAlpha(1.0), outlineWidth: 1 },
                 });
+            },
+            onAfterCreate: (entity) => {
+                if (viewer) fadeInEntity(entity, viewer, 700);
             },
             viewer,
         });

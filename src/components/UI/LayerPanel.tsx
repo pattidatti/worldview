@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import {
     useLayerActions,
@@ -62,7 +62,7 @@ function formatTimeAgo(ts: number): string {
     return `${Math.floor(min / 60)}t siden`;
 }
 
-function LayerToggle({ id }: { id: LayerId }) {
+const LayerToggle = memo(function LayerToggle({ id }: { id: LayerId }) {
     const visible = useLayerVisibility(id);
     const status = useLayerStatus(id);
     const meta = useLayerStore((s) => s.meta[id]);
@@ -147,7 +147,7 @@ function LayerToggle({ id }: { id: LayerId }) {
             )}
         </button>
     );
-}
+});
 
 interface CategoryAggregate {
     activeCount: number;
@@ -173,7 +173,7 @@ function useCategoryAggregate(ids: readonly LayerId[]): CategoryAggregate {
     );
 }
 
-function CategorySection({
+const CategorySection = memo(function CategorySection({
     category,
     isOpen,
     onToggleOpen,
@@ -250,7 +250,7 @@ function CategorySection({
             )}
         </div>
     );
-}
+});
 
 function initialOpenCategories(): Set<string> {
     const saved = loadOpenCategories();
@@ -264,7 +264,7 @@ export function LayerPanel({ mobileOpen = false }: { mobileOpen?: boolean }) {
     const [query, setQuery] = useState('');
     const searchRef = useRef<HTMLInputElement>(null);
 
-    function toggleOpen(catId: string) {
+    const toggleOpen = useCallback((catId: string) => {
         setOpenCategories((prev) => {
             const next = new Set(prev);
             if (next.has(catId)) next.delete(catId);
@@ -272,16 +272,16 @@ export function LayerPanel({ mobileOpen = false }: { mobileOpen?: boolean }) {
             saveOpenCategories(next);
             return next;
         });
-    }
+    }, []);
 
-    const q = query.trim().toLowerCase();
-    const filteredIds: LayerId[] | null = q
-        ? LAYER_DEFAULTS.filter((l) => l.name.toLowerCase().includes(q)).map((l) => l.id)
-        : null;
+    const filteredIds = useMemo<LayerId[] | null>(() => {
+        const q = query.trim().toLowerCase();
+        return q ? LAYER_DEFAULTS.filter((l) => l.name.toLowerCase().includes(q)).map((l) => l.id) : null;
+    }, [query]);
 
     return (
-        <div className={`absolute left-4 top-20 z-10 ${mobileOpen ? 'block' : 'hidden md:block'}`}>
-            <div className="w-56 bg-[var(--bg-ui)] backdrop-blur-xl border border-[var(--glass-border)] rounded-2xl overflow-hidden flex flex-col" style={{ maxHeight: 'calc(100vh - 10.5rem)', boxShadow: 'var(--shadow-panel)' }}>
+        <div className={`absolute left-4 top-14 z-10 ${mobileOpen ? 'block' : 'hidden md:block'}`}>
+            <div className="w-56 bg-[var(--bg-ui)] backdrop-blur-xl border border-[var(--glass-border)] rounded-2xl overflow-hidden flex flex-col" style={{ maxHeight: 'calc(100vh - 7rem)', boxShadow: 'var(--shadow-panel)' }}>
                 <div className="px-3 pt-2 pb-1">
                     <div className="flex items-center gap-1.5 bg-white/[0.04] border border-white/[0.08] rounded-full px-3 py-1.5">
                         <span className="text-[10px] text-[var(--text-muted)]">⌕</span>

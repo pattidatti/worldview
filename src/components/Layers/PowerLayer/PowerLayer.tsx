@@ -158,6 +158,7 @@ export function PowerLayer() {
                             positions,
                             width: new ConstantProperty(1.5),
                             material: new ColorMaterialProperty(C.withAlpha(0.6)),
+                            clampToGround: new ConstantProperty(true),
                         }),
                     }));
                 } catch { /* skip bad geometry */ }

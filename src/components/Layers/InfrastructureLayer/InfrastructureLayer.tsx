@@ -4,7 +4,6 @@ import {
     Entity,
     Cartesian3,
     Color,
-    ArcType,
     PointGraphics,
     PolylineGraphics,
     PolygonGraphics,
@@ -441,8 +440,7 @@ export function InfrastructureLayer() {
                         polyline: new PolylineGraphics({
                             positions,
                             width: new ConstantProperty(3),
-                            clampToGround: new ConstantProperty(false),
-                            arcType: new ConstantProperty(ArcType.NONE),
+                            clampToGround: new ConstantProperty(true),
                             material: ppl.phase === 'IN SERVICE'
                                 ? new ColorMaterialProperty(getMediumColor(ppl.medium))
                                 : new PolylineDashMaterialProperty({
@@ -514,8 +512,7 @@ export function InfrastructureLayer() {
                             polyline: new PolylineGraphics({
                                 positions,
                                 width: new ConstantProperty(2),
-                                clampToGround: new ConstantProperty(false),
-                                arcType: new ConstantProperty(ArcType.NONE),
+                                clampToGround: new ConstantProperty(true),
                                 material: new ColorMaterialProperty(getSubstanceColor(ppl.substance).withAlpha(0.7)),
                             }),
                         }));

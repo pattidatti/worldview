@@ -50,6 +50,10 @@
     --color-weather-radar: #00e5ff;
     --color-gates: #4a9eff;
     --color-chokepoints: #ff6b35;
+    --color-iss: #00cfff;
+    --color-launches: #ff6b35;
+    --color-volcanoes: #ff4500;
+    --color-lightning: #ffe033;
 }
 
 html,
@@ -118,5 +122,29 @@ body {
 
 .animate-fade-in-up {
     animation: fade-in-up 0.18s ease-out forwards;
+}
+
+@keyframes holo-entry {
+    from {
+        transform: translate(var(--entry-dx, 0px), var(--entry-dy, 0px)) scale(0.35);
+        opacity: 0;
+    }
+    60% {
+        transform: translate(calc(var(--entry-dx, 0px) * 0.04), calc(var(--entry-dy, 0px) * 0.04)) scale(1.04);
+        opacity: 1;
+    }
+    to {
+        transform: translate(0, 0) scale(1);
+        opacity: 1;
+    }
+}
+
+.animate-holo-entry {
+    animation: holo-entry 0.42s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes beam-flow {
+    from { stroke-dashoffset: 24; }
+    to   { stroke-dashoffset: 0; }
 }
 

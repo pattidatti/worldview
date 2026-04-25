@@ -1,4 +1,4 @@
-import { createContext, useContext, useRef, useCallback, type ReactNode } from 'react';
+import { createContext, useContext, useRef, useCallback, useMemo, type ReactNode } from 'react';
 import { type Entity } from 'cesium';
 import { type PopupContent } from '@/types/popup';
 
@@ -31,8 +31,9 @@ export function PopupRegistryProvider({ children }: { children: ReactNode }) {
         return null;
     }, []);
 
+    const value = useMemo(() => ({ register, unregister, resolve }), [register, unregister, resolve]);
     return (
-        <PopupRegistryContext.Provider value={{ register, unregister, resolve }}>
+        <PopupRegistryContext.Provider value={value}>
             {children}
         </PopupRegistryContext.Provider>
     );

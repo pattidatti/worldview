@@ -182,3 +182,23 @@ export function getAllLayerConfigs(): LayerConfig[] {
         ...s.status[def.id],
     }));
 }
+
+export const useVisibleLayerCount = (): number =>
+    useLayerStore(
+        useShallow((s) => {
+            let n = 0;
+            for (const def of LAYER_DEFAULTS) if (s.visibility[def.id]) n++;
+            return n;
+        })
+    );
+
+export const useTotalObjectCount = (): number =>
+    useLayerStore(
+        useShallow((s) => {
+            let total = 0;
+            for (const def of LAYER_DEFAULTS) {
+                if (s.visibility[def.id]) total += s.status[def.id].count;
+            }
+            return total;
+        })
+    );

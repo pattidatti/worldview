@@ -5,6 +5,8 @@ import {
     ScreenSpaceEventType,
     Cartesian2,
     Entity,
+    JulianDate,
+    SceneTransforms,
     defined,
 } from 'cesium';
 import { type TooltipContent } from '@/types/tooltip';
@@ -13,6 +15,9 @@ export interface HoverState {
     content: TooltipContent;
     x: number;
     y: number;
+    entity: Entity;
+    entityX: number;
+    entityY: number;
 }
 
 export function useHoverTooltip(
@@ -54,7 +59,13 @@ export function useHoverTooltip(
                 const entityId = entity.id;
 
                 if (entityId === lastEntityIdRef.current && lastContentRef.current) {
-                    setHover({ content: lastContentRef.current, x: endPosition.x, y: endPosition.y });
+                    const worldPos = entity.position?.getValue(JulianDate.now());
+                    const win = worldPos
+                        ? SceneTransforms.worldToWindowCoordinates(viewer.scene, worldPos)
+                        : undefined;
+                    const entityX = win ? win.x : endPosition.x;
+                    const entityY = win ? win.y : endPosition.y;
+                    setHover({ content: lastContentRef.current, x: endPosition.x, y: endPosition.y, entity, entityX, entityY });
                     return;
                 }
 
@@ -63,7 +74,13 @@ export function useHoverTooltip(
                     lastEntityIdRef.current = entityId;
                     lastContentRef.current = content;
                     viewer.canvas.style.cursor = 'pointer';
-                    setHover({ content, x: endPosition.x, y: endPosition.y });
+                    const worldPos = entity.position?.getValue(JulianDate.now());
+                    const win = worldPos
+                        ? SceneTransforms.worldToWindowCoordinates(viewer.scene, worldPos)
+                        : undefined;
+                    const entityX = win ? win.x : endPosition.x;
+                    const entityY = win ? win.y : endPosition.y;
+                    setHover({ content, x: endPosition.x, y: endPosition.y, entity, entityX, entityY });
                 } else {
                     lastEntityIdRef.current = null;
                     lastContentRef.current = null;

@@ -25,7 +25,8 @@ export function GPSJamLayer() {
 
         setLayerLoading('gpsjam', true);
         const date = getYesterday();
-        const url = `https://gpsjam.org/tiles/{z}/{x}/{y}?date=${date}`;
+        const baseUrl = import.meta.env.DEV ? '/proxy/gpsjam' : 'https://gpsjam.org';
+        const url = `${baseUrl}/tiles/{z}/{x}/{y}?date=${date}`;
 
         const provider = new UrlTemplateImageryProvider({
             url,

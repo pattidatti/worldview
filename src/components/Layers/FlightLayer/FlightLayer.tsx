@@ -11,7 +11,11 @@ import {
     VerticalOrigin,
     HorizontalOrigin,
     Math as CesiumMath,
+    ModelGraphics,
+    Transforms,
+    HeadingPitchRoll,
 } from 'cesium';
+import { getAircraftGltf, classifyAircraftType } from '@/utils/aircraftGltf';
 import { useViewer } from '@/context/ViewerContext';
 import { useLayerActions, useLayerVisibility } from '@/store/layerStore';
 import { usePopupRegistry } from '@/context/PopupRegistry';
@@ -28,6 +32,7 @@ import { fetchFlights } from '@/services/airplaneslive';
 import { fetchFlightRoute, getCachedRoute } from '@/services/opensky';
 import { lookupAirline } from '@/data/airlines';
 import { spawnPulseRing } from '@/utils/pulseRing';
+import { fadeInEntity, fadeOutEntity } from '@/utils/entityFade';
 import { type Flight } from '@/types/flight';
 import {
     detectEntityCrossings,
@@ -144,10 +149,27 @@ export function FlightLayer() {
     flightsRef.current = flights;
     const visibleRef = useRef(visible);
     visibleRef.current = visible;
+    // 3D model mode when camera is below 500 km
+    const use3DRef = useRef(false);
+
+    // Camera altitude monitor → switch between billboard icons and 3D models
+    useEffect(() => {
+        if (!viewer || viewer.isDestroyed()) return;
+        const check = () => {
+            if (viewer.isDestroyed()) return;
+            use3DRef.current = viewer.camera.positionCartographic.height < 500_000;
+        };
+        check();
+        const rm1 = viewer.camera.changed.addEventListener(check);
+        const rm2 = viewer.camera.moveEnd.addEventListener(check);
+        return () => { rm1(); rm2(); };
+    }, [viewer]);
+
     // Dead-reckoning state map
     const drStateRef = useRef<Map<string, DrState>>(new Map());
     // Sist gang hvert fly ble returnert av API — brukes for soft-removal TTL
     const lastSeenByApiRef = useRef<Map<string, number>>(new Map());
+    const fadingIdsRef = useRef<Set<string>>(new Set());
     // Entity-IDs som er clustret i gjeldende frame — brukes for å skjule tilhørende trails
     const clusteredIdsRef = useRef<Set<string>>(new Set());
     // Settes true av clustering-event; postRender hopper over loop hvis false
@@ -469,28 +491,78 @@ export function FlightLayer() {
             });
 
             const entity = existing.get(id);
+            const want3D = use3DRef.current;
             if (entity) {
                 (entity.position as ConstantPositionProperty).setValue(pos);
-                if (entity.billboard) {
-                    entity.billboard.image = createPlaneIcon(color) as unknown as import('cesium').Property;
-                    (entity.billboard.color as ConstantProperty).setValue(cesiumColor);
-                    (entity.billboard.rotation as ConstantProperty).setValue(
-                        CesiumMath.toRadians(-flight.heading)
+                const has3D = !!entity.model;
+                if (want3D && !has3D) {
+                    // Upgrade to 3D model
+                    entity.billboard = undefined;
+                    entity.model = new ModelGraphics({
+                        uri: getAircraftGltf(classifyAircraftType(flight.aircraftType ?? '', flight.isMilitary)),
+                        minimumPixelSize: 18,
+                        maximumScale: 60_000,
+                        silhouetteColor: cesiumColor,
+                        silhouetteSize: 0.5,
+                    });
+                    entity.orientation = new ConstantProperty(
+                        Transforms.headingPitchRollQuaternion(pos, new HeadingPitchRoll(CesiumMath.toRadians(flight.heading - 90), 0, 0))
                     );
-                }
-            } else {
-                ds.entities.add(new Entity({
-                    id, name: flight.callsign || flight.icao24, position: pos,
-                    billboard: {
+                } else if (!want3D && has3D) {
+                    // Downgrade to billboard
+                    entity.model = undefined;
+                    entity.orientation = undefined;
+                    entity.billboard = {
                         image: createPlaneIcon(color),
                         width: 40, height: 40, color: cesiumColor,
                         verticalOrigin: VerticalOrigin.CENTER,
                         horizontalOrigin: HorizontalOrigin.CENTER,
                         heightReference: HeightReference.NONE,
                         rotation: new ConstantProperty(CesiumMath.toRadians(-flight.heading)),
-                        alignedAxis: new ConstantProperty(Cartesian3.UNIT_Z),
-                    },
-                }));
+                        alignedAxis: new ConstantProperty(Cartesian3.normalize(pos, new Cartesian3())),
+                    } as unknown as import('cesium').BillboardGraphics;
+                } else if (want3D) {
+                    // Update orientation for 3D model
+                    (entity.orientation as ConstantProperty).setValue(
+                        Transforms.headingPitchRollQuaternion(pos, new HeadingPitchRoll(CesiumMath.toRadians(flight.heading - 90), 0, 0))
+                    );
+                } else {
+                    // Update billboard
+                    if (entity.billboard) {
+                        entity.billboard.image = createPlaneIcon(color) as unknown as import('cesium').Property;
+                        (entity.billboard.color as ConstantProperty).setValue(cesiumColor);
+                        (entity.billboard.rotation as ConstantProperty).setValue(CesiumMath.toRadians(-flight.heading));
+                        (entity.billboard.alignedAxis as ConstantProperty).setValue(Cartesian3.normalize(pos, new Cartesian3()));
+                    }
+                }
+            } else {
+                const newEntity = want3D
+                    ? ds.entities.add(new Entity({
+                        id, name: flight.callsign || flight.icao24, position: pos,
+                        model: new ModelGraphics({
+                            uri: getAircraftGltf(classifyAircraftType(flight.aircraftType ?? '', flight.isMilitary)),
+                            minimumPixelSize: 18,
+                            maximumScale: 60_000,
+                            silhouetteColor: cesiumColor,
+                            silhouetteSize: 0.5,
+                        }),
+                        orientation: new ConstantProperty(
+                            Transforms.headingPitchRollQuaternion(pos, new HeadingPitchRoll(CesiumMath.toRadians(flight.heading - 90), 0, 0))
+                        ),
+                    }))
+                    : ds.entities.add(new Entity({
+                        id, name: flight.callsign || flight.icao24, position: pos,
+                        billboard: {
+                            image: createPlaneIcon(color),
+                            width: 40, height: 40, color: cesiumColor,
+                            verticalOrigin: VerticalOrigin.CENTER,
+                            horizontalOrigin: HorizontalOrigin.CENTER,
+                            heightReference: HeightReference.NONE,
+                            rotation: new ConstantProperty(CesiumMath.toRadians(-flight.heading)),
+                            alignedAxis: new ConstantProperty(Cartesian3.normalize(pos, new Cartesian3())),
+                        },
+                    }));
+                if (viewer) fadeInEntity(newEntity, viewer, 500);
                 // Pulsering for nye fly (ikke ved første lasting)
                 if (firstPollDoneRef.current && pulseDsRef.current) {
                     spawnPulseRing(pulseDsRef.current, pos, cesiumColor);
@@ -509,66 +581,25 @@ export function FlightLayer() {
                     ? Color.fromCssColorString(MILITARY_COLOR)
                     : FLIGHT_COLOR;
 
-                // Spiss (tip): siste 4 posisjoner — knallys spiss
-                const tipId = `trail-tip-${id}`;
-                const tip = history.tail(4);
-                const tipEntity = trailDs.entities.getById(tipId);
-                if (tip.length >= 2) {
-                    if (tipEntity?.polyline?.positions) {
-                        (tipEntity.polyline.positions as ConstantProperty).setValue(tip);
+                const trailId = `trail-${id}`;
+                const positions = history.tail(MAX_FLIGHT_TRAIL);
+                const trailEntity = trailDs.entities.getById(trailId);
+                if (positions.length >= 2) {
+                    if (trailEntity?.polyline?.positions) {
+                        (trailEntity.polyline.positions as ConstantProperty).setValue(positions);
                     } else {
                         trailDs.entities.add(new Entity({
-                            id: tipId,
+                            id: trailId,
                             polyline: {
-                                positions: new ConstantProperty(tip),
-                                width: 3,
-                                material: new PolylineGlowMaterialProperty({ glowPower: 0.7, color: trailColor.withAlpha(1.0) }),
-                                clampToGround: false,
-                            },
-                        }));
-                    }
-                } else if (tipEntity) trailDs.entities.removeById(tipId);
-
-                // Fersk hale: posisjoner 4-14 — tydelig men dempet
-                const freshId = `trail-fresh-${id}`;
-                const fresh = history.tail(14).slice(0, 10);
-                const freshEntity = trailDs.entities.getById(freshId);
-                if (fresh.length >= 2) {
-                    if (freshEntity?.polyline?.positions) {
-                        (freshEntity.polyline.positions as ConstantProperty).setValue(fresh);
-                    } else {
-                        trailDs.entities.add(new Entity({
-                            id: freshId,
-                            polyline: {
-                                positions: new ConstantProperty(fresh),
+                                positions: new ConstantProperty(positions),
                                 width: 2,
-                                material: new PolylineGlowMaterialProperty({ glowPower: 0.25, color: trailColor.withAlpha(0.55) }),
+                                material: new PolylineGlowMaterialProperty({ glowPower: 0.15, color: trailColor.withAlpha(0.6) }),
                                 clampToGround: false,
                             },
                         }));
                     }
-                } else if (freshEntity) trailDs.entities.removeById(freshId);
-
-                // Gammel hale: eldre posisjoner — nesten usynlig
-                const oldId = `trail-old-${id}`;
-                const old = history.head(Math.max(0, history.size - 14));
-                const oldEntity = trailDs.entities.getById(oldId);
-                if (old.length >= 2) {
-                    if (oldEntity?.polyline?.positions) {
-                        (oldEntity.polyline.positions as ConstantProperty).setValue(old);
-                    } else {
-                        trailDs.entities.add(new Entity({
-                            id: oldId,
-                            polyline: {
-                                positions: new ConstantProperty(old),
-                                width: 1,
-                                material: new PolylineGlowMaterialProperty({ glowPower: 0.05, color: trailColor.withAlpha(0.15) }),
-                                clampToGround: false,
-                            },
-                        }));
-                    }
-                } else if (oldEntity) {
-                    trailDs.entities.removeById(oldId);
+                } else if (trailEntity) {
+                    trailDs.entities.removeById(trailId);
                 }
             }
         }
@@ -586,17 +617,25 @@ export function FlightLayer() {
 
         // Steg 3: fjern flyentiteter som har utløpt grace period
         for (const [id] of existing) {
-            if (!keepAlive.has(id)) {
-                ds.entities.removeById(id);
-                if (trailDs) {
-                    trailDs.entities.removeById(`trail-tip-${id}`);
-                    trailDs.entities.removeById(`trail-fresh-${id}`);
-                    trailDs.entities.removeById(`trail-old-${id}`);
-                }
-                trailHistoryRef.current.delete(id);
+            if (!keepAlive.has(id) && !fadingIdsRef.current.has(id)) {
+                // Rydder state umiddelbart slik at DR-løkken slutter å oppdatere entiteten
                 drStateRef.current.delete(id);
                 lastSeenByApiRef.current.delete(id);
                 lastEntityStateRef.current.delete(id);
+                const entity = ds.entities.getById(id);
+                if (entity && viewer) {
+                    fadingIdsRef.current.add(id);
+                    fadeOutEntity(entity, viewer, 350, () => {
+                        ds.entities.removeById(id);
+                        if (trailDs) trailDs.entities.removeById(`trail-${id}`);
+                        trailHistoryRef.current.delete(id);
+                        fadingIdsRef.current.delete(id);
+                    });
+                } else {
+                    ds.entities.removeById(id);
+                    if (trailDs) trailDs.entities.removeById(`trail-${id}`);
+                    trailHistoryRef.current.delete(id);
+                }
             }
         }
 
@@ -611,13 +650,7 @@ export function FlightLayer() {
         if (trailDs) {
             for (const entity of [...trailDs.entities.values]) {
                 const eid = entity.id;
-                const planeId = eid.startsWith('trail-tip-')
-                    ? eid.slice('trail-tip-'.length)
-                    : eid.startsWith('trail-fresh-')
-                    ? eid.slice('trail-fresh-'.length)
-                    : eid.startsWith('trail-old-')
-                    ? eid.slice('trail-old-'.length)
-                    : null;
+                const planeId = eid.startsWith('trail-') ? eid.slice('trail-'.length) : null;
                 if (planeId && !keepAlive.has(planeId)) {
                     trailDs.entities.removeById(eid);
                     trailHistoryRef.current.delete(planeId);

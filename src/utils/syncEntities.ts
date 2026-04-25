@@ -8,6 +8,8 @@ interface SyncEntitiesOptions<T> {
     onUpdate?: (entity: Entity, item: T) => void;
     /** Kalt når ingen entity finnes — returner ferdig konstruert Entity (med id satt). */
     onCreate: (item: T) => Entity;
+    /** Kalt rett etter ds.entities.add() — bruk til fade-in eller pulse-ring. */
+    onAfterCreate?: (entity: Entity, item: T) => void;
     viewer: Viewer | null;
 }
 
@@ -22,6 +24,7 @@ export function syncEntities<T>({
     getId,
     onUpdate,
     onCreate,
+    onAfterCreate,
     viewer,
 }: SyncEntitiesOptions<T>): void {
     const existing = new Map<string, Entity>();
@@ -37,6 +40,7 @@ export function syncEntities<T>({
         } else {
             const newEntity = onCreate(item);
             ds.entities.add(newEntity);
+            onAfterCreate?.(newEntity, item);
             existing.set(id, newEntity); // prevent DeveloperError if input has duplicate IDs
         }
     }

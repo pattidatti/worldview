@@ -14,10 +14,12 @@ import { useSceneProjection } from '@/context/SceneProjectionContext';
 import { useTracking } from '@/context/TrackingContext';
 import { useOrbit } from '@/context/OrbitContext';
 import { useShaderOverlay } from '@/context/ShaderOverlayContext';
+import { springInEntity, isSpringAnimating } from '@/utils/springEntities';
 import { NIGHT_VISION_SHADER } from '@/shaders/nightVision';
 import { CRT_SHADER } from '@/shaders/crt';
 import { THERMAL_SHADER } from '@/shaders/thermal';
 import { ANIME_SHADER } from '@/shaders/anime';
+import { TERMINATOR_DAY_SHADER } from '@/shaders/terminatorDay';
 import { type PopupContent } from '@/types/popup';
 import { useWASDNavigation } from '@/hooks/useWASDNavigation';
 
@@ -42,7 +44,7 @@ function applySatelliteImagery(v: Viewer, tracked: ImageryLayer[]) {
 function applyMapImagery(v: Viewer, tracked: ImageryLayer[]) {
     clearBaseLayers(v, tracked);
     tracked.push(v.imageryLayers.addImageryProvider(new UrlTemplateImageryProvider({
-        url: 'https://{s}.basemaps.cartocdn.com/rastertiles/light_nolabels/{z}/{x}/{y}.png',
+        url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
         subdomains: 'abcd',
         credit: 'CartoDB',
     }), 0));
@@ -76,9 +78,11 @@ function applyCountryLabelsOverlay(v: Viewer, tracked: ImageryLayer[]) {
 interface GlobeViewerProps {
     children?: ReactNode;
     onSelect?: (popup: PopupContent | null) => void;
+    onEntitySelect?: (entity: Entity | undefined) => void;
+    onBackgroundClick?: (lat: number, lon: number) => void;
 }
 
-export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
+export function GlobeViewer({ children, onSelect, onEntitySelect, onBackgroundClick }: GlobeViewerProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const initRef = useRef(false);
     const [viewer, setViewer] = useState<Viewer | null>(null);
@@ -101,6 +105,10 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
     const activeShaderKeyRef = useRef<string>('none');
     const onSelectRef = useRef(onSelect);
     onSelectRef.current = onSelect;
+    const onEntitySelectRef = useRef(onEntitySelect);
+    onEntitySelectRef.current = onEntitySelect;
+    const onBackgroundClickRef = useRef(onBackgroundClick);
+    onBackgroundClickRef.current = onBackgroundClick;
     const resolveRef = useRef(resolve);
     resolveRef.current = resolve;
     const trackedIdRef = useRef(trackedEntityId);
@@ -146,6 +154,10 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
         });
 
         const { scene } = v;
+
+        // Fjern default Bing/Ion-lag som Viewer-konstruktøren legger til automatisk.
+        // Uten dette vil det default-laget havne over våre baselayers (høyere indeks = øverst).
+        v.imageryLayers.removeAll(true);
 
         // DepthPlane blokkerer lavtliggende entiteter i SCENE3D uavhengig av offset.
         // Erstatter med no-op for å sikre at skip, fly m.m. alltid er synlige over havet.
@@ -321,6 +333,7 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
         const removeClickHandler = v.selectedEntityChanged.addEventListener(
             (entity: Entity | undefined) => {
                 if (isDrawingRef.current) return;
+                onEntitySelectRef.current?.(entity);
                 if (!entity) return;
                 const popup = resolveRef.current(entity);
                 if (popup) onSelectRef.current?.(popup);
@@ -336,28 +349,53 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
             // Regular entity → handled by selectedEntityChanged, skip
             if (defined(picked) && picked.id instanceof Entity) return;
 
-            // Cluster billboard → zoom toward it
+            // Orbital shell picks (fra SatelliteLayer) — la SatelliteLayer håndtere disse
+            if (defined(picked) && typeof picked.id === 'string' && picked.id.startsWith('orbital-shell-')) return;
+
+            // Cluster billboard → zoom mot det, spring-eksplosjon etter zoom
             if (defined(picked)) {
                 const worldPos = v.camera.pickEllipsoid(click.position, scene.globe.ellipsoid);
                 if (!worldPos) return;
+                const clusterCenter = Cartesian3.clone(worldPos);
                 const carto = scene.globe.ellipsoid.cartesianToCartographic(worldPos);
+                const targetHeight = v.camera.positionCartographic.height * 0.35;
                 v.camera.flyTo({
                     destination: Cartesian3.fromRadians(
                         carto.longitude,
                         carto.latitude,
-                        v.camera.positionCartographic.height * 0.35,
+                        targetHeight,
                     ),
                     duration: 0.8,
+                    complete: () => {
+                        // Spring-animer entities som nettopp ble frigjort fra clusteret
+                        const scanRadius = targetHeight * 2.5;
+                        for (let i = 0; i < v.dataSources.length; i++) {
+                            const ds = v.dataSources.get(i);
+                            for (const entity of ds.entities.values) {
+                                if (!entity.position || isSpringAnimating(entity)) continue;
+                                const pos = entity.position.getValue(JulianDate.now());
+                                if (!pos) continue;
+                                if (Cartesian3.distance(pos, clusterCenter) < scanRadius) {
+                                    springInEntity(entity, clusterCenter, Cartesian3.clone(pos), v);
+                                }
+                            }
+                        }
+                    },
                 });
                 return;
             }
 
-            // Empty globe click → reverse geocode
+            // Empty globe click → intelligence panel (country) or reverse geocode
             const worldPos = v.camera.pickEllipsoid(click.position, scene.globe.ellipsoid);
             if (!worldPos) return;
             const carto = scene.globe.ellipsoid.cartesianToCartographic(worldPos);
             const lat = CesiumMath.toDegrees(carto.latitude);
             const lon = CesiumMath.toDegrees(carto.longitude);
+
+            if (onBackgroundClickRef.current) {
+                onBackgroundClickRef.current(lat, lon);
+                return;
+            }
 
             reverseGeocode(lat, lon).then((result) => {
                 if (!result) return;
@@ -526,7 +564,6 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
                     applyCountryLabelsOverlay(viewer!, baseLayersRef.current);
                 } else if (activeMode === 'map') {
                     applyMapImagery(viewer!, baseLayersRef.current);
-                    applyCountryLabelsOverlay(viewer!, baseLayersRef.current);
                 } else if (activeMode === 'blend') {
                     applyBlendImagery(viewer!, baseLayersRef.current);
                     applyCountryLabelsOverlay(viewer!, baseLayersRef.current);
@@ -560,6 +597,7 @@ export function GlobeViewer({ children, onSelect }: GlobeViewerProps) {
                 const src = activeOverlay === 'nightvision' ? NIGHT_VISION_SHADER
                           : activeOverlay === 'crt'         ? CRT_SHADER
                           : activeOverlay === 'anime'       ? ANIME_SHADER
+                          : activeOverlay === 'terminator'  ? TERMINATOR_DAY_SHADER
                           : THERMAL_SHADER;
                 stage = new PostProcessStage({ fragmentShader: src });
                 // u_time uniform for animerte shaders — kalles per frame av Cesium

@@ -5,6 +5,41 @@ import cesium from 'vite-plugin-cesium';
 import path from 'path';
 import { WebSocketServer, WebSocket as NodeWS } from 'ws';
 
+function lightningProxy(): Plugin {
+    return {
+        name: 'lightning-ws-proxy',
+        configureServer(server) {
+            const wss = new WebSocketServer({ noServer: true });
+
+            server.httpServer?.on('upgrade', (req, socket, head) => {
+                if (req.url !== '/lightning-ws') return;
+
+                wss.handleUpgrade(req, socket, head, (clientWs) => {
+                    const remote = new NodeWS('wss://ws.blitzortung.org');
+
+                    remote.on('open', () => {
+                        console.log('[lightning-proxy] connected to Blitzortung');
+                    });
+
+                    remote.on('message', (data) => {
+                        if (clientWs.readyState === NodeWS.OPEN) {
+                            clientWs.send(data.toString());
+                        }
+                    });
+
+                    remote.on('close', () => clientWs.close());
+                    remote.on('error', (err) => {
+                        console.warn('[lightning-proxy] Remote error:', (err as Error).message);
+                        clientWs.close();
+                    });
+                    clientWs.on('close', () => remote.close());
+                    clientWs.on('error', () => remote.close());
+                });
+            });
+        },
+    };
+}
+
 function aisProxy(): Plugin {
     return {
         name: 'ais-ws-proxy',
@@ -56,7 +91,7 @@ function aisProxy(): Plugin {
 
 export default defineConfig({
     base: '/',
-    plugins: [react(), tailwindcss(), cesium(), aisProxy()],
+    plugins: [react(), tailwindcss(), cesium(), aisProxy(), lightningProxy()],
     resolve: {
         alias: {
             '@': path.resolve(__dirname, 'src'),
@@ -88,6 +123,11 @@ export default defineConfig({
                 target: 'https://aviationweather.gov',
                 changeOrigin: true,
                 rewrite: (path) => path.replace(/^\/proxy\/sigmet/, ''),
+            },
+            '/proxy/gpsjam': {
+                target: 'https://gpsjam.org',
+                changeOrigin: true,
+                rewrite: (path) => path.replace(/^\/proxy\/gpsjam/, ''),
             },
         },
     },

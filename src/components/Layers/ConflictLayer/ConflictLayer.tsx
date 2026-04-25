@@ -17,6 +17,8 @@ import { useGeointRegistry } from '@/context/GeointContext';
 import { usePollingData } from '@/hooks/usePollingData';
 import { syncEntities } from '@/utils/syncEntities';
 import { configureCluster } from '@/utils/cluster';
+import { spawnPulseRing } from '@/utils/pulseRing';
+import { fadeInEntity } from '@/utils/entityFade';
 import { fetchConflicts } from '@/services/acled';
 import { type ConflictEvent, type ConflictEventType } from '@/types/conflict';
 
@@ -58,6 +60,8 @@ export function ConflictLayer() {
     const { register: geointRegister, unregister: geointUnregister } = useGeointRegistry();
     const visible = useLayerVisibility('conflicts');
     const dataSourceRef = useRef<CustomDataSource | null>(null);
+    const pulseDsRef = useRef<CustomDataSource | null>(null);
+    const firstLoadRef = useRef(false);
     const conflictsRef = useRef<ConflictEvent[]>([]);
     const visibleRef = useRef(visible);
     visibleRef.current = visible;
@@ -133,9 +137,16 @@ export function ConflictLayer() {
         configureCluster(ds, { pixelRange: 40, minimumClusterSize: 3, color: '#ff1744' });
         viewer.dataSources.add(ds);
         dataSourceRef.current = ds;
+        const pulseDs = new CustomDataSource('conflicts-pulses');
+        viewer.dataSources.add(pulseDs);
+        pulseDsRef.current = pulseDs;
         return () => {
-            if (!viewer.isDestroyed()) viewer.dataSources.remove(ds, true);
+            if (!viewer.isDestroyed()) {
+                viewer.dataSources.remove(ds, true);
+                viewer.dataSources.remove(pulseDs, true);
+            }
             dataSourceRef.current = null;
+            pulseDsRef.current = null;
         };
     }, [viewer]);
 
@@ -149,6 +160,8 @@ export function ConflictLayer() {
         const ds = dataSourceRef.current;
         if (!ds || !conflicts) return;
         setLayerCount('conflicts', conflicts.length);
+        const isFirstLoad = !firstLoadRef.current;
+        if (isFirstLoad && conflicts.length > 0) firstLoadRef.current = true;
         syncEntities({
             ds,
             items: conflicts,
@@ -180,6 +193,18 @@ export function ConflictLayer() {
                         heightReference: HeightReference.CLAMP_TO_GROUND,
                     }),
                 });
+            },
+            onAfterCreate: (entity, ev) => {
+                if (viewer) fadeInEntity(entity, viewer, 500);
+                if (!isFirstLoad && pulseDsRef.current) {
+                    spawnPulseRing(
+                        pulseDsRef.current,
+                        Cartesian3.fromDegrees(ev.lon, ev.lat),
+                        eventColor(ev.eventType),
+                        1200,
+                        40_000,
+                    );
+                }
             },
             viewer,
         });

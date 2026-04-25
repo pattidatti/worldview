@@ -19,6 +19,7 @@ import {
     CallbackProperty,
     JulianDate,
     HeightReference,
+    Math as CesiumMath,
 } from 'cesium';
 import { useViewer } from '@/context/ViewerContext';
 import { useLayerActions, useLayerVisibility } from '@/store/layerStore';
@@ -152,6 +153,7 @@ export function ChokepointLayer() {
                     material: gridFill,
                     outline: false,
                     heightReference: HeightReference.NONE,
+                    granularity: CesiumMath.toRadians(3),
                 },
             }));
 
@@ -182,6 +184,7 @@ export function ChokepointLayer() {
                     closeBottom: false,
                     outline: false,
                     heightReference: HeightReference.NONE,
+                    granularity: CesiumMath.toRadians(3),
                 },
             }));
 

@@ -14,6 +14,8 @@ import { OrbitProvider } from '@/context/OrbitContext';
 import { GeointProvider } from '@/context/GeointContext';
 import { WeatherRadarProvider } from '@/context/WeatherRadarContext';
 import { AnalysisPanelProvider } from '@/components/UI/AnalysisPanel/AnalysisPanelHost';
+import { DarkShipsProvider } from '@/context/DarkShipsContext';
+import { IntelligenceProvider } from '@/context/IntelligenceContext';
 
 /** Auth + Firestore-avhengige contexts (timeline replay, gates, events). */
 function TimelineStateProviders({ children }: { children: ReactNode }) {
@@ -52,12 +54,16 @@ function InteractionProviders({ children }: { children: ReactNode }) {
     );
 }
 
-/** UI-event-buses (popup-, tooltip- og analyse-registry). */
+/** UI-event-buses (popup-, tooltip-, analyse-registry og dark ships). */
 function UiProviders({ children }: { children: ReactNode }) {
     return (
         <PopupRegistryProvider>
             <TooltipRegistryProvider>
-                <AnalysisPanelProvider>{children}</AnalysisPanelProvider>
+                <AnalysisPanelProvider>
+                    <DarkShipsProvider>
+                        <IntelligenceProvider>{children}</IntelligenceProvider>
+                    </DarkShipsProvider>
+                </AnalysisPanelProvider>
             </TooltipRegistryProvider>
         </PopupRegistryProvider>
     );

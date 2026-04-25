@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, type ReactNode } from 'react';
+import { createContext, useContext, useState, useMemo, type ReactNode } from 'react';
 import { type ImageryMode } from '@/types/imagery';
 
 interface ImageryContextValue {
@@ -14,7 +14,7 @@ const ImageryContext = createContext<ImageryContextValue>({
 export function ImageryProvider({ children }: { children: ReactNode }) {
     const [activeMode, setMode] = useState<ImageryMode>('photorealistic3d');
     return (
-        <ImageryContext.Provider value={{ activeMode, setMode }}>
+        <ImageryContext.Provider value={useMemo(() => ({ activeMode, setMode }), [activeMode, setMode])}>
             {children}
         </ImageryContext.Provider>
     );

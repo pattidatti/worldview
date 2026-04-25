@@ -17,6 +17,7 @@ import { useGeointRegistry } from '@/context/GeointContext';
 import { usePollingData } from '@/hooks/usePollingData';
 import { configureCluster } from '@/utils/cluster';
 import { syncEntities } from '@/utils/syncEntities';
+import { bounceInEntity } from '@/utils/entityFade';
 import { fetchNewsEvents } from '@/services/gdelt';
 import { type NewsEvent } from '@/types/news';
 
@@ -154,6 +155,9 @@ export function NewsLayer() {
                     heightReference: HeightReference.CLAMP_TO_GROUND,
                 }),
             }),
+            onAfterCreate: (entity) => {
+                if (viewer) bounceInEntity(entity, viewer, 450);
+            },
             viewer,
         });
     }, [news, viewer, setLayerCount]);

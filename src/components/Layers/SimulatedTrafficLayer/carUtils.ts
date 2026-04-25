@@ -2,6 +2,41 @@ import { Color } from 'cesium';
 import { type RoadSegment, type CarState } from '@/types/simulatedTraffic';
 import { type TrafficEvent } from '@/types/traffic';
 
+// --- SVG bil-ikoner (top-down, 3 farger for hastighetsklasser) ---
+
+const CAR_SVG_CACHE = new Map<string, string>();
+
+export function createCarSvgUri(speedFactor: number): string {
+    const bucket = speedFactor > 0.6 ? 'green' : speedFactor > 0.25 ? 'yellow' : 'red';
+    const cached = CAR_SVG_CACHE.get(bucket);
+    if (cached) return cached;
+
+    const body   = bucket === 'green' ? '#00cc44' : bucket === 'yellow' ? '#ffcc00' : '#ff3333';
+    const roof   = bucket === 'green' ? '#00aa38' : bucket === 'yellow' ? '#e6b800' : '#dd2222';
+    const glass  = '#aaddff';
+    const wheel  = '#222222';
+
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="12" viewBox="0 0 24 12">
+        <!-- Karosseri -->
+        <rect x="1" y="1" width="22" height="10" rx="2" ry="2" fill="${body}" stroke="#111" stroke-width="0.5"/>
+        <!-- Tak -->
+        <rect x="5" y="2.5" width="14" height="7" rx="1.5" ry="1.5" fill="${roof}"/>
+        <!-- Frontrute -->
+        <rect x="16" y="3" width="4.5" height="4.5" rx="0.8" fill="${glass}" opacity="0.85"/>
+        <!-- Bakrute -->
+        <rect x="3.5" y="3" width="3.5" height="4.5" rx="0.8" fill="${glass}" opacity="0.7"/>
+        <!-- Hjul (4 stk) -->
+        <rect x="0" y="0.5" width="3.5" height="2.5" rx="1" fill="${wheel}"/>
+        <rect x="0" y="9" width="3.5" height="2.5" rx="1" fill="${wheel}"/>
+        <rect x="20.5" y="0.5" width="3.5" height="2.5" rx="1" fill="${wheel}"/>
+        <rect x="20.5" y="9" width="3.5" height="2.5" rx="1" fill="${wheel}"/>
+    </svg>`;
+
+    const uri = 'data:image/svg+xml,' + encodeURIComponent(svg);
+    CAR_SVG_CACHE.set(bucket, uri);
+    return uri;
+}
+
 const MAX_TOTAL_CARS = 600;
 const MAX_SEGMENTS = 200;
 

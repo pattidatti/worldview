@@ -96,6 +96,7 @@ const _genericCache = new Map<string, OverpassElement[]>();
 // Prevents 429s caused by multiple layers firing queries simultaneously on initial load.
 const _pending = new Map<string, Promise<OverpassElement[]>>();
 let _queueTail: Promise<void> = Promise.resolve();
+let _nextGapMs = 400; // backs off to 30 000 on 429, resets to 400 on success
 
 export function overpassViewportKey05(vp: Viewport): string {
     // Round to 0.5 degrees — coarser cache for static features
@@ -198,10 +199,14 @@ export function fetchOverpassElements(
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 signal: AbortSignal.timeout(32_000),
             });
-            if (res.status === 429) return []; // rate-limited; next poll will retry
+            if (res.status === 429) {
+                _nextGapMs = 30_000; // back off 30 s before next Overpass request
+                return [];
+            }
             if (!res.ok) return [];
             const json = await res.json();
             const elements: OverpassElement[] = json.elements ?? [];
+            _nextGapMs = 400; // reset after successful response
             _genericCache.set(cacheKey, elements);
             lsSet(cacheKey, elements);
             setOsmTile(cacheKey, elements); // write-behind, deler med andre brukere
@@ -211,8 +216,9 @@ export function fetchOverpassElements(
         }
     });
 
-    // Advance the queue tail: wait for this request, then pause 400 ms before the next one
-    _queueTail = myRequest.then(() => new Promise<void>(r => setTimeout(r, 400)));
+    // Advance the queue tail: wait for this request, then pause before the next one.
+    // Gap is 30 000 ms after a 429, 400 ms otherwise.
+    _queueTail = myRequest.then(() => new Promise<void>(r => setTimeout(r, _nextGapMs)));
 
     _pending.set(cacheKey, myRequest);
     myRequest.finally(() => { _pending.delete(cacheKey); });
@@ -279,9 +285,14 @@ export function fetchOverpassInfrastructure(viewport: Viewport): Promise<Overpas
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 signal: AbortSignal.timeout(30_000),
             });
+            if (res.status === 429) {
+                _nextGapMs = 30_000;
+                return EMPTY;
+            }
             if (!res.ok) return EMPTY;
             const json = await res.json();
             const result = parseElements(json.elements ?? []);
+            _nextGapMs = 400;
             cachedKey = key;
             cachedData = result;
             lsSetInfra(key, result);
@@ -292,6 +303,6 @@ export function fetchOverpassInfrastructure(viewport: Viewport): Promise<Overpas
         }
     });
 
-    _queueTail = myRequest.then(() => new Promise<void>(r => setTimeout(r, 400)));
+    _queueTail = myRequest.then(() => new Promise<void>(r => setTimeout(r, _nextGapMs)));
     return myRequest;
 }

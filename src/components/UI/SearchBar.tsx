@@ -58,6 +58,11 @@ const LAYER_COLORS: Record<LayerId, string> = {
     gpsjam: '#ff4500',
     chokepoints: '#ff6b35',
     gates: '#4a9eff',
+    iss: '#00cfff',
+    launches: '#ff6b35',
+    volcanoes: '#ff4500',
+    lightning: '#ffe033',
+    tension: '#ff3300',
 };
 
 function searchEntities(viewer: import('cesium').Viewer | null, query: string, visibleLayerIds: Set<LayerId>): EntityResult[] {

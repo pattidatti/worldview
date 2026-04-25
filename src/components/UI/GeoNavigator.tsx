@@ -131,6 +131,7 @@ export function GeoNavigator() {
     const viewer = useViewer();
     const { orbitActive, setOrbitActive } = useOrbit();
 
+    const [collapsed, setCollapsed] = useState(true);
     const [breadcrumb, setBreadcrumb] = useState<Breadcrumb>({});
     const [openLevel, setOpenLevel] = useState<NavLevel | null>(null);
     const [items, setItems] = useState<GeoNavItem[]>([]);
@@ -372,6 +373,20 @@ export function GeoNavigator() {
     // ── Render ────────────────────────────────────────────────────────────
     const panelOpen = openLevel !== null || showFavorites;
 
+    if (collapsed) {
+        return (
+            <button
+                className="absolute bottom-14 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 px-3 py-2 rounded-full backdrop-blur-md border border-white/10 shadow-2xl transition-all hover:bg-white/10"
+                style={{ background: 'rgba(8, 8, 18, 0.85)' }}
+                onClick={() => setCollapsed(false)}
+                title="Åpne geo-navigator"
+            >
+                <span className="text-base leading-none">🧭</span>
+                <span className="font-mono text-[10px] text-white/40 uppercase tracking-widest">Nav</span>
+            </button>
+        );
+    }
+
     return (
         <div
             ref={panelRef}
@@ -517,7 +532,7 @@ export function GeoNavigator() {
                     onClick={() => openPanel('place')}
                 />
 
-                {/* Divider + Favorites */}
+                {/* Favoritter */}
                 <button
                     onClick={() => {
                         setShowFavorites((v) => !v);
@@ -532,6 +547,15 @@ export function GeoNavigator() {
                     {favorites.length > 0 && (
                         <span className="text-[10px] font-mono">{favorites.length}</span>
                     )}
+                </button>
+
+                {/* Lukk */}
+                <button
+                    onClick={() => { setCollapsed(true); setOpenLevel(null); setShowFavorites(false); }}
+                    className="flex flex-col items-center justify-center gap-0.5 px-3 py-2.5 transition-colors hover:bg-white/5 text-white/20 hover:text-white/60 border-l border-white/8"
+                    title="Skjul geo-navigator"
+                >
+                    <span className="text-sm leading-none">✕</span>
                 </button>
             </div>
         </div>

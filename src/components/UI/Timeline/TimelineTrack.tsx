@@ -45,12 +45,18 @@ export function TimelineTrack({ nowRef }: Props) {
         setCursor(ts);
     };
 
+    const rafIdRef = useRef<number | null>(null);
+
     const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-        const ts = tsFromClientX(e.clientX);
-        setHoverTs(ts);
-        if (dragging) {
-            setCursor(ts);
-        }
+        const clientX = e.clientX;
+        const isDragging = dragging;
+        if (rafIdRef.current !== null) return;
+        rafIdRef.current = requestAnimationFrame(() => {
+            rafIdRef.current = null;
+            const ts = tsFromClientX(clientX);
+            setHoverTs(ts);
+            if (isDragging) setCursor(ts);
+        });
     };
 
     const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -59,6 +65,10 @@ export function TimelineTrack({ nowRef }: Props) {
     };
 
     const handlePointerLeave = () => {
+        if (rafIdRef.current !== null) {
+            cancelAnimationFrame(rafIdRef.current);
+            rafIdRef.current = null;
+        }
         setHoverTs(null);
     };
 

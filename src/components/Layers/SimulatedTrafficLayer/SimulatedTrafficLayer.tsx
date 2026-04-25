@@ -8,6 +8,14 @@ import {
     ConstantPositionProperty,
     PointGraphics,
     HeightReference,
+    BillboardCollection,
+    Primitive,
+    GeometryInstance,
+    BoxGeometry,
+    PerInstanceColorAppearance,
+    ColorGeometryInstanceAttribute,
+    Transforms,
+    HeadingPitchRoll,
     Math as CesiumMath,
 } from 'cesium';
 import { type Viewport } from '@/hooks/useViewport';
@@ -23,12 +31,17 @@ import {
     matchIncidentsToSegments,
     speedColor,
     speedColorHex,
+    createCarSvgUri,
     HIGHWAY_LABELS,
 } from './carUtils';
 import { type RoadSegment, type CarState } from '@/types/simulatedTraffic';
 
-const MAX_CAMERA_HEIGHT = 30_000; // 30 km
+const MAX_CAMERA_HEIGHT = 30_000;  // 30 km — laget er ikke aktivt over denne høyden
+const BILLBOARD_ALT     = 10_000;  // < 10 km → SVG billboard-biler
+const BOX_ALT           =    500;  // < 500 m → 3D boks-biler
 const TOMTOM_POLL_MS = 90_000;
+
+type RenderMode = 'point' | 'billboard' | 'box';
 
 export function SimulatedTrafficLayer() {
     const viewer = useViewer();
@@ -38,17 +51,20 @@ export function SimulatedTrafficLayer() {
     const visible = useLayerVisibility('simulatedTraffic');
     const viewport = useViewport(viewer);
 
-    const dataSourceRef = useRef<CustomDataSource | null>(null);
-    const carStatesRef = useRef<Map<string, CarState>>(new Map());
-    const segmentsRef = useRef<Map<string, RoadSegment>>(new Map());
-    const speedZonesRef = useRef<Map<string, number>>(new Map());
-    const viewportRef = useRef(viewport);
-    viewportRef.current = viewport;
-    const visibleRef = useRef(visible);
-    visibleRef.current = visible;
+    const dataSourceRef      = useRef<CustomDataSource | null>(null);
+    const billboardColRef    = useRef<BillboardCollection | null>(null);
+    const boxPrimitiveRef    = useRef<Primitive | null>(null);
+    const carStatesRef       = useRef<Map<string, CarState>>(new Map());
+    const segmentsRef        = useRef<Map<string, RoadSegment>>(new Map());
+    const speedZonesRef      = useRef<Map<string, number>>(new Map());
+    const viewportRef        = useRef(viewport);
+    viewportRef.current      = viewport;
+    const visibleRef         = useRef(visible);
+    visibleRef.current       = visible;
 
-    const [segments, setSegments] = useState<RoadSegment[]>([]);
+    const [segments, setSegments]     = useState<RoadSegment[]>([]);
     const [isBelowAlt, setIsBelowAlt] = useState(false);
+    const [renderMode, setRenderMode] = useState<RenderMode>('point');
 
     // Popup builder
     useEffect(() => {
@@ -112,13 +128,26 @@ export function SimulatedTrafficLayer() {
         };
     }, [viewer]);
 
-    // Camera altitude monitor — fires on camera.changed AND camera.moveEnd (fallback)
+    // BillboardCollection for SVG bil-ikoner
+    useEffect(() => {
+        if (!viewer || viewer.isDestroyed()) return;
+        const col = new BillboardCollection({ scene: viewer.scene });
+        viewer.scene.primitives.add(col);
+        billboardColRef.current = col;
+        return () => {
+            if (!viewer.isDestroyed()) viewer.scene.primitives.remove(col);
+            billboardColRef.current = null;
+        };
+    }, [viewer]);
+
+    // Camera altitude monitor — oppdaterer isBelowAlt + renderMode
     useEffect(() => {
         if (!viewer || viewer.isDestroyed()) return;
         const check = () => {
             if (viewer.isDestroyed()) return;
             const h = viewer.camera.positionCartographic.height;
             setIsBelowAlt(h < MAX_CAMERA_HEIGHT);
+            setRenderMode(h < BOX_ALT ? 'box' : h < BILLBOARD_ALT ? 'billboard' : 'point');
         };
         check();
         const removeChanged = viewer.camera.changed.addEventListener(check);
@@ -129,12 +158,21 @@ export function SimulatedTrafficLayer() {
         };
     }, [viewer]);
 
-    // Control visibility gate
+    // Synkroniser synlighet og renderMode mellom datasource / billboards / boxes
     useEffect(() => {
+        const active = visible && isBelowAlt;
         if (dataSourceRef.current) {
-            dataSourceRef.current.show = visible && isBelowAlt;
+            // PointGraphics vises kun i 'point'-modus
+            dataSourceRef.current.show = active && renderMode === 'point';
         }
-    }, [visible, isBelowAlt]);
+        if (billboardColRef.current) {
+            billboardColRef.current.show = active && renderMode === 'billboard';
+        }
+        // Box-primitiven styres av rebuild-intervallet nedenfor
+        if (boxPrimitiveRef.current) {
+            boxPrimitiveRef.current.show = active && renderMode === 'box';
+        }
+    }, [visible, isBelowAlt, renderMode]);
 
     // Poll road segments when viewport changes and layer is active
     useEffect(() => {
@@ -270,30 +308,32 @@ export function SimulatedTrafficLayer() {
         rebuildCarPool();
     }, [rebuildCarPool]);
 
-    // Dead-reckoning: advance each car along its road segment every frame
+    // Dead-reckoning: advance each car along vegsegmentet hvert preRender-kall
+    // Oppdaterer posisjon i carStates og skriver til riktig render-target
     useEffect(() => {
         if (!viewer || viewer.isDestroyed()) return;
 
         const handle = viewer.scene.preRender.addEventListener(() => {
-            const ds = dataSourceRef.current;
-            if (!ds?.show) return;
+            const active = visible && isBelowAlt;
+            if (!active) return;
 
-            const nowMs = Date.now();
+            const nowMs   = Date.now();
+            const ds      = dataSourceRef.current;
+            const billCol = billboardColRef.current;
+            const mode    = renderMode;
+
+            let bilIdx = 0; // billboard index synkronisert med carStates iteration
 
             for (const car of carStatesRef.current.values()) {
                 const seg = segmentsRef.current.get(car.segmentId);
                 if (!seg || seg.positions.length < 2) continue;
 
                 const elapsedS = (nowMs - car.lastFrameMs) / 1000;
-                if (elapsedS <= 0 || elapsedS > 5) {
-                    car.lastFrameMs = nowMs;
-                    continue;
-                }
+                if (elapsedS <= 0 || elapsedS > 5) { car.lastFrameMs = nowMs; continue; }
 
                 const distM = car.baseSpeedMs * car.speedFactor * elapsedS;
                 car.fraction += distM / (seg.legLengths[car.legIndex] || 1);
 
-                // Advance to next legs if needed (safety counter prevents infinite loop)
                 let guard = 0;
                 while (car.fraction >= 1.0 && guard++ < 50) {
                     car.fraction -= 1.0;
@@ -303,30 +343,113 @@ export function SimulatedTrafficLayer() {
                         car.fraction = Math.min(car.fraction, 0.999);
                     }
                 }
-
                 car.lastFrameMs = nowMs;
 
                 const p0 = seg.positions[car.legIndex];
                 const p1 = seg.positions[car.legIndex + 1];
                 if (!p0 || !p1) continue;
 
-                const lon = p0[0] + (p1[0] - p0[0]) * car.fraction;
-                const lat = p0[1] + (p1[1] - p0[1]) * car.fraction;
-                const terrainAlt = viewer.scene.globe.getHeight(
-                    Cartographic.fromDegrees(lon, lat),
-                ) ?? 5;
+                const lon  = p0[0] + (p1[0] - p0[0]) * car.fraction;
+                const lat  = p0[1] + (p1[1] - p0[1]) * car.fraction;
+                const galt = viewer.scene.globe.getHeight(Cartographic.fromDegrees(lon, lat)) ?? 2;
+                const pos  = Cartesian3.fromDegrees(lon, lat, galt + 1.5);
 
-                const entity = ds.entities.getById(car.id);
-                if (entity?.position) {
-                    (entity.position as ConstantPositionProperty).setValue(
-                        Cartesian3.fromDegrees(lon, lat, terrainAlt + 2),
-                    );
+                if (mode === 'point') {
+                    const entity = ds?.entities.getById(car.id);
+                    if (entity?.position) {
+                        (entity.position as ConstantPositionProperty).setValue(pos);
+                    }
+                } else if (mode === 'billboard' && billCol && bilIdx < billCol.length) {
+                    const b = billCol.get(bilIdx);
+                    b.position = pos;
+                    b.image    = createCarSvgUri(car.speedFactor);
+                    const heading = seg.legHeadings[car.legIndex] ?? 0;
+                    b.rotation    = -CesiumMath.toRadians(heading);
+                    b.alignedAxis = Cartesian3.normalize(pos, new Cartesian3());
                 }
+
+                bilIdx++;
             }
         });
 
         return () => handle();
-    }, [viewer]);
+    }, [viewer, visible, isBelowAlt, renderMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Synkroniser antall billboards med antall biler
+    useEffect(() => {
+        const col = billboardColRef.current;
+        if (!col || renderMode !== 'billboard') return;
+        const n = carStatesRef.current.size;
+        while (col.length < n) {
+            col.add({ image: createCarSvgUri(1.0), width: 24, height: 12, show: true, position: Cartesian3.ZERO });
+        }
+        while (col.length > n) col.remove(col.get(col.length - 1));
+    }, [renderMode, segments]);
+
+    // BoxGeometry-rebuild hvert 200ms ved <500m altitudeR
+    useEffect(() => {
+        if (!viewer || renderMode !== 'box') return;
+
+        const rebuildBoxes = () => {
+            if (!viewer || viewer.isDestroyed()) return;
+            const { scene } = viewer;
+            if (boxPrimitiveRef.current) scene.primitives.remove(boxPrimitiveRef.current);
+            boxPrimitiveRef.current = null;
+
+            const instances: GeometryInstance[] = [];
+            for (const car of carStatesRef.current.values()) {
+                const seg = segmentsRef.current.get(car.segmentId);
+                if (!seg) continue;
+                const p0 = seg.positions[car.legIndex];
+                const p1 = seg.positions[car.legIndex + 1];
+                if (!p0 || !p1) continue;
+
+                const lon = p0[0] + (p1[0] - p0[0]) * car.fraction;
+                const lat = p0[1] + (p1[1] - p0[1]) * car.fraction;
+                const galt = scene.globe.getHeight(Cartographic.fromDegrees(lon, lat)) ?? 2;
+                const pos     = Cartesian3.fromDegrees(lon, lat, galt + 0.75);
+                const heading = seg.legHeadings[car.legIndex] ?? 0;
+
+                const modelMatrix = Transforms.headingPitchRollToFixedFrame(
+                    pos,
+                    new HeadingPitchRoll(CesiumMath.toRadians(90 - heading), 0, 0),
+                );
+
+                const c = Color.fromCssColorString(
+                    car.speedFactor > 0.6 ? '#00cc44' : car.speedFactor > 0.25 ? '#ffcc00' : '#ff3333'
+                );
+                instances.push(new GeometryInstance({
+                    geometry: new BoxGeometry({
+                        minimum: new Cartesian3(-2, -1, 0),
+                        maximum: new Cartesian3(2, 1, 1.5),
+                    }),
+                    modelMatrix,
+                    attributes: { color: ColorGeometryInstanceAttribute.fromColor(c) },
+                }));
+            }
+
+            if (instances.length === 0) return;
+            const prim = new Primitive({
+                geometryInstances: instances,
+                appearance: new PerInstanceColorAppearance({ flat: true }),
+                allowPicking: false,
+                asynchronous: false,
+            });
+            scene.primitives.add(prim);
+            boxPrimitiveRef.current = prim;
+            if (!scene.isDestroyed()) scene.requestRender();
+        };
+
+        rebuildBoxes();
+        const id = setInterval(rebuildBoxes, 200);
+        return () => {
+            clearInterval(id);
+            if (viewer && !viewer.isDestroyed() && boxPrimitiveRef.current) {
+                viewer.scene.primitives.remove(boxPrimitiveRef.current);
+                boxPrimitiveRef.current = null;
+            }
+        };
+    }, [viewer, renderMode, segments]);
 
     // rAF loop: drives rendering at ~60fps while cars are visible
     useEffect(() => {

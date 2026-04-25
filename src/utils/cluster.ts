@@ -14,35 +14,50 @@ function sizeForCount(count: number): number {
     return 48;
 }
 
+function lightenHex(hex: string, amount = 0.35): string {
+    const c = parseInt(hex.replace('#', ''), 16);
+    const r = Math.min(255, Math.round(((c >> 16) & 0xff) + (255 - ((c >> 16) & 0xff)) * amount));
+    const g = Math.min(255, Math.round(((c >> 8) & 0xff)  + (255 - ((c >> 8) & 0xff))  * amount));
+    const b = Math.min(255, Math.round(( c        & 0xff)  + (255 - ( c        & 0xff))  * amount));
+    return `rgb(${r},${g},${b})`;
+}
+
 function createClusterIcon(count: number, color: string): string {
-    const key = `${count}-${color}`;
+    const large = count >= 20;
+    const key = `${count}-${color}-${large ? 'lg' : 'sm'}`;
     const cached = iconCache.get(key);
     if (cached) return cached;
 
     const size = sizeForCount(count);
     const r = size / 2;
     const fontSize = count >= 100 ? 10 : count >= 10 ? 12 : 14;
-    const gradId = `g${count}`;
-    const filterId = `f${count}`;
-    // Radial gradient fra lys kjerne → transparent kant, + Gaussian glow
+    const safeKey = key.replace(/[^a-zA-Z0-9]/g, '_');
+    const gradId = `g_${safeKey}`;
+    const filterId = `f_${safeKey}`;
+    const light = lightenHex(color, 0.4);
+
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}">
         <defs>
-            <radialGradient id="${gradId}" cx="40%" cy="35%" r="60%">
-                <stop offset="0%"   stop-color="${color}" stop-opacity="0.9"/>
-                <stop offset="60%"  stop-color="${color}" stop-opacity="0.45"/>
-                <stop offset="100%" stop-color="${color}" stop-opacity="0.1"/>
+            <radialGradient id="${gradId}" cx="35%" cy="30%" r="65%">
+                <stop offset="0%"   stop-color="${light}" stop-opacity="0.95"/>
+                <stop offset="50%"  stop-color="${color}" stop-opacity="0.65"/>
+                <stop offset="100%" stop-color="${color}" stop-opacity="0.12"/>
             </radialGradient>
-            <filter id="${filterId}" x="-30%" y="-30%" width="160%" height="160%">
-                <feGaussianBlur stdDeviation="2" result="blur"/>
+            <filter id="${filterId}" x="-40%" y="-40%" width="180%" height="180%">
+                <feGaussianBlur stdDeviation="3" result="blur"/>
                 <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
             </filter>
         </defs>
-        <circle cx="${r}" cy="${r}" r="${r - 1}" fill="url(#${gradId})"
-                stroke="${color}" stroke-width="1.5" stroke-opacity="0.7"
+        <circle cx="${r}" cy="${r}" r="${r + 3}" fill="none"
+                stroke="${color}" stroke-width="2" stroke-opacity="0.28"/>
+        <circle cx="${r}" cy="${r}" r="${r - 2}" fill="url(#${gradId})"
+                stroke="${color}" stroke-width="1.5" stroke-opacity="0.85"
                 filter="url(#${filterId})"/>
+        ${large ? `<circle cx="${r}" cy="${r}" r="${r - 1}" fill="none"
+                stroke="${color}" stroke-width="1" stroke-dasharray="4 3" stroke-opacity="0.55"/>` : ''}
         <text x="${r}" y="${r}" text-anchor="middle" dominant-baseline="central"
               fill="white" font-family="JetBrains Mono, monospace" font-size="${fontSize}" font-weight="bold"
-              style="text-shadow: 0 0 4px rgba(0,0,0,0.8)">
+              style="text-shadow: 0 0 4px rgba(0,0,0,0.9)">
             ${count}
         </text>
     </svg>`;

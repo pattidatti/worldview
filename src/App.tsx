@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useMemo, useEffect } from 'react';
+import { type Entity } from 'cesium';
 import { AppProviders } from './app/AppProviders';
 import { TimelineBar } from './components/UI/Timeline/TimelineBar';
 import { SignInGate } from './components/UI/SignInGate';
@@ -15,6 +16,7 @@ import { useTooltipRegistry } from './context/TooltipRegistry';
 import { TopBar } from './components/UI/TopBar';
 import { LayerPanel } from './components/UI/LayerPanel';
 import { InfoPopup } from './components/UI/InfoPopup';
+import { HoloBeam } from './components/UI/HoloBeam';
 import { EntityTooltip } from './components/UI/EntityTooltip';
 import { ToastContainer } from './components/UI/Toast';
 import { LayerErrorWatcher } from './components/UI/LayerErrorWatcher';
@@ -40,24 +42,33 @@ import { DisasterLayer } from './components/Layers/DisasterLayer/DisasterLayer';
 import { AsteroidLayer } from './components/Layers/AsteroidLayer/AsteroidLayer';
 import { NewsLayer } from './components/Layers/NewsLayer/NewsLayer';
 import { ConflictLayer } from './components/Layers/ConflictLayer/ConflictLayer';
+import { TensionLayer } from './components/Layers/TensionLayer/TensionLayer';
 import { WeatherRadarLayer } from './components/Layers/WeatherRadarLayer/WeatherRadarLayer';
 import { WeatherRadarControls } from './components/UI/WeatherRadarControls';
 import { SigmetLayer } from './components/Layers/SigmetLayer/SigmetLayer';
 import { RoadCameraLayer } from './components/Layers/RoadCameraLayer/RoadCameraLayer';
 import { GPSJamLayer } from './components/Layers/GPSJamLayer/GPSJamLayer';
 import { ChokepointLayer } from './components/Layers/ChokepointLayer/ChokepointLayer';
+import { ISSLayer } from './components/Layers/ISSLayer/ISSLayer';
+import { LaunchesLayer } from './components/Layers/LaunchesLayer/LaunchesLayer';
+import { VolcanoLayer } from './components/Layers/VolcanoLayer/VolcanoLayer';
+import { LightningLayer } from './components/Layers/LightningLayer/LightningLayer';
 import { PlaceLabels } from './components/Globe/PlaceLabels';
 import { HudOverlay } from './components/UI/HudOverlay';
 import { PortholeOverlay } from './components/UI/PortholeOverlay';
-import { StatusTicker } from './components/UI/StatusTicker';
 import { useTracking } from './context/TrackingContext';
 import { HudDock } from './components/UI/HudDock/HudDock';
 import { OnboardingTour } from './components/UI/OnboardingTour';
 import { CommandPalette } from './components/UI/CommandPalette';
 import { GeoNavigator } from './components/UI/GeoNavigator';
+import { DarkShipsPanel } from './components/UI/DarkShipsPanel';
 import { KeyboardHelpModal } from './components/UI/KeyboardHelpModal';
+import { IntelligencePanel } from './components/UI/IntelligencePanel/IntelligencePanel';
+import { useIntelligence } from './context/IntelligenceContext';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useHoverTooltip } from './hooks/useHoverTooltip';
+import { useEntityScreenPos } from './hooks/useEntityScreenPos';
+import { EntitySelector } from './components/UI/EntitySelector';
 import { useViewer } from './context/ViewerContext';
 import { LAYER_DEFAULTS } from './types/layers';
 import { type PopupContent } from './types/popup';
@@ -65,12 +76,60 @@ import { type SearchBarHandle } from './components/UI/SearchBar';
 
 const LAYER_IDS = LAYER_DEFAULTS.map((l) => l.id);
 
-function TooltipHandler() {
+function TooltipHandler({ selectedEntity }: { selectedEntity: Entity | null }) {
     const viewer = useViewer();
     const { resolve } = useTooltipRegistry();
     const { isDrawingRef } = useGates();
     const hover = useHoverTooltip(viewer, resolve, isDrawingRef);
-    return hover ? <EntityTooltip hover={hover} /> : null;
+    const selectedPos = useEntityScreenPos(viewer, selectedEntity);
+    const hoverPos = hover ? { x: hover.entityX, y: hover.entityY } : null;
+    return (
+        <>
+            {hover && <EntityTooltip hover={hover} />}
+            <EntitySelector hoverPos={hoverPos} selectedPos={selectedPos} />
+        </>
+    );
+}
+
+function InfoPopupController({
+    popup,
+    selectedEntity,
+    onClose,
+    onFollow,
+    trackedEntityId,
+}: {
+    popup: PopupContent;
+    selectedEntity: Entity | null;
+    onClose: () => void;
+    onFollow: (id: string | null) => void;
+    trackedEntityId: string | null;
+}) {
+    const viewer = useViewer();
+    const livePos = useEntityScreenPos(viewer, selectedEntity);
+    const livePosRef = useRef(livePos);
+    livePosRef.current = livePos;
+    const [originPos, setOriginPos] = useState<{ x: number; y: number } | null>(null);
+
+    // Snapshot entity skjermposisjon ved popup-åpning (etter én rAF for å la entity rendres)
+    useEffect(() => {
+        const id = requestAnimationFrame(() => {
+            setOriginPos(livePosRef.current);
+        });
+        return () => cancelAnimationFrame(id);
+    }, [popup]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    return (
+        <>
+            <HoloBeam origin={originPos} color={popup.color} />
+            <InfoPopup
+                content={popup}
+                onClose={onClose}
+                onFollow={onFollow}
+                isFollowing={trackedEntityId !== null && trackedEntityId === popup.followEntityId}
+                originPos={originPos}
+            />
+        </>
+    );
 }
 
 function AppContent({
@@ -88,6 +147,7 @@ function AppContent({
     showHelp: boolean;
     setShowHelp: (v: boolean) => void;
 }) {
+    const [selectedEntity, setSelectedEntity] = useState<Entity | null>(null);
     const { toggleLayer } = useLayerActions();
     const gatesVisible = useLayerVisibility('gates');
     const { trackedEntityId, setTrackedEntityId } = useTracking();
@@ -95,10 +155,20 @@ function AppContent({
     const [pendingVertices, setPendingVertices] = useState<LatLon[] | null>(null);
     const [showCommandPalette, setShowCommandPalette] = useState(false);
     const [mobileLayersOpen, setMobileLayersOpen] = useState(false);
+    const { openAt: openIntelligenceAt, openSearch, isOpen: intelligenceOpen } = useIntelligence();
+
+    const handleBackgroundClick = useCallback(async (lat: number, lon: number) => {
+        const handled = await openIntelligenceAt(lat, lon);
+        if (!handled) {
+            // No country found — clear selection
+            onSelect(null);
+        }
+    }, [openIntelligenceAt, onSelect]);
 
     const closePopup = useCallback(() => {
         setPopup(null);
         setTrackedEntityId(null);
+        setSelectedEntity(null);
     }, [setPopup, setTrackedEntityId]);
     const focusSearch = useCallback(() => searchRef.current?.focus(), [searchRef]);
     const toggleHelp = useCallback(() => setShowHelp(!showHelp), [showHelp, setShowHelp]);
@@ -159,7 +229,7 @@ function AppContent({
 
     return (
         <div className="h-full w-full relative">
-            <GlobeViewer onSelect={onSelect}>
+            <GlobeViewer onSelect={onSelect} onEntitySelect={(e) => setSelectedEntity(e ?? null)} onBackgroundClick={handleBackgroundClick}>
                 <SatelliteLayer />
                 <FlightLayer />
                 <ShipLayer />
@@ -182,38 +252,47 @@ function AppContent({
                 <AsteroidLayer />
                 <NewsLayer />
                 <ConflictLayer />
+                <TensionLayer />
                 <WeatherRadarLayer />
                 <WeatherRadarControls />
                 <SigmetLayer />
                 <RoadCameraLayer />
                 <GPSJamLayer />
                 <ChokepointLayer />
+                <ISSLayer />
+                <LaunchesLayer />
+                <VolcanoLayer />
+                <LightningLayer />
                 <GateLayer onRequestName={handleRequestName} />
                 <PlaceLabels />
-                <TopBar searchRef={searchRef} onToggleHelp={toggleHelp} onToggleMobileLayers={() => setMobileLayersOpen((v) => !v)} mobileLayersOpen={mobileLayersOpen} />
+                <TopBar searchRef={searchRef} onToggleHelp={toggleHelp} onToggleMobileLayers={() => setMobileLayersOpen((v) => !v)} mobileLayersOpen={mobileLayersOpen} onToggleIntelligence={openSearch} intelligenceOpen={intelligenceOpen} />
                 <LayerPanel mobileOpen={mobileLayersOpen} />
-                {/* Top-right panel: GatePanel */}
-                <div className="absolute top-20 right-4 z-10 w-48">
+                {/* Top-right panel: GatePanel + DarkShipsPanel */}
+                <div className="absolute top-14 right-4 z-10 w-48">
                     <GatePanel />
+                </div>
+                <div className="absolute top-36 right-4 z-10">
+                    <DarkShipsPanel />
                 </div>
                 <GateDrawHud />
                 <PortholeOverlay />
                 <HudOverlay />
                 <HudDock />
                 <GeoNavigator />
-                <StatusTicker />
                 <TimelineBar />
                 <LayerErrorWatcher />
                 {popup && (
-                    <InfoPopup
-                        content={popup}
+                    <InfoPopupController
+                        popup={popup}
+                        selectedEntity={selectedEntity}
                         onClose={closePopup}
                         onFollow={setTrackedEntityId}
-                        isFollowing={trackedEntityId !== null && trackedEntityId === popup.followEntityId}
+                        trackedEntityId={trackedEntityId}
                     />
                 )}
-                <TooltipHandler />
+                <TooltipHandler selectedEntity={selectedEntity} />
             </GlobeViewer>
+            <IntelligencePanel />
             {showHelp && <KeyboardHelpModal onClose={() => setShowHelp(false)} />}
             {showCommandPalette && <CommandPalette onClose={() => setShowCommandPalette(false)} />}
             {pendingVertices && (

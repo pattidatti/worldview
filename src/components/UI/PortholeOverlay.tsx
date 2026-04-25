@@ -1,4 +1,4 @@
-const RX = 44, RY = 48;
+const RX = 58, RY = 62;
 
 export function PortholeOverlay() {
     return (
@@ -12,10 +12,10 @@ export function PortholeOverlay() {
                     background: `radial-gradient(
                         ellipse ${RX}% ${RY}% at 50% 50%,
                         transparent 0%,
-                        transparent 78%,
-                        rgba(0,0,0,0.55) 89%,
-                        rgba(0,0,0,0.82) 96%,
-                        rgba(10,10,15,0.97) 100%
+                        transparent 88%,
+                        rgba(0,0,0,0.25) 94%,
+                        rgba(0,0,0,0.55) 98%,
+                        rgba(0,0,0,0.72) 100%
                     )`,
                 }}
             />

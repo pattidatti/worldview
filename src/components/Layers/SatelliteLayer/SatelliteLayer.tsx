@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 import {
     CustomDataSource,
     Entity,
+    Cartesian2,
     Cartesian3,
     Color,
     PointGraphics,
@@ -10,6 +11,15 @@ import {
     PolylineGlowMaterialProperty,
     ColorMaterialProperty,
     PolygonHierarchy,
+    EllipsoidGeometry,
+    GeometryInstance,
+    Primitive,
+    PerInstanceColorAppearance,
+    ColorGeometryInstanceAttribute,
+    Matrix4,
+    ScreenSpaceEventHandler,
+    ScreenSpaceEventType,
+    Math as CesiumMath,
 } from 'cesium';
 import { useViewer } from '@/context/ViewerContext';
 import { useLayerActions, useLayerVisibility } from '@/store/layerStore';
@@ -23,15 +33,22 @@ import { configureCluster } from '@/utils/cluster';
 import { fetchTLEData } from '@/services/celestrak';
 import { computePositions, computeGroundTrack, computeFootprint } from '@/utils/satellite';
 import { type SatelliteRecord } from '@/types/satellite';
+import { categorizeSatellite, SAT_COLORS } from '@/utils/satelliteCategory';
 
 const TRACK_PAST_COLOR = Color.fromCssColorString('#00ff88').withAlpha(0.5);
 const TRACK_FUTURE_COLOR = Color.fromCssColorString('#00ffcc').withAlpha(0.8);
 const FOOTPRINT_COLOR = Color.fromCssColorString('#00ff88').withAlpha(0.08);
 const FOOTPRINT_OUTLINE = Color.fromCssColorString('#00ff88').withAlpha(0.6);
 
-const SAT_COLOR = Color.fromCssColorString('#00ff88');
 const TLE_REFRESH_MS = 30 * 60 * 1000;
 const POSITION_REFRESH_MS = 10_000;
+const EARTH_R = 6_371_000;
+
+const ORBITAL_SHELLS = [
+    { id: 'leo', name: 'LEO',  altKm: 550,    color: 'rgba(0,255,136,0.07)',  labelColor: '#00ff88' },
+    { id: 'meo', name: 'MEO',  altKm: 20200,  color: 'rgba(255,200,0,0.06)',  labelColor: '#ffc800' },
+    { id: 'geo', name: 'GEO',  altKm: 35786,  color: 'rgba(0,212,255,0.05)',  labelColor: '#00d4ff' },
+];
 
 export function SatelliteLayer() {
     const viewer = useViewer();
@@ -45,9 +62,11 @@ export function SatelliteLayer() {
     const visible = useLayerVisibility('satellites');
     const dataSourceRef = useRef<CustomDataSource | null>(null);
     const trackDsRef = useRef<CustomDataSource | null>(null);
+    const shellPrimitivesRef = useRef<Primitive[]>([]);
     const [tleData, setTleData] = useState<SatelliteRecord[]>([]);
     const tleRef = useRef<SatelliteRecord[]>([]);
     tleRef.current = tleData;
+    const [showShells, setShowShells] = useState(false);
 
     // Register popup builder
     useEffect(() => {
@@ -58,13 +77,16 @@ export function SatelliteLayer() {
             );
             const sat = positions[0];
             if (!sat) return null;
+            const catColor = SAT_COLORS[categorizeSatellite(sat.name)];
+            const orbitalRegime = sat.alt < 2000 ? 'LEO' : sat.alt < 35000 ? 'MEO' : 'GEO';
             return {
                 title: sat.name,
                 icon: '🛰',
-                color: '#00ff88',
+                color: catColor,
                 followEntityId: sat.noradId,
                 fields: [
                     { label: 'NORAD ID', value: sat.noradId },
+                    { label: 'Orbital', value: orbitalRegime },
                     { label: 'Breddegrad', value: sat.lat.toFixed(2), unit: '°' },
                     { label: 'Lengdegrad', value: sat.lon.toFixed(2), unit: '°' },
                     { label: 'Høyde', value: sat.alt.toFixed(0), unit: 'km' },
@@ -132,6 +154,63 @@ export function SatelliteLayer() {
             trackDsRef.current = null;
         };
     }, [viewer]);
+
+    // Orbital shell-sfærer + klikk → fly to orbital høyde
+    useEffect(() => {
+        if (!viewer || viewer.isDestroyed()) return;
+        const { scene } = viewer;
+
+        const primitives: Primitive[] = ORBITAL_SHELLS.map((shell) => {
+            const r = EARTH_R + shell.altKm * 1000;
+            const instance = new GeometryInstance({
+                geometry: new EllipsoidGeometry({ radii: new Cartesian3(r, r, r), stackPartitions: 24, slicePartitions: 24 }),
+                attributes: {
+                    color: ColorGeometryInstanceAttribute.fromColor(
+                        Color.fromCssColorString(shell.color)
+                    ),
+                },
+                id: `orbital-shell-${shell.id}`,
+                modelMatrix: Matrix4.IDENTITY.clone(),
+            });
+            return scene.primitives.add(new Primitive({
+                geometryInstances: instance,
+                appearance: new PerInstanceColorAppearance({ flat: true, translucent: true }),
+                allowPicking: true,
+                show: showShells && visible,
+            }));
+        });
+        shellPrimitivesRef.current = primitives;
+
+        const handler = new ScreenSpaceEventHandler(viewer.canvas);
+        handler.setInputAction((click: { position: Cartesian2 }) => {
+            const picked = scene.pick(click.position);
+            if (!picked?.id || typeof picked.id !== 'string' || !picked.id.startsWith('orbital-shell-')) return;
+            const shellId = picked.id.replace('orbital-shell-', '');
+            const shell = ORBITAL_SHELLS.find((s) => s.id === shellId);
+            if (!shell) return;
+            const viewAlt = (EARTH_R + shell.altKm * 1000) * 2.2;
+            viewer.camera.flyTo({
+                destination: Cartesian3.fromDegrees(
+                    CesiumMath.toDegrees(viewer.camera.positionCartographic.longitude),
+                    CesiumMath.toDegrees(viewer.camera.positionCartographic.latitude),
+                    viewAlt,
+                ),
+                duration: 2.0,
+            });
+        }, ScreenSpaceEventType.LEFT_CLICK);
+
+        return () => {
+            primitives.forEach((p) => { if (!scene.isDestroyed()) scene.primitives.remove(p); });
+            shellPrimitivesRef.current = [];
+            handler.destroy();
+        };
+    }, [viewer]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Synkroniser shell-synlighet
+    useEffect(() => {
+        shellPrimitivesRef.current.forEach((p) => { p.show = showShells && visible; });
+        if (viewer && !viewer.isDestroyed()) viewer.scene.requestRender();
+    }, [showShells, visible, viewer]);
 
     // Tegn ground track + footprint for aktiv (fulgt) satellitt
     useEffect(() => {
@@ -235,15 +314,21 @@ export function SatelliteLayer() {
                     Cartesian3.fromDegrees(sat.lon, sat.lat, sat.alt * 1000)
                 );
             },
-            onCreate: (sat) => new Entity({
-                id: sat.noradId,
-                name: sat.name,
-                position: Cartesian3.fromDegrees(sat.lon, sat.lat, sat.alt * 1000),
-                point: new PointGraphics({
-                    pixelSize: 4, color: SAT_COLOR,
-                    outlineColor: Color.fromCssColorString('#00ff8866'), outlineWidth: 1,
-                }),
-            }),
+            onCreate: (sat) => {
+                const cat = categorizeSatellite(sat.name);
+                const satColor = Color.fromCssColorString(SAT_COLORS[cat]);
+                return new Entity({
+                    id: sat.noradId,
+                    name: sat.name,
+                    position: Cartesian3.fromDegrees(sat.lon, sat.lat, sat.alt * 1000),
+                    point: new PointGraphics({
+                        pixelSize: cat === 'iss' ? 6 : 4,
+                        color: satColor,
+                        outlineColor: satColor.withAlpha(0.4),
+                        outlineWidth: 1,
+                    }),
+                });
+            },
             viewer,
         });
     }, [tleData, viewer, setLayerCount, isReplay, cursor]);
@@ -257,5 +342,23 @@ export function SatelliteLayer() {
         return () => clearInterval(id);
     }, [visible, tleData, updatePositions, isReplay]);
 
-    return null;
+    // Shell-toggle knapp (rendret i DOM — bare synlig når satellitt-laget er aktivt)
+    if (!visible) return null;
+
+    return (
+        <button
+            onClick={() => setShowShells((v) => !v)}
+            className="absolute z-10 font-mono text-[10px] px-2 py-1 rounded border transition-all cursor-pointer"
+            style={{
+                bottom: '96px',
+                right: '12px',
+                backgroundColor: showShells ? 'rgba(0,255,136,0.15)' : 'rgba(0,0,0,0.4)',
+                borderColor: showShells ? '#00ff8880' : 'rgba(255,255,255,0.15)',
+                color: showShells ? '#00ff88' : 'rgba(255,255,255,0.5)',
+                backdropFilter: 'blur(8px)',
+            }}
+        >
+            {showShells ? '⬡ Skjul orbitskall' : '⬡ Orbitskall'}
+        </button>
+    );
 }

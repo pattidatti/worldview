@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { type PopupContent } from '@/types/popup';
 
 interface InfoPopupProps {
@@ -6,15 +6,18 @@ interface InfoPopupProps {
     onClose: () => void;
     onFollow?: (id: string | null) => void;
     isFollowing?: boolean;
+    originPos?: { x: number; y: number } | null;
 }
 
-export function InfoPopup({ content, onClose, onFollow, isFollowing }: InfoPopupProps) {
+export function InfoPopup({ content, onClose, onFollow, isFollowing, originPos }: InfoPopupProps) {
     const [data, setData] = useState(content);
     const [imgError, setImgError] = useState(false);
     const [imgLoaded, setImgLoaded] = useState(false);
     const [lightbox, setLightbox] = useState(false);
     const [enriching, setEnriching] = useState(false);
     const [pinging, setPinging] = useState(false);
+    const [animKey, setAnimKey] = useState(0);
+    const containerRef = useRef<HTMLDivElement>(null);
 
     const isLarge = data.imageSize === 'large';
 
@@ -31,7 +34,18 @@ export function InfoPopup({ content, onClose, onFollow, isFollowing }: InfoPopup
         setImgLoaded(false);
         setLightbox(false);
         setPinging(true);
+        setAnimKey((k) => k + 1);
         const pingTimer = setTimeout(() => setPinging(false), 700);
+
+        // Beregn entry-animasjon fra entity-skjermposisjon
+        if (originPos && containerRef.current) {
+            const panelX = window.innerWidth - 16 - (isLarge ? 224 : 160);
+            const panelY = 72;
+            const dx = originPos.x - panelX;
+            const dy = originPos.y - panelY;
+            containerRef.current.style.setProperty('--entry-dx', `${dx}px`);
+            containerRef.current.style.setProperty('--entry-dy', `${dy}px`);
+        }
 
         let cancelled = false;
         if (content.enrichAsync) {
@@ -50,32 +64,39 @@ export function InfoPopup({ content, onClose, onFollow, isFollowing }: InfoPopup
         };
     }, [content]);
 
+    const color = data.color ?? 'var(--accent-blue)';
+
     return (
         <>
-            {/*
-              Plassert under LayerPanel på venstre side for å unngå kollisjon med
-              GatePanel + EventLog i top-right. Maks-høyde + scroll så popup aldri
-              presser TimelineBar/StatusTicker ut av viewport.
-            */}
             <div
-                className={`absolute top-20 z-20 ${isLarge ? 'w-[28rem]' : 'w-80'} animate-fade-in-up`}
+                key={animKey}
+                ref={containerRef}
+                className={`absolute top-14 z-20 ${isLarge ? 'w-[28rem]' : 'w-80'} ${originPos ? 'animate-holo-entry' : 'animate-fade-in-up'}`}
                 style={{
-                    left: '16rem',
-                    maxHeight: 'calc(100vh - 10.5rem)',
+                    right: '1rem',
+                    maxHeight: 'calc(100vh - 6rem)',
                     overflowY: 'auto',
                 }}
             >
                 <div
-                    className="bg-[var(--bg-ui)] backdrop-blur-xl border rounded-2xl overflow-hidden"
+                    className="relative bg-[var(--bg-ui)] backdrop-blur-xl border rounded-2xl overflow-hidden"
                     style={{
-                        borderColor: data.color ?? 'var(--accent-blue)',
+                        borderColor: color,
                         borderWidth: '1px',
                         boxShadow: pinging
-                            ? `0 0 0 1px ${data.color ?? 'var(--accent-blue)'}50, 0 0 32px 8px ${data.color ?? 'var(--accent-blue)'}20, var(--shadow-panel)`
-                            : 'var(--shadow-panel)',
+                            ? `0 0 0 1px ${color}50, 0 0 32px 8px ${color}20, 0 0 12px 2px ${color}30, var(--shadow-panel)`
+                            : `0 0 0 1px ${color}25, 0 0 12px 2px ${color}15, var(--shadow-panel)`,
                         transition: 'box-shadow 0.7s ease-out',
                     }}
                 >
+                    {/* Holografisk scanline-overlay */}
+                    <div
+                        className="absolute inset-0 pointer-events-none rounded-2xl"
+                        style={{
+                            background: 'repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0,200,255,0.018) 3px, rgba(0,200,255,0.018) 4px)',
+                            zIndex: 1,
+                        }}
+                    />
                     {/* Header */}
                     <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.07]">
                         <div className="flex items-center gap-2 min-w-0">

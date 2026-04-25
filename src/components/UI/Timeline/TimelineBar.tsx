@@ -86,7 +86,7 @@ export function TimelineBar() {
         <div
             className="fixed left-0 right-0 z-[11] flex items-center gap-3 px-4"
             style={{
-                bottom: 36, // rett over StatusTicker (36px)
+                bottom: 0,
                 height: 44,
                 background: 'rgba(10,10,20,0.82)',
                 backdropFilter: 'blur(10px)',

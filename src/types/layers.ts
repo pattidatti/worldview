@@ -1,4 +1,4 @@
-export type LayerId = 'flights' | 'ships' | 'satellites' | 'weather' | 'webcams' | 'traffic' | 'trafficFlow' | 'simulatedTraffic' | 'infrastructure' | 'infrastructurePipelines' | 'infrastructureFields' | 'power' | 'wind' | 'harbors' | 'lighthouses' | 'telecom' | 'mines' | 'buildings' | 'submarineCables' | 'earthquakes' | 'disasters' | 'asteroids' | 'news' | 'conflicts' | 'weatherRadar' | 'sigmet' | 'roadCameras' | 'gpsjam' | 'chokepoints' | 'gates';
+export type LayerId = 'flights' | 'ships' | 'satellites' | 'weather' | 'webcams' | 'traffic' | 'trafficFlow' | 'simulatedTraffic' | 'infrastructure' | 'infrastructurePipelines' | 'infrastructureFields' | 'power' | 'wind' | 'harbors' | 'lighthouses' | 'telecom' | 'mines' | 'buildings' | 'submarineCables' | 'earthquakes' | 'disasters' | 'asteroids' | 'news' | 'conflicts' | 'tension' | 'weatherRadar' | 'sigmet' | 'roadCameras' | 'gpsjam' | 'chokepoints' | 'gates' | 'iss' | 'launches' | 'volcanoes' | 'lightning';
 
 export interface LayerConfig {
     id: LayerId;
@@ -36,12 +36,17 @@ export const LAYER_ICONS: Record<LayerId, string> = {
     asteroids: '☄',
     news: '📰',
     conflicts: '⚔',
+    tension: '🌡',
     weatherRadar: '🌧',
     sigmet: '⚠',
     roadCameras: '📷',
     gpsjam: '📡',
     chokepoints: '🌊',
     gates: '⛩',
+    iss: '🛸',
+    launches: '🚀',
+    volcanoes: '🌋',
+    lightning: '🌩',
 };
 
 export interface LayerCategory {
@@ -55,10 +60,10 @@ export const LAYER_CATEGORIES: LayerCategory[] = [
     { id: 'trafikk', label: 'Trafikk', icon: '✈', layers: ['flights', 'traffic', 'trafficFlow', 'simulatedTraffic', 'sigmet', 'roadCameras', 'gpsjam'] },
     { id: 'maritim', label: 'Maritim', icon: '⚓', layers: ['ships', 'harbors', 'lighthouses', 'submarineCables', 'chokepoints'] },
     { id: 'energi', label: 'Energi', icon: '⚡', layers: ['power', 'wind', 'infrastructureFields', 'infrastructurePipelines', 'infrastructure'] },
-    { id: 'vaer', label: 'Vær', icon: '☁', layers: ['weather', 'weatherRadar'] },
-    { id: 'geo', label: 'Geo', icon: '🌍', layers: ['earthquakes', 'disasters'] },
-    { id: 'rom', label: 'Rom', icon: '🛰', layers: ['satellites', 'asteroids'] },
-    { id: 'verden', label: 'Verden', icon: '🌐', layers: ['news', 'conflicts', 'webcams', 'buildings', 'telecom', 'mines'] },
+    { id: 'vaer', label: 'Vær', icon: '☁', layers: ['weather', 'weatherRadar', 'lightning'] },
+    { id: 'geo', label: 'Geo', icon: '🌍', layers: ['earthquakes', 'disasters', 'volcanoes'] },
+    { id: 'rom', label: 'Rom', icon: '🛰', layers: ['satellites', 'asteroids', 'iss', 'launches'] },
+    { id: 'verden', label: 'Verden', icon: '🌐', layers: ['news', 'conflicts', 'tension', 'webcams', 'buildings', 'telecom', 'mines'] },
     { id: 'analyse', label: 'Analyse', icon: '⛩', layers: ['gates'] },
 ];
 
@@ -87,10 +92,15 @@ export const LAYER_DEFAULTS: LayerConfig[] = [
     { id: 'asteroids', name: 'Asteroider', color: '#aaaaaa', visible: false, loading: false, count: 0, error: null, lastUpdated: null },
     { id: 'news', name: 'Nyheter', color: 'var(--color-news)', visible: false, loading: false, count: 0, error: null, lastUpdated: null },
     { id: 'conflicts', name: 'Konflikter', color: 'var(--color-conflicts)', visible: false, loading: false, count: 0, error: null, lastUpdated: null },
+    { id: 'tension', name: 'Spennings-overlay', color: '#ff3300', visible: false, loading: false, count: 0, error: null, lastUpdated: null },
     { id: 'weatherRadar', name: 'Værradar', color: 'var(--color-weather-radar)', visible: false, loading: false, count: 0, error: null, lastUpdated: null },
     { id: 'sigmet', name: 'Luftromsadvarsler', color: '#ff8800', visible: false, loading: false, count: 0, error: null, lastUpdated: null },
     { id: 'roadCameras', name: 'DOT-kameraer', color: '#00e5ff', visible: false, loading: false, count: 0, error: null, lastUpdated: null },
     { id: 'gpsjam', name: 'GPS-forstyrrelser', color: '#ff4500', visible: false, loading: false, count: 0, error: null, lastUpdated: null },
     { id: 'chokepoints', name: 'Strategiske passasjer', color: '#ff6b35', visible: false, loading: false, count: 0, error: null, lastUpdated: null },
     { id: 'gates', name: 'Porter', color: 'var(--color-gates)', visible: false, loading: false, count: 0, error: null, lastUpdated: null },
+    { id: 'iss', name: 'Romstasjon (ISS)', color: 'var(--color-iss)', visible: false, loading: false, count: 0, error: null, lastUpdated: null },
+    { id: 'launches', name: 'Rakettoppskyting', color: 'var(--color-launches)', visible: false, loading: false, count: 0, error: null, lastUpdated: null },
+    { id: 'volcanoes', name: 'Vulkaner', color: 'var(--color-volcanoes)', visible: false, loading: false, count: 0, error: null, lastUpdated: null },
+    { id: 'lightning', name: 'Lyn', color: 'var(--color-lightning)', visible: false, loading: false, count: 0, error: null, lastUpdated: null },
 ];

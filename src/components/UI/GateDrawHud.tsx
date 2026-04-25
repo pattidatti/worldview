@@ -8,7 +8,7 @@ export function GateDrawHud() {
     const canFinish = count >= 2;
 
     return (
-        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
+        <div className="fixed top-14 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
             <div
                 className="flex items-center gap-3 px-4 py-2 rounded-xl shadow-2xl backdrop-blur-md"
                 style={{

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
     CustomDataSource,
     Entity,
@@ -17,6 +17,7 @@ import { type LighthouseData } from '@/types/osmFeatures';
 import { fetchWikiSummary } from '@/services/wikipedia';
 
 const COLOR = '#FF8F00';
+const MAX_CAMERA_HEIGHT = 150_000;
 
 const LIGHTHOUSE_SVG = `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="20" height="24" viewBox="0 0 20 24">
   <polygon points="7,20 13,20 12,8 8,8" fill="${COLOR}" stroke="#000" stroke-width="0.6"/>
@@ -35,6 +36,7 @@ export function LighthouseLayer() {
     const { register: tooltipRegister, unregister: tooltipUnregister } = useTooltipRegistry();
     const visible = useLayerVisibility('lighthouses');
     const viewport = useViewport(viewer, 2000);
+    const [isBelowAlt, setIsBelowAlt] = useState(false);
     const dsRef = useRef<CustomDataSource | null>(null);
     const dataRef = useRef<LighthouseData>({ lighthouses: [] });
 
@@ -86,6 +88,14 @@ export function LighthouseLayer() {
 
     useEffect(() => {
         if (!viewer || viewer.isDestroyed()) return;
+        const check = () => setIsBelowAlt(viewer.camera.positionCartographic.height < MAX_CAMERA_HEIGHT);
+        check();
+        const rm = viewer.camera.changed.addEventListener(check);
+        return () => rm();
+    }, [viewer]);
+
+    useEffect(() => {
+        if (!viewer || viewer.isDestroyed()) return;
         const ds = new CustomDataSource('lighthouses');
         viewer.dataSources.add(ds);
         dsRef.current = ds;
@@ -96,11 +106,11 @@ export function LighthouseLayer() {
     }, [viewer]);
 
     useEffect(() => {
-        if (dsRef.current) dsRef.current.show = visible;
-    }, [visible]);
+        if (dsRef.current) dsRef.current.show = visible && isBelowAlt;
+    }, [visible, isBelowAlt]);
 
     useEffect(() => {
-        if (!visible || !viewport || !dsRef.current) return;
+        if (!visible || !isBelowAlt || !viewport || !dsRef.current) return;
         let cancelled = false;
         setLayerLoading('lighthouses', true);
 
