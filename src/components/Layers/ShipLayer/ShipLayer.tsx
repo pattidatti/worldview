@@ -58,6 +58,7 @@ import {
 } from '@/utils/ship-utils';
 import { useDarkShips, shipToDarkRecord } from '@/context/DarkShipsContext';
 import { checkSanctions } from '@/services/sanctions';
+import { isSpringAnimating } from '@/utils/springEntities';
 
 const API_KEY = import.meta.env.VITE_AISSTREAM_API_KEY || '';
 const MAX_SHIPS = 1000;
@@ -594,7 +595,8 @@ export function ShipLayer() {
 
             const entity = existing.get(id);
             if (entity) {
-                (entity.position as ConstantPositionProperty).setValue(hullPos);
+                if (!isSpringAnimating(entity))
+                    (entity.position as ConstantPositionProperty).setValue(hullPos);
                 (entity.orientation as ConstantProperty).setValue(orientation);
                 if (entity.billboard?.image) {
                     (entity.billboard.image as ConstantProperty).setValue(shipBillboard);
@@ -604,7 +606,8 @@ export function ShipLayer() {
                 }
                 const labelEntity = labelDs?.entities.getById(labelId);
                 if (labelEntity) {
-                    (labelEntity.position as ConstantPositionProperty).setValue(labelPos);
+                    if (!isSpringAnimating(labelEntity))
+                        (labelEntity.position as ConstantPositionProperty).setValue(labelPos);
                     if (labelEntity.label?.text) {
                         (labelEntity.label.text as ConstantProperty).setValue(ship.name || `MMSI ${mmsi}`);
                     }

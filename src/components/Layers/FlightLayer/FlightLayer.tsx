@@ -33,6 +33,7 @@ import { fetchFlightRoute, getCachedRoute } from '@/services/opensky';
 import { lookupAirline } from '@/data/airlines';
 import { spawnPulseRing } from '@/utils/pulseRing';
 import { fadeInEntity, fadeOutEntity } from '@/utils/entityFade';
+import { isSpringAnimating } from '@/utils/springEntities';
 import { type Flight } from '@/types/flight';
 import {
     detectEntityCrossings,
@@ -426,7 +427,7 @@ export function FlightLayer() {
                 const ageMs = nowMs - state.lastUpdateMs;
                 if (ageMs < 100 || ageMs > DR_MAX_AGE_MS) continue;
                 const entity = ds.entities.getById(id);
-                if (!entity?.position) continue;
+                if (!entity?.position || isSpringAnimating(entity)) continue;
                 const extrapolated = extrapolatePosition(state, ageMs / 1000);
                 (entity.position as ConstantPositionProperty).setValue(extrapolated);
                 changed = true;
@@ -493,7 +494,8 @@ export function FlightLayer() {
             const entity = existing.get(id);
             const want3D = use3DRef.current;
             if (entity) {
-                (entity.position as ConstantPositionProperty).setValue(pos);
+                if (!isSpringAnimating(entity))
+                    (entity.position as ConstantPositionProperty).setValue(pos);
                 const has3D = !!entity.model;
                 if (want3D && !has3D) {
                     // Upgrade to 3D model
