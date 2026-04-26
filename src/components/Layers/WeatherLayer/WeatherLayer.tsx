@@ -116,7 +116,7 @@ export function WeatherLayer() {
                         fillColor: WEATHER_COLOR, outlineColor: Color.BLACK, outlineWidth: 2,
                         style: LabelStyle.FILL_AND_OUTLINE, verticalOrigin: VerticalOrigin.CENTER,
                         pixelOffset: new Cartesian2(0, 0),
-                        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+                        disableDepthTestDistance: 1.5e7,
                     }),
                 }));
             }

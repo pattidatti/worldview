@@ -294,7 +294,7 @@ export function SimulatedTrafficLayer() {
                         outlineColor: Color.BLACK,
                         outlineWidth: 1,
                         heightReference: HeightReference.NONE,
-                        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+                        disableDepthTestDistance: 1.5e7,
                     }),
                 }),
             );

@@ -114,7 +114,7 @@ export function LightningLayer() {
                         verticalOrigin: VerticalOrigin.CENTER,
                         horizontalOrigin: HorizontalOrigin.CENTER,
                         heightReference: HeightReference.CLAMP_TO_GROUND,
-                        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+                        disableDepthTestDistance: 1.5e7,
                     },
                 });
 

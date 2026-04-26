@@ -395,7 +395,7 @@ export function ChokepointLayer() {
                     horizontalOrigin: HorizontalOrigin.CENTER,
                     pixelOffset: new Cartesian2(0, -8),
                     scaleByDistance: LABEL_SCALE,
-                    disableDepthTestDistance: Number.POSITIVE_INFINITY,
+                    disableDepthTestDistance: 1.5e7,
                 },
             }));
 

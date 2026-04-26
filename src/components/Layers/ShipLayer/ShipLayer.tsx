@@ -627,7 +627,7 @@ export function ShipLayer() {
                             pixelOffset: new Cartesian2(0, -18),
                             scaleByDistance: LABEL_SCALE,
                             distanceDisplayCondition: LABEL_RANGE,
-                            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+                            disableDepthTestDistance: 1.5e7,
                         },
                     }));
                 }
@@ -703,7 +703,7 @@ export function ShipLayer() {
                         verticalOrigin: VerticalOrigin.CENTER,
                         horizontalOrigin: HorizontalOrigin.CENTER,
                         heightReference: HeightReference.NONE,
-                        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+                        disableDepthTestDistance: 1.5e7,
                         alignedAxis: Cartesian3.UNIT_Z,
                     },
                 }));
@@ -723,7 +723,7 @@ export function ShipLayer() {
                             pixelOffset: new Cartesian2(0, -18),
                             scaleByDistance: LABEL_SCALE,
                             distanceDisplayCondition: LABEL_RANGE,
-                            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+                            disableDepthTestDistance: 1.5e7,
                         },
                     }));
                 }
@@ -866,7 +866,7 @@ export function ShipLayer() {
                                 verticalOrigin: VerticalOrigin.CENTER,
                                 horizontalOrigin: HorizontalOrigin.CENTER,
                                 heightReference: HeightReference.NONE,
-                                disableDepthTestDistance: Number.POSITIVE_INFINITY,
+                                disableDepthTestDistance: 1.5e7,
                                 alignedAxis: Cartesian3.UNIT_Z,
                                 scaleByDistance: NAV_SCALE,
                                 distanceDisplayCondition: NAV_RANGE,
@@ -1015,7 +1015,7 @@ export function ShipLayer() {
                             verticalOrigin: VerticalOrigin.CENTER,
                             horizontalOrigin: HorizontalOrigin.CENTER,
                             heightReference: HeightReference.NONE,
-                            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+                            disableDepthTestDistance: 1.5e7,
                             alignedAxis: Cartesian3.UNIT_Z,
                         },
                     }));

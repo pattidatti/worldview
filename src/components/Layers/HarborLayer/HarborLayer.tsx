@@ -176,7 +176,7 @@ export function HarborLayer() {
                                 width: new ConstantProperty(20),
                                 height: new ConstantProperty(20),
                                 heightReference: new ConstantProperty(HeightReference.CLAMP_TO_GROUND),
-                                disableDepthTestDistance: new ConstantProperty(Number.POSITIVE_INFINITY),
+                                disableDepthTestDistance: new ConstantProperty(1.5e7),
                             },
                         }));
                     }

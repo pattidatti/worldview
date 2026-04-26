@@ -139,7 +139,7 @@ export function ISSLayer() {
                     height: 40,
                     verticalOrigin: VerticalOrigin.CENTER,
                     horizontalOrigin: HorizontalOrigin.CENTER,
-                    disableDepthTestDistance: Number.POSITIVE_INFINITY,
+                    disableDepthTestDistance: 1.5e7,
                 },
             }));
         }

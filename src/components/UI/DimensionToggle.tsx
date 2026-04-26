@@ -19,7 +19,7 @@ export function DimensionToggle() {
             </button>
             <button
                 onClick={() => setIs2D(true)}
-                title="2D kartvisning (CartoDB)"
+                title="2D kartvisning"
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-sans transition-all duration-200 cursor-pointer
                     ${is2D
                         ? 'bg-white/20 text-white shadow-inner'

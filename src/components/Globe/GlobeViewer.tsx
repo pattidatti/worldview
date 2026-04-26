@@ -116,6 +116,7 @@ export function GlobeViewer({ children, onSelect, onEntitySelect, onBackgroundCl
     const setTrackedIdRef = useRef(setTrackedEntityId);
     setTrackedIdRef.current = setTrackedEntityId;
     const trackDistRef = useRef(500_000);
+    const morphTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     // Cacher forrige vellykkede (trackedId, dataSource) par slik at preRender
     // slipper å itere alle dataSources per frame. Tilbakestilles når id endres eller
     // entiteten forsvinner.
@@ -615,10 +616,41 @@ export function GlobeViewer({ children, onSelect, onEntitySelect, onBackgroundCl
     // 2D/3D projeksjonstoggle
     useEffect(() => {
         if (!viewer) return;
+        if (morphTimeoutRef.current) clearTimeout(morphTimeoutRef.current);
+
         if (is2D) {
             if (activeModeRef.current === 'photorealistic3d') setMode('map');
-            viewer.scene.morphTo2D(1.5);
+
+            const { scene } = viewer;
+            scene.backgroundColor = Color.fromCssColorString('#060810');
+            scene.globe.baseColor = Color.fromCssColorString('#0d1b2a');
+            if (scene.skyAtmosphere) scene.skyAtmosphere.show = false;
+            if (scene.skyBox) scene.skyBox.show = false;
+            if (scene.sun) scene.sun.show = false;
+
+            viewer.scene.morphToColumbusView(1.0);
+
+            // Fly til verdensoversikt etter morphen er ferdig
+            morphTimeoutRef.current = setTimeout(() => {
+                if (viewer.isDestroyed()) return;
+                viewer.camera.flyTo({
+                    destination: Cartesian3.fromDegrees(0, 15, 18_000_000),
+                    orientation: { heading: 0, pitch: CesiumMath.toRadians(-90), roll: 0 },
+                    duration: 1.2,
+                });
+            }, 1100);
         } else {
+            const { scene } = viewer;
+            scene.backgroundColor = Color.fromCssColorString('#0a0a0f');
+            scene.globe.baseColor = Color.fromCssColorString('#12121a');
+            if (scene.skyAtmosphere) {
+                scene.skyAtmosphere.show = true;
+                scene.skyAtmosphere.hueShift = 0.05;
+                scene.skyAtmosphere.saturationShift = 0.3;
+            }
+            if (scene.skyBox) scene.skyBox.show = true;
+            if (scene.sun) scene.sun.show = true;
+
             viewer.scene.morphTo3D(1.5);
         }
     }, [viewer, is2D]); // eslint-disable-line react-hooks/exhaustive-deps
