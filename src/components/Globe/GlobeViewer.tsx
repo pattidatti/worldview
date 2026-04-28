@@ -372,6 +372,7 @@ export function GlobeViewer({ children, onSelect, onEntitySelect, onBackgroundCl
                         const scanRadius = targetHeight * 2.5;
                         for (let i = 0; i < v.dataSources.length; i++) {
                             const ds = v.dataSources.get(i);
+                            if (!ds.clustering?.enabled) continue;
                             for (const entity of ds.entities.values) {
                                 if (!entity.position || isSpringAnimating(entity)) continue;
                                 const pos = entity.position.getValue(JulianDate.now());
