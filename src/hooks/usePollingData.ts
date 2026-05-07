@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useCinematic } from '@/context/CinematicContext';
 
 interface PollingResult<T> {
     data: T | null;
@@ -28,11 +29,15 @@ export function usePollingData<T>(
     const [lastUpdated, setLastUpdated] = useState<number | null>(null);
     const fetchRef = useRef(fetchFn);
     fetchRef.current = fetchFn;
+    const { cinematicActiveRef } = useCinematic();
     // Default ~1.5s jitter sprer første fetch for 11 polling-lag så de ikke alle
     // treffer nettverket i samme tick når appen lastes. Konsumenter kan overstyre.
     const { startupJitterMs = 1500 } = options;
 
     const doFetch = useCallback(async () => {
+        // Skip nettverk + entity-sync når cinematic-tour kjører.
+        // Manuell refresh-kall (etter unmount) går igjennom som vanlig.
+        if (cinematicActiveRef.current) return;
         setLoading(true);
         setError(null);
         try {
@@ -44,7 +49,7 @@ export function usePollingData<T>(
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [cinematicActiveRef]);
 
     useEffect(() => {
         if (!enabled) return;

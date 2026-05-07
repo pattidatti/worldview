@@ -56,6 +56,7 @@ import { LightningLayer } from './components/Layers/LightningLayer/LightningLaye
 import { HeritageLayer } from './components/Heritage/HeritageLayer';
 import { PlaceLabels } from './components/Globe/PlaceLabels';
 import { HudOverlay } from './components/UI/HudOverlay';
+import { FpsOverlay } from './components/UI/FpsOverlay';
 import { PortholeOverlay } from './components/UI/PortholeOverlay';
 import { useTracking } from './context/TrackingContext';
 import { HudDock } from './components/UI/HudDock/HudDock';
@@ -279,6 +280,7 @@ function AppContent({
                 <GateDrawHud />
                 <PortholeOverlay />
                 <HudOverlay />
+                <FpsOverlay />
                 <HudDock />
                 <GeoNavigator />
                 <TimelineBar />

@@ -16,6 +16,7 @@ import { useTracking } from '@/context/TrackingContext';
 import { useOrbit } from '@/context/OrbitContext';
 import { useShaderOverlay } from '@/context/ShaderOverlayContext';
 import { springInEntity, isSpringAnimating } from '@/utils/springEntities';
+import { applyTilesetPerformanceTuning } from '@/utils/tilesetPerformance';
 import { NIGHT_VISION_SHADER } from '@/shaders/nightVision';
 import { CRT_SHADER } from '@/shaders/crt';
 import { THERMAL_SHADER } from '@/shaders/thermal';
@@ -150,6 +151,9 @@ export function GlobeViewer({ children, onSelect, onEntitySelect, onBackgroundCl
             infoBox: false,
             requestRenderMode: true,
             maximumRenderTimeChange: 10,
+            // Tving CSS-piksel-rendering: HiDPI-skjermer rendrer ellers 2-4x flere fragments
+            // for samme synlige resultat. Knapt synlig på 1080p, dramatisk vinst på Retina/WSL2.
+            useBrowserRecommendedResolution: false,
             mapProjection: new WebMercatorProjection(),
             // DepthPlane ellers klipper entiteter ved altitude 0 i SCENE3D.
             // Sett til -500 slik at alle entiteter ≥ -500m passerer depth test.
@@ -171,7 +175,13 @@ export function GlobeViewer({ children, onSelect, onEntitySelect, onBackgroundCl
         // Dark theme
         scene.backgroundColor = Color.fromCssColorString('#0a0a0f');
         scene.globe.baseColor = Color.fromCssColorString('#12121a');
-        scene.globe.enableLighting = true;
+        // Lighting: skrudd av — Photorealistic 3D Tiles har innbakt globalt lys, og
+        // standard imagery (satellite/map/blend) ser bedre ut uten ekstra dag/natt-skygge
+        // som blokkerer entiteter på nattsiden. Stor fragment-shader-vinst.
+        scene.globe.enableLighting = false;
+        // FXAA: skrudd av — full-screen post-process som koster en GPU-pass per frame.
+        // Knapt synlig på moderne høy-DPI displays, merkbar perf-vinst på integrert GPU/WSL2.
+        scene.postProcessStages.fxaa.enabled = false;
 
         // Stjernehimmel og atmosfære — gir romfølelse
         if (scene.skyAtmosphere) {
@@ -218,8 +228,26 @@ export function GlobeViewer({ children, onSelect, onEntitySelect, onBackgroundCl
             scene.requestRender();
         }, { passive: false });
 
+        // Konsolidert preRender-handler: zoom-momentum, kamera-tracking, orbit-rotasjon
+        // og shader-driven re-render i én listener. Reduserer event-dispatch overhead
+        // og lar oss styre rekkefølgen eksplisitt.
         scene.preRender.addEventListener(() => {
+            // Aktiv animert shader trenger u_time-tick → behold kontinuerlig render
+            if (activeShaderKeyRef.current !== 'none') scene.requestRender();
+
             const tracking = trackedIdRef.current;
+
+            // Orbit-rotasjon kun når orbit-modus uten tracked entity
+            if (!tracking && orbitActiveRef.current && orbitTargetRef.current) {
+                const now = performance.now();
+                const dt = orbitLastTimeMsRef.current === 0 ? 0 : Math.min((now - orbitLastTimeMsRef.current) / 16.67, 3);
+                orbitLastTimeMsRef.current = now;
+                orbitHeadingRef.current += orbitSpeedRef.current * dt;
+                orbitHprScratch.heading = orbitHeadingRef.current;
+                orbitHprScratch.range = orbitDistRef.current;
+                v.camera.lookAt(orbitTargetRef.current, orbitHprScratch);
+                scene.requestRender();
+            }
 
             if (pendingDelta !== 0) {
                 if (tracking) {
@@ -318,22 +346,6 @@ export function GlobeViewer({ children, onSelect, onEntitySelect, onBackgroundCl
             }
             trackedEntityCacheRef.current = null;
             setTrackedIdRef.current(null);
-        });
-
-        // Orbit + shader render loop runs via scene.preRender
-        scene.preRender.addEventListener(() => {
-            // Keep re-rendering while an animated shader is active (u_time needs continuous frames)
-            if (activeShaderKeyRef.current !== 'none') scene.requestRender();
-
-            if (!orbitActiveRef.current || !orbitTargetRef.current || trackedIdRef.current) return;
-            const now = performance.now();
-            const dt = orbitLastTimeMsRef.current === 0 ? 0 : Math.min((now - orbitLastTimeMsRef.current) / 16.67, 3);
-            orbitLastTimeMsRef.current = now;
-            orbitHeadingRef.current += orbitSpeedRef.current * dt;
-            orbitHprScratch.heading = orbitHeadingRef.current;
-            orbitHprScratch.range = orbitDistRef.current;
-            v.camera.lookAt(orbitTargetRef.current, orbitHprScratch);
-            scene.requestRender();
         });
 
         // Single centralized click handler
@@ -547,6 +559,7 @@ export function GlobeViewer({ children, onSelect, onEntitySelect, onBackgroundCl
                     try {
                         const tileset = await Cesium3DTileset.fromIonAssetId(2275207);
                         if (cancelled) return;
+                        applyTilesetPerformanceTuning(tileset);
                         tilesetRef.current = tileset;
                         scene.primitives.add(tileset);
                     } catch (e) {

@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Cesium3DTileset } from 'cesium';
 import { useViewer } from '@/context/ViewerContext';
 import { useLayerActions, useLayerVisibility } from '@/store/layerStore';
+import { applyTilesetPerformanceTuning } from '@/utils/tilesetPerformance';
 
 export function BuildingsLayer() {
     const viewer = useViewer();
@@ -25,6 +26,7 @@ export function BuildingsLayer() {
                 if (!tilesetRef.current) {
                     const tileset = await Cesium3DTileset.fromIonAssetId(96188);
                     if (cancelled) return;
+                    applyTilesetPerformanceTuning(tileset);
                     tilesetRef.current = tileset;
                     viewer!.scene.primitives.add(tileset);
                 }

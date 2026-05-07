@@ -20,6 +20,7 @@ import {
 } from 'cesium';
 import { type Viewport } from '@/hooks/useViewport';
 import { useViewer } from '@/context/ViewerContext';
+import { useCinematic } from '@/context/CinematicContext';
 import { useLayerActions, useLayerVisibility } from '@/store/layerStore';
 import { usePopupRegistry } from '@/context/PopupRegistry';
 import { useTooltipRegistry } from '@/context/TooltipRegistry';
@@ -43,8 +44,31 @@ const TOMTOM_POLL_MS = 90_000;
 
 type RenderMode = 'point' | 'billboard' | 'box';
 
+// Cache for globe.getHeight per (lat,lon)-grid-celle (~100m oppløsning).
+// Biler beveger seg langs faste veger der terrenghøyden er stabil i 30s-vinduer.
+// Per-frame-kall til getHeight på 100+ biler er den dyreste delen av DR-loopen.
+const HEIGHT_CACHE = new Map<string, { h: number; ts: number }>();
+const HEIGHT_TTL_MS = 30_000;
+const heightCartoScratch = new Cartographic();
+function cachedGlobeHeight(scene: { globe: { getHeight: (c: Cartographic) => number | undefined } }, lon: number, lat: number, fallback: number): number {
+    const key = `${Math.round(lon * 1000)}:${Math.round(lat * 1000)}`;
+    const now = Date.now();
+    const hit = HEIGHT_CACHE.get(key);
+    if (hit && now - hit.ts < HEIGHT_TTL_MS) return hit.h;
+    Cartographic.fromDegrees(lon, lat, 0, heightCartoScratch);
+    const h = scene.globe.getHeight(heightCartoScratch) ?? fallback;
+    HEIGHT_CACHE.set(key, { h, ts: now });
+    if (HEIGHT_CACHE.size > 5000) {
+        // Enkel oppryddingsstrategi: drop første 1000 entries når cache vokser
+        const it = HEIGHT_CACHE.keys();
+        for (let i = 0; i < 1000; i++) HEIGHT_CACHE.delete(it.next().value as string);
+    }
+    return h;
+}
+
 export function SimulatedTrafficLayer() {
     const viewer = useViewer();
+    const { cinematicActiveRef } = useCinematic();
     const { setLayerLoading, setLayerCount, setLayerError, setLayerLastUpdated } = useLayerActions();
     const { register, unregister } = usePopupRegistry();
     const { register: tooltipRegister, unregister: tooltipUnregister } = useTooltipRegistry();
@@ -314,6 +338,7 @@ export function SimulatedTrafficLayer() {
         if (!viewer || viewer.isDestroyed()) return;
 
         const handle = viewer.scene.preRender.addEventListener(() => {
+            if (cinematicActiveRef.current) return;
             const active = visible && isBelowAlt;
             if (!active) return;
 
@@ -351,7 +376,7 @@ export function SimulatedTrafficLayer() {
 
                 const lon  = p0[0] + (p1[0] - p0[0]) * car.fraction;
                 const lat  = p0[1] + (p1[1] - p0[1]) * car.fraction;
-                const galt = viewer.scene.globe.getHeight(Cartographic.fromDegrees(lon, lat)) ?? 2;
+                const galt = cachedGlobeHeight(viewer.scene, lon, lat, 2);
                 const pos  = Cartesian3.fromDegrees(lon, lat, galt + 1.5);
 
                 if (mode === 'point') {
@@ -406,7 +431,7 @@ export function SimulatedTrafficLayer() {
 
                 const lon = p0[0] + (p1[0] - p0[0]) * car.fraction;
                 const lat = p0[1] + (p1[1] - p0[1]) * car.fraction;
-                const galt = scene.globe.getHeight(Cartographic.fromDegrees(lon, lat)) ?? 2;
+                const galt = cachedGlobeHeight(scene, lon, lat, 2);
                 const pos     = Cartesian3.fromDegrees(lon, lat, galt + 0.75);
                 const heading = seg.legHeadings[car.legIndex] ?? 0;
 

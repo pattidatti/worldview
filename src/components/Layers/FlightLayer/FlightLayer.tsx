@@ -18,6 +18,7 @@ import {
 } from 'cesium';
 import { getAircraftGltf, classifyAircraftType } from '@/utils/aircraftGltf';
 import { useViewer } from '@/context/ViewerContext';
+import { useCinematic } from '@/context/CinematicContext';
 import { useLayerActions, useLayerVisibility } from '@/store/layerStore';
 import { usePopupRegistry } from '@/context/PopupRegistry';
 import { useTooltipRegistry } from '@/context/TooltipRegistry';
@@ -25,7 +26,7 @@ import { useGeointRegistry } from '@/context/GeointContext';
 import { useGates } from '@/context/GateContext';
 import { useTimelineEvents } from '@/context/TimelineEventContext';
 import { writeCrossings } from '@/services/crossingSync';
-import { useTimelineMode, useCursor, CURSOR_JUMP_THRESHOLD_MS } from '@/context/TimelineModeContext';
+import { useTimelineMode, useReplayCursor, CURSOR_JUMP_THRESHOLD_MS } from '@/context/TimelineModeContext';
 import { useReplayEntities } from '@/hooks/useReplayEntities';
 import { useViewport } from '@/hooks/useViewport';
 import { configureCluster } from '@/utils/cluster';
@@ -124,6 +125,7 @@ function extrapolatePosition(s: DrState, elapsedS: number): Cartesian3 {
 
 export function FlightLayer() {
     const viewer = useViewer();
+    const { cinematicActiveRef } = useCinematic();
     const { setLayerLoading, setLayerCount, setLayerError, setLayerLastUpdated } = useLayerActions();
     const { register, unregister } = usePopupRegistry();
     const { register: tooltipRegister, unregister: tooltipUnregister } = useTooltipRegistry();
@@ -138,7 +140,7 @@ export function FlightLayer() {
     const visible = useLayerVisibility('flights');
     const viewport = useViewport(viewer);
     const { mode, modeEpoch } = useTimelineMode();
-    const cursor = useCursor();
+    const cursor = useReplayCursor(mode);
     const isReplay = mode === 'replay';
     const replayResult = useReplayEntities('flight', cursor);
     const replayEntities = replayResult.entities;
@@ -430,6 +432,7 @@ export function FlightLayer() {
         if (!visible || !viewer || viewer.isDestroyed()) return;
         if (isReplay) return;
         const intervalId = setInterval(() => {
+            if (cinematicActiveRef.current) return;
             const ds = dataSourceRef.current;
             if (!ds?.show) return;
             const nowMs = Date.now();

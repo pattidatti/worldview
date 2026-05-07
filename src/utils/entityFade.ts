@@ -1,62 +1,80 @@
-import { type Entity, type Viewer, CallbackProperty, ConstantProperty, JulianDate, Color } from 'cesium';
+import { type Entity, type Viewer, ConstantProperty, JulianDate, Color } from 'cesium';
 
 function smoothstep(t: number): number {
     return t * t * (3 - 2 * t);
 }
 
-function startJd(): JulianDate {
-    return JulianDate.fromDate(new Date());
+// Fast 30fps animasjons-cadence — tilstrekkelig for fade/bounce-effekter, halverer
+// requestRender-trafikk vs 60fps. Bruk setInterval + ConstantProperty i stedet for
+// CallbackProperty: unngår per-frame eval-overhead og gjør animasjonen uavhengig av
+// hvor ofte Cesium trigger CallbackProperty.getValue().
+const FRAME_MS = 33;
+
+function animate(
+    durationMs: number,
+    viewer: Viewer,
+    onTick: (t: number) => void,
+    onDone?: () => void,
+): void {
+    const start = performance.now();
+    const id = window.setInterval(() => {
+        if (viewer.isDestroyed()) {
+            clearInterval(id);
+            return;
+        }
+        const t = Math.min((performance.now() - start) / durationMs, 1);
+        onTick(t);
+        viewer.scene.requestRender();
+        if (t >= 1) {
+            clearInterval(id);
+            onDone?.();
+        }
+    }, FRAME_MS);
 }
 
 /**
  * Fader inn billboard.color og/eller point.color fra alpha 0 → full alpha.
- * Bruker CallbackProperty-mønsteret fra pulseRing.ts (JulianDate, self-kickback).
- * Kall ETTER at entity er lagt til DataSource.
+ * Bruker setInterval (30fps) + ConstantProperty for å unngå per-frame
+ * CallbackProperty-eval. Kall ETTER at entity er lagt til DataSource.
  */
 export function fadeInEntity(entity: Entity, viewer: Viewer, durationMs = 600): void {
-    const jd = startJd();
-    const durationS = durationMs / 1000;
+    const jd = JulianDate.fromDate(new Date());
+    let target: Color | null = null;
+    let pointTarget: Color | null = null;
 
     if (entity.billboard) {
         const existing = entity.billboard.color;
-        const target = existing
+        target = existing
             ? Color.clone((existing as ConstantProperty).getValue(jd) as Color ?? Color.WHITE)
             : Color.WHITE.clone();
-        const targetAlpha = target.alpha;
-
-        const cb = new CallbackProperty((time: JulianDate | undefined) => {
-            const t = Math.min((time ? JulianDate.secondsDifference(time, jd) : 0) / durationS, 1);
-            if (t < 1 && !viewer.isDestroyed()) viewer.scene.requestRender();
-            return target.withAlpha(smoothstep(t) * targetAlpha);
-        }, false);
-        (entity.billboard as unknown as Record<string, unknown>).color = cb;
-
-        setTimeout(() => {
-            if (!viewer.isDestroyed() && entity.billboard)
-                (entity.billboard as unknown as Record<string, unknown>).color = new ConstantProperty(target.withAlpha(targetAlpha));
-            if (!viewer.isDestroyed()) viewer.scene.requestRender();
-        }, durationMs + 50);
+        (entity.billboard as unknown as Record<string, unknown>).color = new ConstantProperty(target.withAlpha(0));
     }
-
     if (entity.point?.color) {
-        const target = Color.clone((entity.point.color as ConstantProperty).getValue(jd) as Color ?? Color.WHITE);
-        const targetAlpha = target.alpha;
-
-        const cb = new CallbackProperty((time: JulianDate | undefined) => {
-            const t = Math.min((time ? JulianDate.secondsDifference(time, jd) : 0) / durationS, 1);
-            if (t < 1 && !viewer.isDestroyed()) viewer.scene.requestRender();
-            return target.withAlpha(smoothstep(t) * targetAlpha);
-        }, false);
-        (entity.point as unknown as Record<string, unknown>).color = cb;
-
-        setTimeout(() => {
-            if (!viewer.isDestroyed() && entity.point)
-                (entity.point as unknown as Record<string, unknown>).color = new ConstantProperty(target.withAlpha(targetAlpha));
-            if (!viewer.isDestroyed()) viewer.scene.requestRender();
-        }, durationMs + 50);
+        pointTarget = Color.clone((entity.point.color as ConstantProperty).getValue(jd) as Color ?? Color.WHITE);
+        (entity.point as unknown as Record<string, unknown>).color = new ConstantProperty(pointTarget.withAlpha(0));
     }
 
-    viewer.scene.requestRender();
+    animate(
+        durationMs,
+        viewer,
+        (t) => {
+            const a = smoothstep(t);
+            if (target && entity.billboard) {
+                (entity.billboard as unknown as Record<string, unknown>).color = new ConstantProperty(target.withAlpha(a * target.alpha));
+            }
+            if (pointTarget && entity.point) {
+                (entity.point as unknown as Record<string, unknown>).color = new ConstantProperty(pointTarget.withAlpha(a * pointTarget.alpha));
+            }
+        },
+        () => {
+            if (target && entity.billboard) {
+                (entity.billboard as unknown as Record<string, unknown>).color = new ConstantProperty(target);
+            }
+            if (pointTarget && entity.point) {
+                (entity.point as unknown as Record<string, unknown>).color = new ConstantProperty(pointTarget);
+            }
+        },
+    );
 }
 
 /**
@@ -69,38 +87,34 @@ export function fadeOutEntity(
     durationMs = 400,
     onComplete?: () => void,
 ): void {
-    const jd = startJd();
-    const durationS = durationMs / 1000;
+    const jd = JulianDate.fromDate(new Date());
+    let base: Color | null = null;
+    let pointBase: Color | null = null;
 
     if (entity.billboard) {
         const existing = entity.billboard.color;
-        const base = existing
+        base = existing
             ? Color.clone((existing as ConstantProperty).getValue(jd) as Color ?? Color.WHITE)
             : Color.WHITE.clone();
-        const baseAlpha = base.alpha;
-
-        const cb = new CallbackProperty((time: JulianDate | undefined) => {
-            const t = Math.min((time ? JulianDate.secondsDifference(time, jd) : 0) / durationS, 1);
-            if (t < 1 && !viewer.isDestroyed()) viewer.scene.requestRender();
-            return base.withAlpha((1 - smoothstep(t)) * baseAlpha);
-        }, false);
-        (entity.billboard as unknown as Record<string, unknown>).color = cb;
     }
-
     if (entity.point?.color) {
-        const base = Color.clone((entity.point.color as ConstantProperty).getValue(jd) as Color ?? Color.WHITE);
-        const baseAlpha = base.alpha;
-
-        const cb = new CallbackProperty((time: JulianDate | undefined) => {
-            const t = Math.min((time ? JulianDate.secondsDifference(time, jd) : 0) / durationS, 1);
-            if (t < 1 && !viewer.isDestroyed()) viewer.scene.requestRender();
-            return base.withAlpha((1 - smoothstep(t)) * baseAlpha);
-        }, false);
-        (entity.point as unknown as Record<string, unknown>).color = cb;
+        pointBase = Color.clone((entity.point.color as ConstantProperty).getValue(jd) as Color ?? Color.WHITE);
     }
 
-    viewer.scene.requestRender();
-    setTimeout(() => onComplete?.(), durationMs + 50);
+    animate(
+        durationMs,
+        viewer,
+        (t) => {
+            const a = 1 - smoothstep(t);
+            if (base && entity.billboard) {
+                (entity.billboard as unknown as Record<string, unknown>).color = new ConstantProperty(base.withAlpha(a * base.alpha));
+            }
+            if (pointBase && entity.point) {
+                (entity.point as unknown as Record<string, unknown>).color = new ConstantProperty(pointBase.withAlpha(a * pointBase.alpha));
+            }
+        },
+        () => onComplete?.(),
+    );
 }
 
 /**
@@ -109,26 +123,27 @@ export function fadeOutEntity(
  */
 export function bounceInEntity(entity: Entity, viewer: Viewer, durationMs = 450): void {
     if (!entity.billboard) return;
-    const jd = startJd();
-    const durationS = durationMs / 1000;
 
-    const cb = new CallbackProperty((time: JulianDate | undefined) => {
-        const t = Math.min((time ? JulianDate.secondsDifference(time, jd) : 0) / durationS, 1);
-        if (t < 1 && !viewer.isDestroyed()) viewer.scene.requestRender();
-        if (t < 0.7) {
-            const p = t / 0.7;
-            return 0.5 + smoothstep(p) * 0.65;   // 0.5 → 1.15
-        }
-        const p = (t - 0.7) / 0.3;
-        return 1.15 - smoothstep(p) * 0.15;       // 1.15 → 1.0
-    }, false);
-    (entity.billboard as unknown as Record<string, unknown>).scale = cb;
-
-    setTimeout(() => {
-        if (!viewer.isDestroyed() && entity.billboard)
-            (entity.billboard as unknown as Record<string, unknown>).scale = new ConstantProperty(1.0);
-        if (!viewer.isDestroyed()) viewer.scene.requestRender();
-    }, durationMs + 50);
-
-    viewer.scene.requestRender();
+    animate(
+        durationMs,
+        viewer,
+        (t) => {
+            let scale: number;
+            if (t < 0.7) {
+                const p = t / 0.7;
+                scale = 0.5 + smoothstep(p) * 0.65;
+            } else {
+                const p = (t - 0.7) / 0.3;
+                scale = 1.15 - smoothstep(p) * 0.15;
+            }
+            if (entity.billboard) {
+                (entity.billboard as unknown as Record<string, unknown>).scale = new ConstantProperty(scale);
+            }
+        },
+        () => {
+            if (entity.billboard) {
+                (entity.billboard as unknown as Record<string, unknown>).scale = new ConstantProperty(1.0);
+            }
+        },
+    );
 }

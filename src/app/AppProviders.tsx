@@ -11,6 +11,7 @@ import { SceneProjectionProvider } from '@/context/SceneProjectionContext';
 import { ShaderOverlayProvider } from '@/context/ShaderOverlayContext';
 import { TrackingProvider } from '@/context/TrackingContext';
 import { OrbitProvider } from '@/context/OrbitContext';
+import { CinematicProvider } from '@/context/CinematicContext';
 import { GeointProvider } from '@/context/GeointContext';
 import { WeatherRadarProvider } from '@/context/WeatherRadarContext';
 import { AnalysisPanelProvider } from '@/components/UI/AnalysisPanel/AnalysisPanelHost';
@@ -48,7 +49,9 @@ function InteractionProviders({ children }: { children: ReactNode }) {
     return (
         <TrackingProvider>
             <OrbitProvider>
-                <GeointProvider>{children}</GeointProvider>
+                <CinematicProvider>
+                    <GeointProvider>{children}</GeointProvider>
+                </CinematicProvider>
             </OrbitProvider>
         </TrackingProvider>
     );

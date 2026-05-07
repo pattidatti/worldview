@@ -22,11 +22,12 @@ import {
     Math as CesiumMath,
 } from 'cesium';
 import { useViewer } from '@/context/ViewerContext';
+import { useCinematic } from '@/context/CinematicContext';
 import { useLayerActions, useLayerVisibility } from '@/store/layerStore';
 import { usePopupRegistry } from '@/context/PopupRegistry';
 import { useTooltipRegistry } from '@/context/TooltipRegistry';
 import { useTracking } from '@/context/TrackingContext';
-import { useTimelineMode, useCursor } from '@/context/TimelineModeContext';
+import { useTimelineMode, useReplayCursor } from '@/context/TimelineModeContext';
 import { usePollingData } from '@/hooks/usePollingData';
 import { syncEntities } from '@/utils/syncEntities';
 import { configureCluster } from '@/utils/cluster';
@@ -52,12 +53,13 @@ const ORBITAL_SHELLS = [
 
 export function SatelliteLayer() {
     const viewer = useViewer();
+    const { cinematicActiveRef } = useCinematic();
     const { setLayerLoading, setLayerCount, setLayerError, setLayerLastUpdated } = useLayerActions();
     const { register, unregister } = usePopupRegistry();
     const { register: tooltipRegister, unregister: tooltipUnregister } = useTooltipRegistry();
     const { trackedEntityId } = useTracking();
     const { mode } = useTimelineMode();
-    const cursor = useCursor();
+    const cursor = useReplayCursor(mode);
     const isReplay = mode === 'replay';
     const visible = useLayerVisibility('satellites');
     const dataSourceRef = useRef<CustomDataSource | null>(null);
@@ -338,9 +340,12 @@ export function SatelliteLayer() {
         updatePositions();
         // Live: oppdater hvert 10. sek. Replay: oppdater kun når cursor endres (styres av updatePositions sin useCallback).
         if (isReplay) return;
-        const id = setInterval(updatePositions, POSITION_REFRESH_MS);
+        const id = setInterval(() => {
+            if (cinematicActiveRef.current) return;
+            updatePositions();
+        }, POSITION_REFRESH_MS);
         return () => clearInterval(id);
-    }, [visible, tleData, updatePositions, isReplay]);
+    }, [visible, tleData, updatePositions, isReplay, cinematicActiveRef]);
 
     // Shell-toggle knapp (rendret i DOM — bare synlig når satellitt-laget er aktivt)
     if (!visible) return null;

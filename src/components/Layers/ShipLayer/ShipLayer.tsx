@@ -24,6 +24,7 @@ import {
     PrimitiveCollection,
 } from 'cesium';
 import { useViewer } from '@/context/ViewerContext';
+import { useCinematic } from '@/context/CinematicContext';
 import { useSceneProjection } from '@/context/SceneProjectionContext';
 import { useLayerActions, useLayerVisibility } from '@/store/layerStore';
 import { usePopupRegistry } from '@/context/PopupRegistry';
@@ -32,7 +33,7 @@ import { useGeointRegistry } from '@/context/GeointContext';
 import { useGates } from '@/context/GateContext';
 import { useTimelineEvents } from '@/context/TimelineEventContext';
 import { writeCrossings } from '@/services/crossingSync';
-import { useTimelineMode, useCursor, CURSOR_JUMP_THRESHOLD_MS } from '@/context/TimelineModeContext';
+import { useTimelineMode, useReplayCursor, CURSOR_JUMP_THRESHOLD_MS } from '@/context/TimelineModeContext';
 import { useReplayEntities } from '@/hooks/useReplayEntities';
 import { useViewport } from '@/hooks/useViewport';
 import { configureCluster } from '@/utils/cluster';
@@ -179,6 +180,7 @@ const NAV_SCALE = new NearFarScalar(200, 2.0, 25_000, 0.0);
 
 export function ShipLayer() {
     const viewer = useViewer();
+    const { cinematicActiveRef } = useCinematic();
     const { setLayerLoading, setLayerCount, setLayerError, setLayerLastUpdated } = useLayerActions();
     const { register, unregister } = usePopupRegistry();
     const { register: tooltipRegister, unregister: tooltipUnregister } = useTooltipRegistry();
@@ -221,7 +223,7 @@ export function ShipLayer() {
     const visibleRef = useRef(visible);
     visibleRef.current = visible;
     const { mode, modeEpoch } = useTimelineMode();
-    const cursor = useCursor();
+    const cursor = useReplayCursor(mode);
     const isReplay = mode === 'replay';
     const replayResult = useReplayEntities('ship', cursor);
     const replayEntities = replayResult.entities;
@@ -1065,6 +1067,7 @@ export function ShipLayer() {
     useEffect(() => {
         if (!visible || !viewer) return;
         const intervalId = setInterval(() => {
+            if (cinematicActiveRef.current) return;
             const navDs = navlightDsRef.current;
             if (!navDs || viewer.isDestroyed()) return;
             for (const [mmsi, ship] of shipsRef.current) {
@@ -1094,6 +1097,7 @@ export function ShipLayer() {
     useEffect(() => {
         if (!viewer || !visible || is2D) return;
         const renderId = setInterval(() => {
+            if (cinematicActiveRef.current) return;
             if (!viewer.isDestroyed()) viewer.scene.requestRender();
         }, 250);
         return () => clearInterval(renderId);

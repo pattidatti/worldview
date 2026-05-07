@@ -148,3 +148,17 @@ body {
     to   { stroke-dashoffset: 0; }
 }
 
+/*
+ * Backdrop-blur globalt skrudd av for ytelse (særlig på WSL2 og integrerte GPUs).
+ * Tailwind-klassene backdrop-blur-* satte en filter som tvang GPU-en til å lese
+ * framebuffer per panel per frame — 25+ paneler = stor compositor-cost.
+ *
+ * Vi beholder gjennomsiktigheten via panelets eksisterende rgba-bakgrunn, men
+ * gir dem litt mer opasitet for å kompensere for tap av glass-effekt.
+ */
+[class*="backdrop-blur"] {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+

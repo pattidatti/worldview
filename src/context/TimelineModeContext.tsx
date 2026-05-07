@@ -10,6 +10,9 @@ import {
     type ReactNode,
 } from 'react';
 
+const NOOP_UNSUBSCRIBE = () => {};
+const noopSubscribe = () => NOOP_UNSUBSCRIBE;
+
 export type TimelineMode = 'live' | 'replay';
 
 // Module-level cursor store — separert fra context slik at cursor-endringer
@@ -38,6 +41,19 @@ export function useCursor(): number {
 /** Direkte snapshot uten abonnement — for effekter som trenger cursor én gang. */
 export function getCursorSnapshot(): number {
     return cursorStore.get();
+}
+
+/**
+ * Som useCursor(), men abonnerer KUN når mode === 'replay'. I live-modus
+ * returneres siste kjente cursor-verdi uten re-render-trigger. Brukes av
+ * tunge Cesium-lag (FlightLayer/ShipLayer/SatelliteLayer) som ikke leser
+ * cursor i live-grenen, men før dette re-rendret hvert sekund unødig.
+ */
+export function useReplayCursor(mode: TimelineMode): number {
+    return useSyncExternalStore(
+        mode === 'replay' ? cursorStore.subscribe : noopSubscribe,
+        cursorStore.get,
+    );
 }
 
 // Speed = sekunder per sekund sanntid. 0 = pause.
