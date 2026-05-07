@@ -4,6 +4,7 @@ import {
     ScreenSpaceEventHandler, ScreenSpaceEventType, defined,
     UrlTemplateImageryProvider, Math as CesiumMath, Cesium3DTileset, ImageryLayer,
     JulianDate, HeadingPitchRange, Matrix4, PostProcessStage, SceneMode, Cartographic,
+    WebMercatorProjection,
 } from 'cesium';
 import { reverseGeocode } from '@/services/geocoding';
 import { ViewerProvider } from '@/context/ViewerContext';
@@ -149,6 +150,7 @@ export function GlobeViewer({ children, onSelect, onEntitySelect, onBackgroundCl
             infoBox: false,
             requestRenderMode: true,
             maximumRenderTimeChange: 10,
+            mapProjection: new WebMercatorProjection(),
             // DepthPlane ellers klipper entiteter ved altitude 0 i SCENE3D.
             // Sett til -500 slik at alle entiteter ≥ -500m passerer depth test.
             depthPlaneEllipsoidOffset: -500,
@@ -197,6 +199,8 @@ export function GlobeViewer({ children, onSelect, onEntitySelect, onBackgroundCl
         let cursorWorldPos: Cartesian3 | undefined;
         const pickScratch = new Cartesian2();
         const dirScratch = new Cartesian3();
+        const projScratch1 = new Cartesian3();
+        const projScratch2 = new Cartesian3();
         const orbitHprScratch = new HeadingPitchRange(0, ORBIT_PITCH, 500_000);
         const trackHprScratch = new HeadingPitchRange(0, CesiumMath.toRadians(-45), 500_000);
         const julianDateScratch = new JulianDate();
@@ -248,23 +252,22 @@ export function GlobeViewer({ children, onSelect, onEntitySelect, onBackgroundCl
 
                 const amount = height * zoomVelocity;
 
-                if (scene.mode === SceneMode.SCENE2D || scene.mode === SceneMode.COLUMBUS_VIEW) {
-                    // 2D-modus: camera.move() virker ikke i flat projeksjonsrom — bruk zoomIn/zoomOut
-                    if (amount > 0) {
-                        v.camera.zoomIn(amount);
-                    } else {
-                        v.camera.zoomOut(-amount);
-                    }
-                    // Cursor-sentrert korreksjon: konverter begge til kartografisk, beregn avstand i 2D-kartrom
+                if (scene.mode === SceneMode.SCENE2D) {
                     if (cursorWorldPos) {
                         const cursorCarto = Cartographic.fromCartesian(
                             cursorWorldPos, scene.globe.ellipsoid, cartographicScratch
                         );
                         const camCarto = v.camera.positionCartographic;
-                        const R = scene.globe.ellipsoid.maximumRadius;
-                        const panFrac = Math.abs(zoomVelocity);
-                        v.camera.moveRight((cursorCarto.longitude - camCarto.longitude) * R * panFrac);
-                        v.camera.moveUp((cursorCarto.latitude - camCarto.latitude) * R * panFrac);
+                        // Projiser begge til kart-koordinater (WebMercator) for korrekt cursor-sentrert zoom
+                        const cursorProj = scene.mapProjection.project(cursorCarto, projScratch1);
+                        const camProj = scene.mapProjection.project(camCarto, projScratch2);
+                        const dX = cursorProj.x - camProj.x;
+                        const dY = cursorProj.y - camProj.y;
+                        if (amount > 0) v.camera.zoomIn(amount); else v.camera.zoomOut(-amount);
+                        v.camera.moveRight(dX * zoomVelocity);
+                        v.camera.moveUp(dY * zoomVelocity);
+                    } else {
+                        if (amount > 0) v.camera.zoomIn(amount); else v.camera.zoomOut(-amount);
                     }
                 } else if (cursorWorldPos) {
                     Cartesian3.subtract(cursorWorldPos, v.camera.position, dirScratch);
@@ -317,8 +320,11 @@ export function GlobeViewer({ children, onSelect, onEntitySelect, onBackgroundCl
             setTrackedIdRef.current(null);
         });
 
-        // Orbit render loop runs via scene.preRender only while orbitActive (and not tracking)
+        // Orbit + shader render loop runs via scene.preRender
         scene.preRender.addEventListener(() => {
+            // Keep re-rendering while an animated shader is active (u_time needs continuous frames)
+            if (activeShaderKeyRef.current !== 'none') scene.requestRender();
+
             if (!orbitActiveRef.current || !orbitTargetRef.current || trackedIdRef.current) return;
             const now = performance.now();
             const dt = orbitLastTimeMsRef.current === 0 ? 0 : Math.min((now - orbitLastTimeMsRef.current) / 16.67, 3);
@@ -601,10 +607,10 @@ export function GlobeViewer({ children, onSelect, onEntitySelect, onBackgroundCl
                           : activeOverlay === 'anime'       ? ANIME_SHADER
                           : activeOverlay === 'terminator'  ? TERMINATOR_DAY_SHADER
                           : THERMAL_SHADER;
-                stage = new PostProcessStage({ fragmentShader: src });
-                // u_time uniform for animerte shaders — kalles per frame av Cesium
-                (stage as PostProcessStage & { uniforms: Record<string, unknown> }).uniforms.u_time =
-                    () => performance.now() / 1000;
+                stage = new PostProcessStage({
+                    fragmentShader: src,
+                    uniforms: { u_time: () => performance.now() / 1000 },
+                });
                 scene.postProcessStages.add(stage);
                 stageMap.set(activeOverlay, stage);
             }
@@ -621,6 +627,7 @@ export function GlobeViewer({ children, onSelect, onEntitySelect, onBackgroundCl
 
         if (is2D) {
             if (activeModeRef.current === 'photorealistic3d') setMode('map');
+            if (trackedIdRef.current) setTrackedIdRef.current(null);
 
             const { scene } = viewer;
             scene.backgroundColor = Color.fromCssColorString('#060810');
@@ -629,14 +636,16 @@ export function GlobeViewer({ children, onSelect, onEntitySelect, onBackgroundCl
             if (scene.skyBox) scene.skyBox.show = false;
             if (scene.sun) scene.sun.show = false;
 
-            viewer.scene.morphToColumbusView(1.0);
+            viewer.scene.morphTo2D(1.0);
+            scene.screenSpaceCameraController.enableLook = false;
 
-            // Fly til verdensoversikt etter morphen er ferdig
             morphTimeoutRef.current = setTimeout(() => {
                 if (viewer.isDestroyed()) return;
+                const camCarto = viewer.camera.positionCartographic;
+                const lon = CesiumMath.toDegrees(camCarto.longitude);
+                const lat = CesiumMath.toDegrees(camCarto.latitude);
                 viewer.camera.flyTo({
-                    destination: Cartesian3.fromDegrees(0, 15, 18_000_000),
-                    orientation: { heading: 0, pitch: CesiumMath.toRadians(-90), roll: 0 },
+                    destination: Cartesian3.fromDegrees(lon, lat, 18_000_000),
                     duration: 1.2,
                 });
             }, 1100);
@@ -651,8 +660,8 @@ export function GlobeViewer({ children, onSelect, onEntitySelect, onBackgroundCl
             }
             if (scene.skyBox) scene.skyBox.show = true;
             if (scene.sun) scene.sun.show = true;
-
             viewer.scene.morphTo3D(1.5);
+            scene.screenSpaceCameraController.enableLook = true;
         }
     }, [viewer, is2D]); // eslint-disable-line react-hooks/exhaustive-deps
 

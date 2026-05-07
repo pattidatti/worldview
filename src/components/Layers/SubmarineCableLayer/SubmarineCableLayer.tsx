@@ -176,12 +176,12 @@ export function SubmarineCableLayer() {
         return () => { cancelled = true; };
     }, [viewer, visible, setLayerLoading, setLayerCount, setLayerError]);
 
-    // Render-loop: driver animasjon ved å be om ny frame ~20fps når laget er synlig
+    // Render-loop: kabler er statisk geometri, 1fps er tilstrekkelig
     useEffect(() => {
         if (!viewer || !visible) return;
         const id = setInterval(() => {
             if (!viewer.isDestroyed()) viewer.scene.requestRender();
-        }, 50);
+        }, 1000);
         return () => clearInterval(id);
     }, [viewer, visible]);
 

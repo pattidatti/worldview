@@ -53,6 +53,7 @@ import { ISSLayer } from './components/Layers/ISSLayer/ISSLayer';
 import { LaunchesLayer } from './components/Layers/LaunchesLayer/LaunchesLayer';
 import { VolcanoLayer } from './components/Layers/VolcanoLayer/VolcanoLayer';
 import { LightningLayer } from './components/Layers/LightningLayer/LightningLayer';
+import { HeritageLayer } from './components/Heritage/HeritageLayer';
 import { PlaceLabels } from './components/Globe/PlaceLabels';
 import { HudOverlay } from './components/UI/HudOverlay';
 import { PortholeOverlay } from './components/UI/PortholeOverlay';
@@ -264,6 +265,7 @@ function AppContent({
                 <VolcanoLayer />
                 <LightningLayer />
                 <GateLayer onRequestName={handleRequestName} />
+                <HeritageLayer />
                 <PlaceLabels />
                 <TopBar searchRef={searchRef} onToggleHelp={toggleHelp} onToggleMobileLayers={() => setMobileLayersOpen((v) => !v)} mobileLayersOpen={mobileLayersOpen} onToggleIntelligence={openSearch} intelligenceOpen={intelligenceOpen} />
                 <LayerPanel mobileOpen={mobileLayersOpen} />

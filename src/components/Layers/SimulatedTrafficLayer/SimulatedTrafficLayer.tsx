@@ -451,16 +451,13 @@ export function SimulatedTrafficLayer() {
         };
     }, [viewer, renderMode, segments]);
 
-    // rAF loop: drives rendering at ~60fps while cars are visible
+    // Render-loop: 4fps er tilstrekkelig for simulert veitrafikk
     useEffect(() => {
         if (!visible || !isBelowAlt || !viewer) return;
-        let rafId: number;
-        const tick = () => {
-            if (viewer && !viewer.isDestroyed()) viewer.scene.requestRender();
-            rafId = requestAnimationFrame(tick);
-        };
-        rafId = requestAnimationFrame(tick);
-        return () => cancelAnimationFrame(rafId);
+        const id = setInterval(() => {
+            if (!viewer.isDestroyed()) viewer.scene.requestRender();
+        }, 250);
+        return () => clearInterval(id);
     }, [visible, isBelowAlt, viewer]);
 
     return null;

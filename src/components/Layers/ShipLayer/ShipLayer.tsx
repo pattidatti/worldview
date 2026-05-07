@@ -24,6 +24,7 @@ import {
     PrimitiveCollection,
 } from 'cesium';
 import { useViewer } from '@/context/ViewerContext';
+import { useSceneProjection } from '@/context/SceneProjectionContext';
 import { useLayerActions, useLayerVisibility } from '@/store/layerStore';
 import { usePopupRegistry } from '@/context/PopupRegistry';
 import { useTooltipRegistry } from '@/context/TooltipRegistry';
@@ -193,6 +194,7 @@ export function ShipLayer() {
     appendEventsRef.current = appendTimelineEvents;
     const lastEntityStateRef = useRef<Map<string, EntityPosition>>(new Map());
     const visible = useLayerVisibility('ships');
+    const { is2D } = useSceneProjection();
     const viewport = useViewport(viewer);
     const viewportRef = useRef(viewport);
     viewportRef.current = viewport;
@@ -1088,14 +1090,14 @@ export function ShipLayer() {
         return () => clearInterval(intervalId);
     }, [visible, viewer]);
 
-    // Render-løkke for partikkelanimasjon (20fps mens skip-laget er synlig)
+    // Render-løkke for partikkelanimasjon (4fps). Ikke nødvendig i 2D.
     useEffect(() => {
-        if (!viewer || !visible) return;
+        if (!viewer || !visible || is2D) return;
         const renderId = setInterval(() => {
             if (!viewer.isDestroyed()) viewer.scene.requestRender();
-        }, 50);
+        }, 250);
         return () => clearInterval(renderId);
-    }, [viewer, visible]);
+    }, [viewer, visible, is2D]);
 
     if (!API_KEY) return null;
     return null;

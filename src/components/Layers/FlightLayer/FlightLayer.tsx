@@ -14,6 +14,7 @@ import {
     ModelGraphics,
     Transforms,
     HeadingPitchRoll,
+    NearFarScalar,
 } from 'cesium';
 import { getAircraftGltf, classifyAircraftType } from '@/utils/aircraftGltf';
 import { useViewer } from '@/context/ViewerContext';
@@ -50,6 +51,10 @@ const REMOVAL_TTL_MS = DR_MAX_AGE_MS; // fjern entitet når DR stopper
 const EARTH_RADIUS_M = 6_371_000;
 
 const MILITARY_COLOR = '#ff2244';
+
+// Skalerer billboard fra 40px (ved 500km høyde) ned til 10px (ved 2000km høyde).
+// Cesium interpolerer automatisk basert på kamera-til-entitet-avstand.
+const BILLBOARD_SCALE_BY_DISTANCE = new NearFarScalar(500_000, 1.0, 2_000_000, 0.25);
 
 const SOURCE_COLORS: Record<number, string> = {
     0: '#ffa500',
@@ -153,12 +158,15 @@ export function FlightLayer() {
     // 3D model mode when camera is below 500 km
     const use3DRef = useRef(false);
 
-    // Camera altitude monitor → switch between billboard icons and 3D models
+    // Camera altitude monitor → switch between billboard icons and 3D models,
+    // og skjul trails ved zoom-ut (>500km høyde).
     useEffect(() => {
         if (!viewer || viewer.isDestroyed()) return;
         const check = () => {
             if (viewer.isDestroyed()) return;
-            use3DRef.current = viewer.camera.positionCartographic.height < 500_000;
+            const height = viewer.camera.positionCartographic.height;
+            use3DRef.current = height < 500_000;
+            if (trailDsRef.current) trailDsRef.current.show = height < 500_000 && visibleRef.current;
         };
         check();
         const rm1 = viewer.camera.changed.addEventListener(check);
@@ -406,9 +414,12 @@ export function FlightLayer() {
 
     useEffect(() => {
         if (dataSourceRef.current) dataSourceRef.current.show = visible;
-        if (trailDsRef.current) trailDsRef.current.show = visible;
+        if (trailDsRef.current) {
+            const height = viewer?.camera.positionCartographic.height ?? 0;
+            trailDsRef.current.show = visible && height < 500_000;
+        }
         if (pulseDsRef.current) pulseDsRef.current.show = visible;
-    }, [visible]);
+    }, [visible, viewer]);
 
     // --- Dead-reckoning via setInterval ---
     // 4 Hz er nok: selv raske fly (~300 m/s) flytter seg ~75 m per tick, subpixel
@@ -517,6 +528,7 @@ export function FlightLayer() {
                     entity.billboard = {
                         image: createPlaneIcon(color),
                         width: 40, height: 40, color: cesiumColor,
+                        scaleByDistance: BILLBOARD_SCALE_BY_DISTANCE,
                         verticalOrigin: VerticalOrigin.CENTER,
                         horizontalOrigin: HorizontalOrigin.CENTER,
                         heightReference: HeightReference.NONE,
@@ -557,6 +569,7 @@ export function FlightLayer() {
                         billboard: {
                             image: createPlaneIcon(color),
                             width: 40, height: 40, color: cesiumColor,
+                            scaleByDistance: BILLBOARD_SCALE_BY_DISTANCE,
                             verticalOrigin: VerticalOrigin.CENTER,
                             horizontalOrigin: HorizontalOrigin.CENTER,
                             heightReference: HeightReference.NONE,
