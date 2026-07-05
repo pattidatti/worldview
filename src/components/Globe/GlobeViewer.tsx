@@ -19,6 +19,7 @@ import { springInEntity, isSpringAnimating } from '@/utils/springEntities';
 import { renderScheduler } from '@/core/RenderScheduler';
 import { viewportService } from '@/core/ViewportService';
 import { lodGovernor } from '@/core/LODGovernor';
+import { pickRouter } from '@/core/pickRouter';
 import { applyTilesetPerformanceTuning } from '@/utils/tilesetPerformance';
 import { NIGHT_VISION_SHADER } from '@/shaders/nightVision';
 import { CRT_SHADER } from '@/shaders/crt';
@@ -370,6 +371,10 @@ export function GlobeViewer({ children, onSelect, onEntitySelect, onBackgroundCl
 
             // Orbital shell picks (fra SatelliteLayer) — la SatelliteLayer håndtere disse
             if (defined(picked) && typeof picked.id === 'string' && picked.id.startsWith('orbital-shell-')) return;
+
+            // Primitive-picks (renderplan-lag) — string-id-er rutet på kanal-prefiks.
+            // Må stå FØR cluster-grenen: cluster-billboards pickes også som ikke-Entity.
+            if (defined(picked) && pickRouter.route(picked.id, click.position)) return;
 
             // Cluster billboard → zoom mot det, spring-eksplosjon etter zoom
             if (defined(picked)) {
