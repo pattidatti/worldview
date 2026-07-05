@@ -6,7 +6,7 @@
 // doc-ID på minutt-granularitet for å unngå duplikater når samme fly krysser
 // samme segment to ganger i samme minutt pga. støy.
 
-import { Timestamp, doc, setDoc } from 'firebase/firestore';
+import { Timestamp, doc, writeBatch } from 'firebase/firestore';
 import { db, isKillSwitchActive } from './firestore';
 import type { GateCrossingEvent } from '@/types/timeline-event';
 
@@ -30,13 +30,17 @@ export async function writeCrossings(events: GateCrossingEvent[]): Promise<void>
     if (!db || events.length === 0) return;
     if (isKillSwitchActive()) return;
 
-    const promises = events.map(async (ev) => {
-        const day = dayKeyUTC(ev.timestamp);
-        const id = docId(ev);
-        const ref = doc(db!, 'gate_crossings', day, 'events', id);
-        const expiresAt = Timestamp.fromMillis(ev.timestamp + RETENTION_DAYS * 86_400_000);
-        try {
-            await setDoc(ref, {
+    // writeBatch i stedet for N parallelle setDoc — én roundtrip per poll.
+    // Firestore-grensen er 500 writes per batch; chunk godt under den.
+    for (let i = 0; i < events.length; i += 450) {
+        const chunk = events.slice(i, i + 450);
+        const batch = writeBatch(db);
+        for (const ev of chunk) {
+            const day = dayKeyUTC(ev.timestamp);
+            const id = docId(ev);
+            const ref = doc(db, 'gate_crossings', day, 'events', id);
+            const expiresAt = Timestamp.fromMillis(ev.timestamp + RETENTION_DAYS * 86_400_000);
+            batch.set(ref, {
                 ts: ev.timestamp,
                 schemaVersion: CROSSING_SCHEMA_VERSION,
                 expiresAt,
@@ -46,12 +50,13 @@ export async function writeCrossings(events: GateCrossingEvent[]): Promise<void>
                 segmentIndex: ev.segmentIndex,
                 direction: ev.direction,
                 position: ev.position,
-            }, { merge: false }); // idempotent — samme ID = overskrives identisk
-        } catch (e) {
-            // En enkelt feil skal ikke stoppe resten — logg og fortsett.
-            console.warn(`[crossingSync] write feilet for ${id}`, e);
+            }); // idempotent — samme ID = overskrives identisk
         }
-    });
-
-    await Promise.all(promises);
+        try {
+            await batch.commit();
+        } catch (e) {
+            // En feilet batch skal ikke stoppe resten — logg og fortsett.
+            console.warn('[crossingSync] batch write feilet', e);
+        }
+    }
 }

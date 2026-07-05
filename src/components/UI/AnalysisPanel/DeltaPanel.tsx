@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useHistory } from '@/context/HistoryContext';
 import { useRollingStats } from '@/hooks/useRollingStats';
 import { LAYER_ICONS, type LayerId, LAYER_DEFAULTS } from '@/types/layers';
@@ -24,8 +25,11 @@ function formatDelta(delta: number | null): { text: string; color: string } {
 }
 
 export function DeltaPanel({ layerId, position, onPositionChange, onClose }: DeltaPanelProps) {
-    const { loading, error } = useHistory();
+    const { loading, error, ensureFullBackfill } = useHistory();
     const stats = useRollingStats(layerId);
+
+    // 7d-statistikk trenger full backfill — boot laster kun siste 24t.
+    useEffect(() => { ensureFullBackfill(); }, [ensureFullBackfill]);
 
     const name = LAYER_NAME_BY_ID[layerId] ?? layerId;
     const icon = LAYER_ICONS[layerId] ?? '◆';
