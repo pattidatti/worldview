@@ -21,7 +21,7 @@ import { EntityTooltip } from './components/UI/EntityTooltip';
 import { ToastContainer } from './components/UI/Toast';
 import { LayerErrorWatcher } from './components/UI/LayerErrorWatcher';
 import { SatelliteLayer } from './components/Layers/SatelliteLayer/SatelliteLayer';
-import { FlightLayer } from './components/Layers/FlightLayer/FlightLayer';
+import { FlightLayer } from './components/Layers/FlightLayer';
 import { ShipLayer } from './components/Layers/ShipLayer/ShipLayer';
 import { WeatherLayer } from './components/Layers/WeatherLayer/WeatherLayer';
 import { WebcamLayer } from './components/Layers/WebcamLayer/WebcamLayer';

@@ -54,10 +54,14 @@ describe('FlightSessionCore.buildPositions', () => {
     it('fersk posisjon (< 100ms) ekstrapoleres ikke', () => {
         const core = new FlightSessionCore();
         core.ingest([flight('a')], 1000);
-        const { buffer, moved } = core.buildPositions(1050);
-        expect(buffer[0]).toBe(10);
-        expect(buffer[1]).toBe(60);
-        expect(moved).toBe(false);
+        const first = core.buildPositions(1050);
+        expect(first.buffer[0]).toBe(10);
+        expect(first.buffer[1]).toBe(60);
+        // Første bygg etter ingest: roster er nytt → bufferen MÅ konsumeres
+        expect(first.moved).toBe(true);
+        // Andre bygg uten bevegelse: idle
+        const second = core.buildPositions(1090, first.buffer);
+        expect(second.moved).toBe(false);
     });
 
     it('fly i DR-vindu ekstrapoleres langs heading', () => {
@@ -75,6 +79,7 @@ describe('FlightSessionCore.buildPositions', () => {
     it('eldre enn DR_MAX_AGE_MS: siste kjente posisjon + stale-flagg', () => {
         const core = new FlightSessionCore();
         core.ingest([flight('a')], 1000);
+        core.buildPositions(1050); // konsumer roster-dirty
         const { buffer, moved } = core.buildPositions(1000 + DR_MAX_AGE_MS + 5000);
         expect(buffer[0]).toBe(10);
         expect(buffer[5]).toBe(FLIGHT_FLAG_STALE);

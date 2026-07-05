@@ -25,6 +25,8 @@ export class FlightSessionCore {
     private flights = new Map<string, FlightEntity>();
     private lastUpdateMs = new Map<string, number>();
     private roster: string[] = [];
+    /** Roster endret siden forrige buildPositions → neste buffer MÅ konsumeres. */
+    private rosterDirty = false;
 
     get size(): number {
         return this.flights.size;
@@ -50,6 +52,7 @@ export class FlightSessionCore {
             this.lastUpdateMs.delete(id);
         }
         this.roster = [...this.flights.keys()];
+        this.rosterDirty = true;
         return { ...delta, roster: this.roster };
     }
 
@@ -63,8 +66,9 @@ export class FlightSessionCore {
      * Bygg posisjonsbuffer for gjeldende roster (dead-reckoning per fly).
      * Gjenbruker `reuse` hvis den har riktig størrelse (ping-pong-pool);
      * allokerer ellers nytt — degrader til GC-trykk, aldri stopp.
-     * `moved` er false når ingen fly faktisk ekstrapolerte (idle-vern:
-     * mottaker kan droppe requestRender).
+     * `moved` er false når ingen fly faktisk ekstrapolerte OG rosteret er
+     * uendret siden forrige bygg (idle-vern: mottaker kan droppe bufferen
+     * og requestRender).
      */
     buildPositions(now: number, reuse?: Float64Array | null): { buffer: Float64Array; moved: boolean } {
         const stride = FLIGHT_BUFFER_LAYOUT.stride;
@@ -101,6 +105,8 @@ export class FlightSessionCore {
             buffer[base + 4] = flight.velocity;
             buffer[base + 5] = flags;
         }
-        return { buffer, moved };
+        const mustConsume = moved || this.rosterDirty;
+        this.rosterDirty = false;
+        return { buffer, moved: mustConsume };
     }
 }

@@ -121,6 +121,12 @@ export class FlightChannel implements DataChannel<FlightEntity> {
                 this.emitStatus({ ...this.lastStatus, count: this.store.size });
             }),
             rpc.onPush<FlightsPositionsPush>('flights/positions', (msg) => {
+                // Idle-vern: ingenting flyttet og roster uendret → returner
+                // bufferen direkte, uten apply (og uten requestRender nedstrøms).
+                if (!msg.moved) {
+                    rpc.post({ type: 'flights/bufferReturn', buffer: msg.buffer }, [msg.buffer]);
+                    return;
+                }
                 // Returner FORRIGE buffer — den nye blir storens gjeldende og må
                 // være gyldig for oppslag (tracking, gates) til neste tick.
                 if (this.previousBuffer) {
@@ -177,9 +183,9 @@ export class FlightChannel implements DataChannel<FlightEntity> {
         this.fallbackScheduler.start();
         this.fallbackDrTimer = setInterval(() => {
             if (this.paused || core.size === 0) return;
-            const { buffer } = core.buildPositions(Date.now(), this.fallbackBuffer);
+            const { buffer, moved } = core.buildPositions(Date.now(), this.fallbackBuffer);
             this.fallbackBuffer = buffer;
-            this.store.applyPositions(buffer);
+            if (moved) this.store.applyPositions(buffer);
         }, FLIGHT_DR_INTERVAL_MS);
     }
 

@@ -92,7 +92,7 @@ export function GlobeViewer({ children, onSelect, onEntitySelect, onBackgroundCl
     const containerRef = useRef<HTMLDivElement>(null);
     const initRef = useRef(false);
     const [viewer, setViewer] = useState<Viewer | null>(null);
-    const { resolve } = usePopupRegistry();
+    const { resolve, resolveById } = usePopupRegistry();
     const { isDrawingRef } = useGates();
     const { activeMode, setMode } = useImagery();
     const { is2D } = useSceneProjection();
@@ -117,6 +117,8 @@ export function GlobeViewer({ children, onSelect, onEntitySelect, onBackgroundCl
     onBackgroundClickRef.current = onBackgroundClick;
     const resolveRef = useRef(resolve);
     resolveRef.current = resolve;
+    const resolveByIdRef = useRef(resolveById);
+    resolveByIdRef.current = resolveById;
     const trackedIdRef = useRef(trackedEntityId);
     trackedIdRef.current = trackedEntityId;
     const setTrackedIdRef = useRef(setTrackedEntityId);
@@ -372,9 +374,17 @@ export function GlobeViewer({ children, onSelect, onEntitySelect, onBackgroundCl
             // Orbital shell picks (fra SatelliteLayer) — la SatelliteLayer håndtere disse
             if (defined(picked) && typeof picked.id === 'string' && picked.id.startsWith('orbital-shell-')) return;
 
-            // Primitive-picks (renderplan-lag) — string-id-er rutet på kanal-prefiks.
+            // Primitive-picks (renderplan-lag): popup via id-oppslag i EntityStore,
+            // deretter pickRouter for ikke-popup-handlinger (tetthetsceller o.l.).
             // Må stå FØR cluster-grenen: cluster-billboards pickes også som ikke-Entity.
-            if (defined(picked) && pickRouter.route(picked.id, click.position)) return;
+            if (defined(picked) && typeof picked.id === 'string') {
+                const popup = resolveByIdRef.current(picked.id);
+                if (popup) {
+                    onSelectRef.current?.(popup);
+                    return;
+                }
+                if (pickRouter.route(picked.id, click.position)) return;
+            }
 
             // Cluster billboard → zoom mot det, spring-eksplosjon etter zoom
             if (defined(picked)) {
