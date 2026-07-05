@@ -1,6 +1,7 @@
 import { type Flight, type PositionSource } from '@/types/flight';
 import { type Viewport } from '@/hooks/useViewport';
 import { isValidLatLon } from '@/utils/coords';
+import { combineSignals } from '@/utils/http';
 
 const API_BASE = import.meta.env.DEV
     ? '/proxy/airplanes/v2'
@@ -68,7 +69,7 @@ function viewportToPoint(viewport: Viewport): { lat: number; lon: number; radius
     return { lat, lon, radiusNm };
 }
 
-export async function fetchFlights(viewport?: Viewport | null): Promise<Flight[]> {
+export async function fetchFlights(viewport?: Viewport | null, signal?: AbortSignal): Promise<Flight[]> {
     let url: string;
     if (viewport) {
         const { lat, lon, radiusNm } = viewportToPoint(viewport);
@@ -78,7 +79,7 @@ export async function fetchFlights(viewport?: Viewport | null): Promise<Flight[]
         url = `${API_BASE}/point/0/0/250`;
     }
 
-    const response = await fetch(url);
+    const response = await fetch(url, { signal: combineSignals(12_000, signal) });
     if (response.status === 429) {
         console.warn('[FlightLayer] airplanes.live rate-limited (429) — skipping this poll');
         return [];

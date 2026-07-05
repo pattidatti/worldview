@@ -55,7 +55,7 @@ All env vars use Vite's `import.meta.env.VITE_*` convention.
 - **UTC i storage, lokal i UI** — Firestore-doc-IDer bruker `YYYY-MM-DD_UTC`. `expiresAt`-felt er 30d etter ts.
 - **schemaVersion på alle writes** — firestore.rules avviser writes uten `schemaVersion == CURRENT`. Migratorer kjører ved lesing (se `src/utils/schemaMigrators.ts`).
 - **Bruk `syncEntities<T>()`** for all entity-reconciliation (`src/utils/syncEntities.ts`) — erstatter manuell Map-bygging + loop + slett-gammel. `onAfterCreate` callback brukes til fade/bounce-animasjoner.
-- **Bruk `entityFade.ts`** for entity-animasjoner (`src/utils/entityFade.ts`) — `fadeInEntity`, `fadeOutEntity`, `bounceInEntity` bruker Cesiums `CallbackProperty`. Ikke implement egne animasjonsløkker.
+- **Bruk `entityFade.ts`** for entity-animasjoner (`src/utils/entityFade.ts`) — `fadeInEntity`, `fadeOutEntity`, `bounceInEntity` drives av ÉN delt 30fps-animasjonsdriver (én timer + én `requestRender` per tick uansett antall entiteter). Ikke implement egne animasjonsløkker.
 - **AIS WebSocket proxy i dev** — `aisstream.ts` kobler til `/ais-ws` lokalt; Vite-konfigens `aisProxy()`-plugin tunneler dette til `wss://stream.aisstream.io/v0/stream`. I prod: direkte WSS-tilkobling.
 
 ## History schemas (fase 3)
@@ -185,7 +185,7 @@ ConflictLayer and NewsLayer use clustering via `configureCluster(ds, { pixelRang
 
 - **`TrailBuffer<T>`** (`src/utils/trailBuffer.ts`) — fixed-size circular buffer brukt av `FlightLayer` og `ShipLayer` for posisjons-trails. O(1) push, `tail(n)` / `head(n)` / `toArray()` returnerer kronologisk rekkefølge uten array-kloning per poll. Enhetstester i `__tests__/trailBuffer.test.ts`.
 - **`syncEntities<T>()`** (`src/utils/syncEntities.ts`) — generisk entity-reconciliation: bygg/oppdater/slett Cesium-entiteter mot ny datamengde. Se Entity update pattern over.
-- **`entityFade.ts`** (`src/utils/entityFade.ts`) — animasjoner via Cesiums `CallbackProperty`: `fadeInEntity(entity, viewer, ms=600)`, `fadeOutEntity(entity, viewer, ms=400, onDone?)`, `bounceInEntity(entity, viewer, ms=450)`. Rydder opp med `ConstantProperty` etter ferdig animasjon.
+- **`entityFade.ts`** (`src/utils/entityFade.ts`) — `fadeInEntity(entity, viewer, ms=600)`, `fadeOutEntity(entity, viewer, ms=400, onDone?)`, `bounceInEntity(entity, viewer, ms=450)`. Alle jobber deles av én 30fps-driver (`setInterval`) som muterer `ConstantProperty`-verdier og kaller `requestRender` maks én gang per tick.
 
 ### Services
 

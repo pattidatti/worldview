@@ -232,9 +232,6 @@ export function GlobeViewer({ children, onSelect, onEntitySelect, onBackgroundCl
         // og shader-driven re-render i én listener. Reduserer event-dispatch overhead
         // og lar oss styre rekkefølgen eksplisitt.
         scene.preRender.addEventListener(() => {
-            // Aktiv animert shader trenger u_time-tick → behold kontinuerlig render
-            if (activeShaderKeyRef.current !== 'none') scene.requestRender();
-
             const tracking = trackedIdRef.current;
 
             // Orbit-rotasjon kun når orbit-modus uten tracked entity
@@ -631,6 +628,16 @@ export function GlobeViewer({ children, onSelect, onEntitySelect, onBackgroundCl
         }
 
         scene.requestRender();
+
+        // u_time-animasjon drives av et 30fps-intervall i stedet for selv-skedulerende
+        // requestRender i preRender. Det halverer frame-raten for shader-animasjonen og
+        // hindrer at en aktiv effekt låser hele scenen i kontinuerlig 60fps-rendering.
+        if (activeOverlay !== 'none') {
+            const id = window.setInterval(() => {
+                if (!viewer.isDestroyed()) scene.requestRender();
+            }, 33);
+            return () => clearInterval(id);
+        }
     }, [viewer, activeOverlay]);
 
     // 2D/3D projeksjonstoggle

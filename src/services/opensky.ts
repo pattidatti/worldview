@@ -17,7 +17,7 @@ export async function fetchFlights(viewport?: Viewport | null): Promise<Flight[]
         url += `?${params}`;
     }
 
-    const response = await fetch(url);
+    const response = await fetch(url, { signal: AbortSignal.timeout(15_000) });
 
     if (response.status === 429) {
         throw new RateLimitError();
@@ -112,7 +112,7 @@ export async function fetchFlightRoute(callsign: string): Promise<FlightRoute | 
     if (cached !== undefined) return cached;
 
     try {
-        const response = await fetch(proxied(`${OPENSKY_BASE}/routes?callsign=${encodeURIComponent(callsign)}`));
+        const response = await fetch(proxied(`${OPENSKY_BASE}/routes?callsign=${encodeURIComponent(callsign)}`), { signal: AbortSignal.timeout(10_000) });
         if (!response.ok) {
             routeCache.set(callsign, null);
             saveRouteToSession(callsign, null);

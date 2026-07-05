@@ -1,6 +1,8 @@
+import { memo } from 'react';
 import { useTimelineMode, REPLAY_DEFAULT_OFFSET_MS } from '@/context/TimelineModeContext';
 
-export function ModePill() {
+// memo: TimelineBar re-rendrer hvert sekund (now-tick) — pillen endres kun ved modus-bytte.
+export const ModePill = memo(function ModePill() {
     const { mode, setMode, setCursor, jumpToNow } = useTimelineMode();
     const live = mode === 'live';
 
@@ -70,4 +72,4 @@ export function ModePill() {
             </button>
         </div>
     );
-}
+});

@@ -10,11 +10,17 @@ export interface Viewport {
 
 function viewportsEqual(a: Viewport | null, b: Viewport): boolean {
     if (!a) return false;
+    // Zoom-relativ terskel: 10 % av viewport-spennet, med gulv på 0.05°.
+    // En fast grense (tidligere 0.5°) ga fetch-storm ved global zoom (ethvert
+    // lite drag flyttet kantene > 0.5° og trigget refetch i alle viewport-
+    // drevne lag) og ~55 km panorering før refresh ved by-zoom (stale data).
+    const tolLon = Math.max(Math.abs(b.east - b.west), 0.05) * 0.1;
+    const tolLat = Math.max(Math.abs(b.north - b.south), 0.05) * 0.1;
     return (
-        Math.abs(a.west - b.west) < 0.5 &&
-        Math.abs(a.south - b.south) < 0.5 &&
-        Math.abs(a.east - b.east) < 0.5 &&
-        Math.abs(a.north - b.north) < 0.5
+        Math.abs(a.west - b.west) < tolLon &&
+        Math.abs(a.south - b.south) < tolLat &&
+        Math.abs(a.east - b.east) < tolLon &&
+        Math.abs(a.north - b.north) < tolLat
     );
 }
 

@@ -49,14 +49,14 @@ export async function fetchWikiSummary(title: string): Promise<WikiSummary | nul
     const encoded = encodeURIComponent(title);
     const res = await fetch(
         `https://nb.wikipedia.org/api/rest_v1/page/summary/${encoded}`,
-        { headers: { 'User-Agent': 'WorldView/0.1' } },
+        { headers: { 'User-Agent': 'WorldView/0.1' }, signal: AbortSignal.timeout(10_000) },
     );
 
     if (!res.ok) {
         // Fall back to English Wikipedia
         const enRes = await fetch(
             `https://en.wikipedia.org/api/rest_v1/page/summary/${encoded}`,
-            { headers: { 'User-Agent': 'WorldView/0.1' } },
+            { headers: { 'User-Agent': 'WorldView/0.1' }, signal: AbortSignal.timeout(10_000) },
         );
         if (!enRes.ok) {
             memCache.set(key, null);

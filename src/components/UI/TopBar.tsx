@@ -52,7 +52,7 @@ export function TopBar({ searchRef, onToggleHelp, onToggleMobileLayers, mobileLa
             {/* Øy 1: Logo (venstre) */}
             <div className="absolute top-3 left-4 z-10">
                 <div
-                    className="flex items-center gap-2 px-3 py-2 rounded-full bg-[var(--bg-ui)] backdrop-blur-xl border border-white/[0.06]"
+                    className="flex items-center gap-2 px-3 py-2 rounded-full bg-[var(--bg-ui-solid)] border border-white/[0.06]"
                     style={{ boxShadow: 'var(--shadow-panel)' }}
                 >
                     <span
@@ -85,7 +85,7 @@ export function TopBar({ searchRef, onToggleHelp, onToggleMobileLayers, mobileLa
             {/* Øy 3: Handlinger (høyre) */}
             <div className="absolute top-3 right-4 z-10">
                 <div
-                    className="hidden md:flex items-center gap-2 px-3 py-2 rounded-full bg-[var(--bg-ui)] backdrop-blur-xl border border-white/[0.06]"
+                    className="hidden md:flex items-center gap-2 px-3 py-2 rounded-full bg-[var(--bg-ui-solid)] border border-white/[0.06]"
                     style={{ boxShadow: 'var(--shadow-panel)' }}
                 >
                     <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-white/[0.04] border border-white/[0.08] font-mono text-xs">

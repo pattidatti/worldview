@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { useTimelineMode, type TimelineSpeed } from '@/context/TimelineModeContext';
 
 const SPEEDS: Array<{ value: TimelineSpeed; label: string }> = [
@@ -7,7 +8,8 @@ const SPEEDS: Array<{ value: TimelineSpeed; label: string }> = [
     { value: 360, label: '6t/s' },
 ];
 
-export function PlaybackControls() {
+// memo: TimelineBar re-rendrer hvert sekund (now-tick) — kontrollene endres kun ved mode/speed.
+export const PlaybackControls = memo(function PlaybackControls() {
     const { mode, speed, setSpeed, jumpToNow } = useTimelineMode();
     const disabled = mode === 'live';
 
@@ -49,4 +51,4 @@ export function PlaybackControls() {
             </button>
         </div>
     );
-}
+});

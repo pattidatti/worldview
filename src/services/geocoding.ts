@@ -44,6 +44,7 @@ export async function geocode(query: string): Promise<GeoResult[]> {
 
     const res = await fetch(`${NOMINATIM_URL}?${params}`, {
         headers: { 'User-Agent': 'WorldView/0.1' },
+        signal: AbortSignal.timeout(10_000),
     });
 
     if (!res.ok) return [];
@@ -91,6 +92,7 @@ export async function reverseGeocode(lat: number, lon: number): Promise<ReverseG
 
     const res = await fetch(`${NOMINATIM_REVERSE_URL}?${params}`, {
         headers: { 'User-Agent': 'WorldView/0.1' },
+        signal: AbortSignal.timeout(10_000),
     });
 
     if (!res.ok) {

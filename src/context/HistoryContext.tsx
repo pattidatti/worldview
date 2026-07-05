@@ -1,5 +1,6 @@
 import {
     createContext,
+    useCallback,
     useContext,
     useEffect,
     useMemo,
@@ -16,7 +17,12 @@ import { readRange, writeSnapshotBatch } from '@/services/historySync';
 const SNAPSHOT_INTERVAL_MS = 60_000; // 60s rolling buffer
 const BATCH_FLUSH_MS = 5 * 60_000; // 5-min Firestore batch write
 const MAX_SAMPLES = 10_080; // 7 dager × 1440 min
-const BACKFILL_MS = 7 * 86_400_000; // 7d boot-restore
+// Boot-restore leser kun siste 24t (~1 440 docs). Full 7d-backfill (~10 000
+// docs) kostet ~10k Firestore-reads ved HVER innloggede app-start — nå lastes
+// resten kun på forespørsel (ensureFullBackfill) når analysepanelet trenger
+// 7d-statistikk.
+const BOOT_BACKFILL_MS = 86_400_000; // 24t
+const FULL_BACKFILL_MS = 7 * 86_400_000; // 7d on-demand
 const MAX_PENDING = 1440; // cap retry-buffer ved gjentatte flush-feil (~24t)
 
 interface HistoryContextValue {
@@ -24,6 +30,8 @@ interface HistoryContextValue {
     loading: boolean;
     error: string | null;
     latest: Snapshot | null;
+    /** Last inn full 7d-historikk (idempotent). Kalles av analysepaneler som trenger 7d-vinduet. */
+    ensureFullBackfill: () => void;
 }
 
 const HistoryContext = createContext<HistoryContextValue | null>(null);
@@ -50,21 +58,47 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
     // Pending writes (akkumulert mellom 5-min flush).
     const pendingRef = useRef<Snapshot[]>([]);
 
-    // Boot-restore: les siste 7d fra Firestore.
+    // Boot-restore: les kun siste 24t fra Firestore (resten on-demand).
     useEffect(() => {
         if (!uid) return;
         setLoading(true);
         setError(null);
         const now = Date.now();
-        readRange(now - BACKFILL_MS, now)
+        readRange(now - BOOT_BACKFILL_MS, now)
             .then((restored) => {
-                setSnapshots(restored.slice(-MAX_SAMPLES));
+                setSnapshots((prev) => {
+                    // Behold evt. nyere samples fra rolling-intervallet.
+                    const oldestLive = prev.length > 0 ? prev[0].ts : Infinity;
+                    const merged = [...restored.filter((s) => s.ts < oldestLive), ...prev];
+                    return merged.slice(-MAX_SAMPLES);
+                });
                 setLoading(false);
             })
             .catch((e) => {
                 console.warn('[HistoryContext] boot-restore feilet', e);
                 setError('Historikk utilgjengelig');
                 setLoading(false);
+            });
+    }, [uid]);
+
+    // On-demand full backfill (7d) — trigges av analysepaneler.
+    const fullBackfillStartedRef = useRef(false);
+    const ensureFullBackfill = useCallback(() => {
+        if (!uid || fullBackfillStartedRef.current) return;
+        fullBackfillStartedRef.current = true;
+        const now = Date.now();
+        readRange(now - FULL_BACKFILL_MS, now - BOOT_BACKFILL_MS)
+            .then((older) => {
+                if (older.length === 0) return;
+                setSnapshots((prev) => {
+                    const oldestLive = prev.length > 0 ? prev[0].ts : Infinity;
+                    const merged = [...older.filter((s) => s.ts < oldestLive), ...prev];
+                    return merged.slice(-MAX_SAMPLES);
+                });
+            })
+            .catch((e) => {
+                console.warn('[HistoryContext] full backfill feilet', e);
+                fullBackfillStartedRef.current = false; // tillat nytt forsøk
             });
     }, [uid]);
 
@@ -102,8 +136,8 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
     const latest = snapshots.length > 0 ? snapshots[snapshots.length - 1] : null;
 
     const value = useMemo<HistoryContextValue>(
-        () => ({ snapshots, loading, error, latest }),
-        [snapshots, loading, error, latest],
+        () => ({ snapshots, loading, error, latest, ensureFullBackfill }),
+        [snapshots, loading, error, latest, ensureFullBackfill],
     );
 
     return <HistoryContext.Provider value={value}>{children}</HistoryContext.Provider>;

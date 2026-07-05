@@ -3,7 +3,6 @@ import {
     CustomDataSource,
     Entity,
     Cartesian3,
-    Cartographic,
     Color,
     ConstantPositionProperty,
     PointGraphics,
@@ -36,6 +35,7 @@ import {
     HIGHWAY_LABELS,
 } from './carUtils';
 import { type RoadSegment, type CarState } from '@/types/simulatedTraffic';
+import { cachedGlobeHeight } from '@/utils/globeHeightCache';
 
 const MAX_CAMERA_HEIGHT = 30_000;  // 30 km — laget er ikke aktivt over denne høyden
 const BILLBOARD_ALT     = 10_000;  // < 10 km → SVG billboard-biler
@@ -43,28 +43,6 @@ const BOX_ALT           =    500;  // < 500 m → 3D boks-biler
 const TOMTOM_POLL_MS = 90_000;
 
 type RenderMode = 'point' | 'billboard' | 'box';
-
-// Cache for globe.getHeight per (lat,lon)-grid-celle (~100m oppløsning).
-// Biler beveger seg langs faste veger der terrenghøyden er stabil i 30s-vinduer.
-// Per-frame-kall til getHeight på 100+ biler er den dyreste delen av DR-loopen.
-const HEIGHT_CACHE = new Map<string, { h: number; ts: number }>();
-const HEIGHT_TTL_MS = 30_000;
-const heightCartoScratch = new Cartographic();
-function cachedGlobeHeight(scene: { globe: { getHeight: (c: Cartographic) => number | undefined } }, lon: number, lat: number, fallback: number): number {
-    const key = `${Math.round(lon * 1000)}:${Math.round(lat * 1000)}`;
-    const now = Date.now();
-    const hit = HEIGHT_CACHE.get(key);
-    if (hit && now - hit.ts < HEIGHT_TTL_MS) return hit.h;
-    Cartographic.fromDegrees(lon, lat, 0, heightCartoScratch);
-    const h = scene.globe.getHeight(heightCartoScratch) ?? fallback;
-    HEIGHT_CACHE.set(key, { h, ts: now });
-    if (HEIGHT_CACHE.size > 5000) {
-        // Enkel oppryddingsstrategi: drop første 1000 entries når cache vokser
-        const it = HEIGHT_CACHE.keys();
-        for (let i = 0; i < 1000; i++) HEIGHT_CACHE.delete(it.next().value as string);
-    }
-    return h;
-}
 
 export function SimulatedTrafficLayer() {
     const viewer = useViewer();
@@ -301,7 +279,7 @@ export function SimulatedTrafficLayer() {
             const lon = p0[0] + (p1[0] - p0[0]) * car.fraction;
             const lat = p0[1] + (p1[1] - p0[1]) * car.fraction;
             const terrainAlt = (viewer && !viewer.isDestroyed())
-                ? (viewer.scene.globe.getHeight(Cartographic.fromDegrees(lon, lat)) ?? 5)
+                ? cachedGlobeHeight(viewer.scene, lon, lat, 5)
                 : 5;
 
             carStatesRef.current.set(car.id, car);
@@ -476,11 +454,15 @@ export function SimulatedTrafficLayer() {
         };
     }, [viewer, renderMode, segments]);
 
-    // Render-loop: 4fps er tilstrekkelig for simulert veitrafikk
+    // Render-loop: 4fps er tilstrekkelig for simulert veitrafikk.
+    // Gates på at det faktisk finnes biler — ellers tvinger intervallet scenen
+    // til kontinuerlig re-rendring og nuller ut requestRenderMode.
     useEffect(() => {
         if (!visible || !isBelowAlt || !viewer) return;
         const id = setInterval(() => {
-            if (!viewer.isDestroyed()) viewer.scene.requestRender();
+            if (viewer.isDestroyed()) return;
+            if (carStatesRef.current.size === 0) return;
+            viewer.scene.requestRender();
         }, 250);
         return () => clearInterval(id);
     }, [visible, isBelowAlt, viewer]);

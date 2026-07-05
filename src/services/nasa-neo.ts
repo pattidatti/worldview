@@ -58,7 +58,7 @@ export async function fetchAsteroids(): Promise<Asteroid[]> {
     const start = today;
     const end = plusDays(7);
     const url = `https://api.nasa.gov/neo/rest/v1/feed?start_date=${start}&end_date=${end}&api_key=${API_KEY}`;
-    const response = await fetch(url);
+    const response = await fetch(url, { signal: AbortSignal.timeout(20_000) });
     if (!response.ok) throw new Error(`NASA NeoWs feil: ${response.status}`);
     const data = await response.json();
 

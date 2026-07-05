@@ -281,7 +281,7 @@ export function LayerPanel({ mobileOpen = false }: { mobileOpen?: boolean }) {
 
     return (
         <div className={`absolute left-4 top-14 z-10 ${mobileOpen ? 'block' : 'hidden md:block'}`}>
-            <div className="w-56 bg-[var(--bg-ui)] backdrop-blur-xl border border-[var(--glass-border)] rounded-2xl overflow-hidden flex flex-col" style={{ maxHeight: 'calc(100vh - 7rem)', boxShadow: 'var(--shadow-panel)' }}>
+            <div className="w-56 bg-[var(--bg-ui-solid)] border border-[var(--glass-border)] rounded-2xl overflow-hidden flex flex-col" style={{ maxHeight: 'calc(100vh - 7rem)', boxShadow: 'var(--shadow-panel)' }}>
                 <div className="px-3 pt-2 pb-1">
                     <div className="flex items-center gap-1.5 bg-white/[0.04] border border-white/[0.08] rounded-full px-3 py-1.5">
                         <span className="text-[10px] text-[var(--text-muted)]">⌕</span>

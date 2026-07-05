@@ -35,7 +35,7 @@ export async function fetchTLEData(group: string = 'stations'): Promise<Satellit
     if (cached) return cached;
 
     const url = `${CELESTRAK_BASE}?GROUP=${group}&FORMAT=tle`;
-    const response = await fetch(url);
+    const response = await fetch(url, { signal: AbortSignal.timeout(20_000) });
 
     if (!response.ok) {
         throw new Error(`CelesTrak feil: ${response.status}`);

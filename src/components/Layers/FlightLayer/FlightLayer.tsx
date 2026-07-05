@@ -24,7 +24,7 @@ import { usePopupRegistry } from '@/context/PopupRegistry';
 import { useTooltipRegistry } from '@/context/TooltipRegistry';
 import { useGeointRegistry } from '@/context/GeointContext';
 import { useGates } from '@/context/GateContext';
-import { useTimelineEvents } from '@/context/TimelineEventContext';
+import { useTimelineEventActions } from '@/context/TimelineEventContext';
 import { writeCrossings } from '@/services/crossingSync';
 import { useTimelineMode, useReplayCursor, CURSOR_JUMP_THRESHOLD_MS } from '@/context/TimelineModeContext';
 import { useReplayEntities } from '@/hooks/useReplayEntities';
@@ -131,7 +131,7 @@ export function FlightLayer() {
     const { register: tooltipRegister, unregister: tooltipUnregister } = useTooltipRegistry();
     const { register: geointRegister, unregister: geointUnregister } = useGeointRegistry();
     const { gates } = useGates();
-    const { append: appendTimelineEvents } = useTimelineEvents();
+    const { append: appendTimelineEvents } = useTimelineEventActions();
     const gatesRef = useRef(gates);
     gatesRef.current = gates;
     const appendEventsRef = useRef(appendTimelineEvents);
@@ -288,11 +288,12 @@ export function FlightLayer() {
         if (isReplay) return;
         let cancelled = false;
         let timerId: ReturnType<typeof setTimeout>;
+        const controller = new AbortController();
 
         const doFetch = async () => {
             setLayerLoading('flights', true);
             try {
-                const data = await fetchFlights(viewportRef.current);
+                const data = await fetchFlights(viewportRef.current, controller.signal);
                 if (!cancelled) {
                     setFlights(data.slice(0, MAX_FLIGHTS));
                     setLayerError('flights', null);
@@ -311,7 +312,7 @@ export function FlightLayer() {
         };
 
         doFetch();
-        return () => { cancelled = true; clearTimeout(timerId); };
+        return () => { cancelled = true; clearTimeout(timerId); controller.abort(); };
     }, [visible, isReplay, setLayerLoading, setLayerError, setLayerLastUpdated]);
 
     // Replay-drevet state: når i replay-modus, driv `flights` fra useReplayEntities.

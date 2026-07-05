@@ -17,7 +17,16 @@ interface TimelineEventContextValue {
     clear: () => void;
 }
 
+interface TimelineEventActions {
+    append: (events: TimelineEvent | TimelineEvent[]) => void;
+    clear: () => void;
+}
+
 const TimelineEventContext = createContext<TimelineEventContextValue | null>(null);
+// Egen context for actions med stabil identitet: produsenter (FlightLayer,
+// ShipLayer, useReplayEntities) som bare trenger append skal IKKE re-rendre
+// hver gang events-køen endres.
+const TimelineEventActionsContext = createContext<TimelineEventActions | null>(null);
 
 export function TimelineEventProvider({ children }: { children: ReactNode }) {
     const [events, setEvents] = useState<TimelineEvent[]>([]);
@@ -40,22 +49,36 @@ export function TimelineEventProvider({ children }: { children: ReactNode }) {
 
     const clear = useCallback(() => setEvents([]), []);
 
+    const actions = useMemo(() => ({ append, clear }), [append, clear]);
+
     const value = useMemo(
         () => ({ events, append, clear }),
         [events, append, clear],
     );
 
     return (
-        <TimelineEventContext.Provider value={value}>
-            {children}
-        </TimelineEventContext.Provider>
+        <TimelineEventActionsContext.Provider value={actions}>
+            <TimelineEventContext.Provider value={value}>
+                {children}
+            </TimelineEventContext.Provider>
+        </TimelineEventActionsContext.Provider>
     );
 }
 
+/** Full tilgang inkl. events-køen — re-rendrer ved hvert append. For lesere (GatePanel, EventMarkers). */
 export function useTimelineEvents() {
     const ctx = useContext(TimelineEventContext);
     if (!ctx) {
         throw new Error('useTimelineEvents must be used within TimelineEventProvider');
+    }
+    return ctx;
+}
+
+/** Kun append/clear med stabil identitet — re-rendrer ALDRI ved kø-endringer. For produsenter. */
+export function useTimelineEventActions(): TimelineEventActions {
+    const ctx = useContext(TimelineEventActionsContext);
+    if (!ctx) {
+        throw new Error('useTimelineEventActions must be used within TimelineEventProvider');
     }
     return ctx;
 }

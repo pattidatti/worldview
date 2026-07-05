@@ -3,7 +3,7 @@ import { type RainViewerMaps } from '@/types/weatherRadar';
 const API_URL = 'https://api.rainviewer.com/public/weather-maps.json';
 
 export async function fetchRadarTimestamps(): Promise<RainViewerMaps> {
-    const response = await fetch(API_URL);
+    const response = await fetch(API_URL, { signal: AbortSignal.timeout(10_000) });
     if (!response.ok) throw new Error(`RainViewer feil: ${response.status}`);
     return response.json();
 }

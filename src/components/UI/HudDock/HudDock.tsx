@@ -46,10 +46,10 @@ function DockIcon({ icon, label, active, onClick, title }: DockIconProps) {
         <button
             onClick={onClick}
             title={title}
-            className={`flex flex-col items-center gap-1 rounded-xl px-3 py-2.5 cursor-pointer transition-all duration-150 backdrop-blur-xl border
+            className={`flex flex-col items-center gap-1 rounded-xl px-3 py-2.5 cursor-pointer transition-all duration-150 border
                 ${active
                     ? 'bg-white/15 border-white/25 text-white'
-                    : 'bg-black/55 border-white/[0.08] text-white/50 hover:bg-white/10 hover:text-white/80 hover:border-white/15'}`}
+                    : 'bg-black/70 border-white/[0.08] text-white/50 hover:bg-white/10 hover:text-white/80 hover:border-white/15'}`}
             style={{
                 boxShadow: active ? 'var(--glow-blue)' : 'none',
                 fontFamily: 'var(--font-mono)',
@@ -81,7 +81,7 @@ function Drawer({ open, title, children }: DrawerProps) {
             aria-hidden={!open}
         >
             <div
-                className="bg-[var(--bg-ui)] backdrop-blur-xl border border-white/[0.07] rounded-2xl p-3 flex flex-col gap-2.5 min-w-[180px]"
+                className="bg-[var(--bg-ui-solid)] border border-white/[0.07] rounded-2xl p-3 flex flex-col gap-2.5 min-w-[180px]"
                 style={{ boxShadow: 'var(--shadow-panel)' }}
             >
                 <p className="font-mono text-[9px] tracking-widest uppercase pb-1 border-b border-white/[0.06]"

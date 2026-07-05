@@ -61,7 +61,6 @@ export function CameraHud() {
                 lineHeight: '1.6',
                 letterSpacing: '0.04em',
                 background: 'rgba(10, 10, 20, 0.65)',
-                backdropFilter: 'blur(8px)',
                 border: '1px solid rgba(255,255,255,0.08)',
                 borderLeft: '2px solid rgba(0, 212, 255, 0.4)',
                 borderRadius: '6px',

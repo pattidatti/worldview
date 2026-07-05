@@ -65,6 +65,7 @@ async function fetchOneLocation(loc: { name: string; lat: number; lon: number })
         const url = `${MET_BASE}?lat=${loc.lat}&lon=${loc.lon}`;
         const res = await fetch(url, {
             headers: { 'User-Agent': USER_AGENT },
+            signal: AbortSignal.timeout(15_000),
         });
 
         if (!res.ok) return null;

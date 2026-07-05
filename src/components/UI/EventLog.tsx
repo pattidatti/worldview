@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { useLayers } from '@/context/LayerContext';
-import { LAYER_ICONS, type LayerId } from '@/types/layers';
+import { useLayerStore } from '@/store/layerStore';
+import { LAYER_ICONS, LAYER_DEFAULTS, type LayerId } from '@/types/layers';
 
 interface LogEvent {
     id: number;
@@ -16,61 +16,72 @@ interface LogEvent {
 let _eid = 0;
 
 function useEventLog(): LogEvent[] {
-    const { layers } = useLayers();
     const [events, setEvents] = useState<LogEvent[]>([]);
     const prevCountRef = useRef<Partial<Record<LayerId, number>>>({});
     const prevUpdatedRef = useRef<Partial<Record<LayerId, number | null>>>({});
     const prevErrorRef = useRef<Partial<Record<LayerId, string | null>>>({});
 
+    // Abonnerer på Zustand-storen utenfor React-render: tidligere gikk dette
+    // via useLayers()-shimen, som re-rendret komponenten (og re-bygde et
+    // 28-elements array) ved ENHVER statusendring i ETHVERT lag. Nå trigges
+    // React-state kun når det faktisk finnes nye logg-hendelser.
     useEffect(() => {
-        const newEvents: LogEvent[] = [];
+        const process = (state: ReturnType<typeof useLayerStore.getState>) => {
+            const newEvents: LogEvent[] = [];
 
-        for (const layer of layers) {
-            if (!layer.visible) continue;
+            for (const def of LAYER_DEFAULTS) {
+                const id = def.id;
+                if (!state.visibility[id]) continue;
+                const status = state.status[id];
+                const meta = state.meta[id];
 
-            // Feil-hendelser
-            const prevError = prevErrorRef.current[layer.id];
-            if (layer.error && layer.error !== prevError) {
-                newEvents.push({
-                    id: _eid++,
-                    time: new Date().toTimeString().slice(0, 8),
-                    icon: '⚠',
-                    name: layer.name.toUpperCase(),
-                    diff: 0,
-                    total: 0,
-                    color: 'var(--accent-orange, #ff6b35)',
-                    isError: true,
-                });
+                // Feil-hendelser
+                const prevError = prevErrorRef.current[id];
+                if (status.error && status.error !== prevError) {
+                    newEvents.push({
+                        id: _eid++,
+                        time: new Date().toTimeString().slice(0, 8),
+                        icon: '⚠',
+                        name: meta.name.toUpperCase(),
+                        diff: 0,
+                        total: 0,
+                        color: 'var(--accent-orange, #ff6b35)',
+                        isError: true,
+                    });
+                }
+                prevErrorRef.current[id] = status.error;
+
+                // Data-hendelser
+                const prevUpdated = prevUpdatedRef.current[id];
+                if (status.lastUpdated === prevUpdated) continue;
+
+                const prevCount = prevCountRef.current[id] ?? 0;
+                const diff = status.count - prevCount;
+
+                if (Math.abs(diff) >= 1 || (prevCount === 0 && status.count > 0)) {
+                    newEvents.push({
+                        id: _eid++,
+                        time: new Date().toTimeString().slice(0, 8),
+                        icon: LAYER_ICONS[id],
+                        name: meta.name.toUpperCase(),
+                        diff,
+                        total: status.count,
+                        color: meta.color,
+                    });
+                }
+
+                prevUpdatedRef.current[id] = status.lastUpdated;
+                prevCountRef.current[id] = status.count;
             }
-            prevErrorRef.current[layer.id] = layer.error;
 
-            // Data-hendelser
-            const prevUpdated = prevUpdatedRef.current[layer.id];
-            if (layer.lastUpdated === prevUpdated) continue;
-
-            const prevCount = prevCountRef.current[layer.id] ?? 0;
-            const diff = layer.count - prevCount;
-
-            if (Math.abs(diff) >= 1 || (prevCount === 0 && layer.count > 0)) {
-                newEvents.push({
-                    id: _eid++,
-                    time: new Date().toTimeString().slice(0, 8),
-                    icon: LAYER_ICONS[layer.id],
-                    name: layer.name.toUpperCase(),
-                    diff,
-                    total: layer.count,
-                    color: layer.color,
-                });
+            if (newEvents.length > 0) {
+                setEvents((prev) => [...newEvents, ...prev].slice(0, 12));
             }
+        };
 
-            prevUpdatedRef.current[layer.id] = layer.lastUpdated;
-            prevCountRef.current[layer.id] = layer.count;
-        }
-
-        if (newEvents.length > 0) {
-            setEvents((prev) => [...newEvents, ...prev].slice(0, 12));
-        }
-    }, [layers]);
+        process(useLayerStore.getState());
+        return useLayerStore.subscribe(process);
+    }, []);
 
     return events;
 }
@@ -110,7 +121,6 @@ export function EventLog({ embedded = false }: { embedded?: boolean }) {
             <div
                 style={{
                     background: 'rgba(10, 10, 20, 0.75)',
-                    backdropFilter: 'blur(8px)',
                     border: '1px solid rgba(255,255,255,0.08)',
                     borderRadius: '10px',
                     overflow: 'hidden',

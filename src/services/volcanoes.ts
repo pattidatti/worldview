@@ -48,7 +48,7 @@ function findCoords(title: string): [number, number] | null {
 }
 
 export async function fetchVolcanoes(): Promise<VolcanoEvent[]> {
-    const res = await fetch(USGS_RSS);
+    const res = await fetch(USGS_RSS, { signal: AbortSignal.timeout(15_000) });
     if (!res.ok) throw new Error(`USGS vulkaner: ${res.status}`);
     const xml = await res.text();
     const doc = new DOMParser().parseFromString(xml, 'text/xml');

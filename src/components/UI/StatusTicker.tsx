@@ -77,7 +77,6 @@ export function StatusTicker() {
                 style={{
                     height: '36px',
                     background: 'rgba(10, 10, 20, 0.75)',
-                    backdropFilter: 'blur(8px)',
                     borderTop: '1px solid rgba(255,255,255,0.07)',
                     fontFamily: 'var(--font-mono)',
                     fontSize: '11px',

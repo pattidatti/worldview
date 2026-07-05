@@ -3,7 +3,7 @@ import { type ISSPosition } from '@/types/iss';
 const URL = 'https://api.wheretheiss.at/v1/satellites/25544';
 
 export async function fetchISS(): Promise<ISSPosition[]> {
-    const res = await fetch(URL);
+    const res = await fetch(URL, { signal: AbortSignal.timeout(10_000) });
     if (!res.ok) throw new Error(`ISS API: ${res.status}`);
     const data = await res.json() as {
         latitude: number;
