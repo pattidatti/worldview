@@ -21,6 +21,7 @@ import {
     LabelStyle,
     Material,
     NearFarScalar,
+    PointPrimitiveCollection,
     PolylineCollection,
     VerticalOrigin,
     type Billboard,
@@ -28,6 +29,8 @@ import {
     type Polyline,
     type Scene,
 } from 'cesium';
+import { binToDensityCells } from '@/utils/densityGrid';
+import { pickRouter } from '@/core/pickRouter';
 import type { EntityStore, EntityDelta } from '@/core/EntityStore';
 import { LODTier, lodGovernor } from '@/core/LODGovernor';
 import { renderScheduler } from '@/core/RenderScheduler';
@@ -51,6 +54,9 @@ const TRAIL_MILITARY_COLOR = Color.fromCssColorString('#ff2244').withAlpha(0.6);
 const LABEL_FONT = '12px "JetBrains Mono", monospace';
 const LABEL_OFFSET = new Cartesian2(0, -26);
 const LABEL_FILL = Color.fromCssColorString('#ffd9a0');
+const DENSITY_CELL_DEG = 1;
+const DENSITY_PICK_PREFIX = 'flights:cell:';
+const DENSITY_COLOR = Color.fromCssColorString('#ffa500');
 
 const scratchPosition = new Cartesian3();
 const scratchAxis = new Cartesian3();
@@ -64,6 +70,8 @@ export class FlightRenderer implements LayerRenderer {
     private collection: BillboardCollection | null = null;
     private trailCollection: PolylineCollection | null = null;
     private labelCollection: LabelCollection | null = null;
+    private densityCollection: PointPrimitiveCollection | null = null;
+    private densityCells = new Map<string, { lon: number; lat: number }>();
 
     private billboards = new Map<string, Billboard>();
     private trails = new Map<string, Polyline>();
@@ -87,9 +95,11 @@ export class FlightRenderer implements LayerRenderer {
         this.collection = new BillboardCollection({ scene });
         this.trailCollection = new PolylineCollection();
         this.labelCollection = new LabelCollection({ scene });
+        this.densityCollection = new PointPrimitiveCollection();
         scene.primitives.add(this.collection);
         scene.primitives.add(this.trailCollection);
         scene.primitives.add(this.labelCollection);
+        scene.primitives.add(this.densityCollection);
 
         this.trailMaterial = Material.fromType('PolylineGlow', {
             glowPower: 0.15,
@@ -108,7 +118,10 @@ export class FlightRenderer implements LayerRenderer {
             this.store.subscribePositions(() => this.onPositions()),
             // Kamera-tracking («Følg»-knappen): id er icao24 uten prefiks
             trackingProviders.register((entityId) => this.getPosition(entityId)),
+            // Klikk på tetthetscelle → zoom mot cellen (samme UX som cluster-klikk)
+            pickRouter.register(DENSITY_PICK_PREFIX, (pickedId) => this.onDensityCellPick(pickedId)),
         ];
+        this.refreshDensityMode();
         renderScheduler.requestFrame();
     }
 
@@ -121,10 +134,13 @@ export class FlightRenderer implements LayerRenderer {
             if (this.collection) this.scene.primitives.remove(this.collection);
             if (this.trailCollection) this.scene.primitives.remove(this.trailCollection);
             if (this.labelCollection) this.scene.primitives.remove(this.labelCollection);
+            if (this.densityCollection) this.scene.primitives.remove(this.densityCollection);
         }
         this.collection = null;
         this.trailCollection = null;
         this.labelCollection = null;
+        this.densityCollection = null;
+        this.densityCells.clear();
         this.scene = null;
         this.billboards.clear();
         this.trails.clear();
@@ -138,6 +154,7 @@ export class FlightRenderer implements LayerRenderer {
         if (tier === this.tier) return;
         this.tier = tier;
         this.refreshDetailAssignments();
+        this.refreshDensityMode();
         renderScheduler.requestFrame();
     }
 
@@ -161,6 +178,7 @@ export class FlightRenderer implements LayerRenderer {
         for (const flight of delta.upserts) this.upsert(flight, true);
         for (const id of delta.removes) this.removeWithFade(id);
         this.refreshDetailAssignments();
+        if (this.tier === LODTier.GLOBAL) this.rebuildDensityCells();
         renderScheduler.requestFrame();
     }
 
@@ -360,5 +378,57 @@ export class FlightRenderer implements LayerRenderer {
             this.labelCollection?.remove(label);
             this.labels.delete(id);
         }
+    }
+
+    // ---- GLOBAL-tier tetthetsmodus (erstatter Entity-klustring) ----
+
+    /** GLOBAL: skjul individuelle fly, vis tetthetsceller. Andre tiers: omvendt. */
+    private refreshDensityMode(): void {
+        if (!this.collection || !this.densityCollection) return;
+        const global = this.tier === LODTier.GLOBAL;
+        this.collection.show = !global;
+        if (global) {
+            this.rebuildDensityCells();
+        } else if (this.densityCollection.length > 0) {
+            this.densityCollection.removeAll();
+            this.densityCells.clear();
+        }
+    }
+
+    private rebuildDensityCells(): void {
+        const collection = this.densityCollection;
+        if (!collection) return;
+        collection.removeAll();
+        this.densityCells.clear();
+
+        const flights = [...this.store.getAll().values()];
+        const cells = binToDensityCells(flights, DENSITY_CELL_DEG);
+        for (const cell of cells) {
+            const cellId = `${DENSITY_PICK_PREFIX}${cell.lon.toFixed(1)}:${cell.lat.toFixed(1)}`;
+            this.densityCells.set(cellId, { lon: cell.lon, lat: cell.lat });
+            // Størrelse og glød ∝ log(antall): 1 fly = 6px, 100 fly ≈ 20px
+            const magnitude = Math.log10(cell.count + 1);
+            collection.add({
+                id: cellId,
+                position: Cartesian3.fromDegrees(cell.lon, cell.lat, 0),
+                pixelSize: 6 + magnitude * 7,
+                color: DENSITY_COLOR.withAlpha(Math.min(0.35 + magnitude * 0.25, 0.9)),
+                outlineColor: DENSITY_COLOR.withAlpha(0.25),
+                outlineWidth: 2,
+            });
+        }
+    }
+
+    /** Klikk på celle: zoom mot cellesenteret — samme UX som cluster-klikk-zoom. */
+    private onDensityCellPick(pickedId: string): boolean {
+        const cell = this.densityCells.get(pickedId);
+        const scene = this.scene;
+        if (!cell || !scene) return false;
+        const targetHeight = Math.max(scene.camera.positionCartographic.height * 0.35, 100_000);
+        scene.camera.flyTo({
+            destination: Cartesian3.fromDegrees(cell.lon, cell.lat, targetHeight),
+            duration: 0.8,
+        });
+        return true;
     }
 }

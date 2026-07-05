@@ -24,6 +24,7 @@ import { replayFlightToFlightEntity, type FlightEntity } from '@/data/channels/f
 import { FlightRenderer } from '@/render/FlightRenderer';
 import { detectEntityCrossings, type EntityPosition } from '@/utils/crossingDetector';
 import { FLIGHT_POLL_MS } from '@/utils/flightKinematics';
+import { isFlightsMockEnabled } from '@/utils/featureFlags';
 import { writeCrossings } from '@/services/crossingSync';
 import type { EntityDelta } from '@/core/EntityStore';
 import { buildFlightPopup, buildFlightTooltip } from './flightPopup';
@@ -60,7 +61,7 @@ export function FlightLayerV2() {
     const lastModeEpochRef = useRef(modeEpoch);
 
     if (!channelRef.current) {
-        channelRef.current = new FlightChannel();
+        channelRef.current = new FlightChannel({ mock: isFlightsMockEnabled() });
         rendererRef.current = new FlightRenderer(channelRef.current.store);
     }
     const channel = channelRef.current;

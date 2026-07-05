@@ -21,6 +21,7 @@ import { viewportService } from '@/core/ViewportService';
 import { lodGovernor } from '@/core/LODGovernor';
 import { pickRouter } from '@/core/pickRouter';
 import { trackingProviders } from '@/core/trackingProviders';
+import { maybeInstallPerfHud } from '@/core/perfHud';
 import { applyTilesetPerformanceTuning } from '@/utils/tilesetPerformance';
 import { NIGHT_VISION_SHADER } from '@/shaders/nightVision';
 import { CRT_SHADER } from '@/shaders/crt';
@@ -491,9 +492,11 @@ export function GlobeViewer({ children, onSelect, onEntitySelect, onBackgroundCl
         renderScheduler.attach(v);
         viewportService.attach(v);
         lodGovernor.attach(v);
+        const removePerfHud = maybeInstallPerfHud(v);
         setViewer(v);
 
         return () => {
+            removePerfHud?.();
             lodGovernor.detach();
             viewportService.detach();
             renderScheduler.detach();

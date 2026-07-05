@@ -23,3 +23,12 @@ function readFlag(param: string, storageKey: string, envValue: string | undefine
 export function isFlightsV2Enabled(): boolean {
     return readFlag('flights2', FLIGHTS_V2_STORAGE_KEY, import.meta.env.VITE_FLIGHTS_V2);
 }
+
+/** Syntetisk 2000-flys last for deterministisk ytelsestesting. Krever flights2. */
+export function isFlightsMockEnabled(): boolean {
+    try {
+        return new URLSearchParams(window.location.search).get('flightsMock') === '1';
+    } catch {
+        return false;
+    }
+}

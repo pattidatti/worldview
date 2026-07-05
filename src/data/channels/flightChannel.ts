@@ -18,6 +18,7 @@ import {
     type FlightsStatusPush,
 } from '@/data/channels/flightProtocol';
 import { fetchFlights } from '@/services/airplaneslive';
+import { generateMockFlights } from '@/data/channels/flightMock';
 import type { Flight } from '@/types/flight';
 
 /** Delmengden av WorkerRpc kanalen bruker — injiserbar i tester. */
@@ -32,6 +33,8 @@ export interface FlightChannelOptions {
     rpc?: ChannelRpc | null;
     /** Test-hook; default airplanes.live-fetcheren. */
     fetchFn?: (viewport: Viewport | null, signal: AbortSignal) => Promise<Flight[]>;
+    /** Syntetisk 2000-flys last for ytelsestesting (?flightsMock=1). */
+    mock?: boolean;
 }
 
 const DEFAULT_POLL_MS = 10_000;
@@ -62,10 +65,17 @@ export class FlightChannel implements DataChannel<FlightEntity> {
     private fallbackDrTimer: ReturnType<typeof setInterval> | null = null;
     private fallbackBuffer: Float64Array | null = null;
 
+    private readonly mock: boolean;
+    private startedMs = 0;
+
     constructor(opts: FlightChannelOptions = {}) {
         this.pollMs = opts.pollMs ?? DEFAULT_POLL_MS;
         this.rpc = opts.rpc === undefined ? channelWorkerRpc : opts.rpc;
-        this.fetchFn = opts.fetchFn ?? ((vp, signal) => fetchFlights(vp, signal));
+        this.mock = opts.mock ?? false;
+        this.fetchFn = opts.fetchFn
+            ?? (this.mock
+                ? async () => generateMockFlights((Date.now() - this.startedMs) / 1000)
+                : (vp, signal) => fetchFlights(vp, signal));
         this.store = new EntityStore<FlightEntity>(this.id, FLIGHT_BUFFER_LAYOUT);
         entityStores.register(this.store);
     }
@@ -73,6 +83,7 @@ export class FlightChannel implements DataChannel<FlightEntity> {
     start(): void {
         if (this.running) return;
         this.running = true;
+        this.startedMs = Date.now();
         this.useWorker = this.startWorker();
         if (!this.useWorker) this.startFallback();
     }
@@ -151,6 +162,7 @@ export class FlightChannel implements DataChannel<FlightEntity> {
             type: 'flights/start',
             pollMs: this.pollMs,
             viewport: this.viewport,
+            mock: this.mock,
         });
         if (!posted) {
             for (const unsub of this.pushUnsubs) unsub();

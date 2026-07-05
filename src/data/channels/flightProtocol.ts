@@ -50,6 +50,8 @@ export interface FlightsStartMsg {
     type: 'flights/start';
     pollMs: number;
     viewport: Viewport | null;
+    /** Syntetisk 2000-flys last for ytelsestesting (?flightsMock=1). */
+    mock?: boolean;
 }
 
 export interface FlightsStopMsg {

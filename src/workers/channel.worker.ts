@@ -19,6 +19,7 @@ import {
     type FlightsStatusPush,
 } from '@/data/channels/flightProtocol';
 import { fetchFlights } from '@/services/airplaneslive';
+import { generateMockFlights } from '@/data/channels/flightMock';
 import type { Viewport } from '@/core/ViewportService';
 
 // ---- Meldingstyper (importeres type-only fra main thread) ----
@@ -89,9 +90,12 @@ class FlightsWorkerSession implements ChannelSession {
 
     constructor(msg: FlightsStartMsg) {
         this.viewport = msg.viewport;
+        const startedMs = Date.now();
         this.scheduler = new PollScheduler(
             async (signal) => {
-                const flights = await fetchFlights(this.viewport, signal);
+                const flights = msg.mock
+                    ? generateMockFlights((Date.now() - startedMs) / 1000)
+                    : await fetchFlights(this.viewport, signal);
                 if (signal.aborted) return;
                 const result = this.core.ingest(flights.map(toFlightEntity), Date.now());
                 scope.postMessage({
