@@ -31,6 +31,7 @@ import {
 import type { EntityStore, EntityDelta } from '@/core/EntityStore';
 import { LODTier, lodGovernor } from '@/core/LODGovernor';
 import { renderScheduler } from '@/core/RenderScheduler';
+import { trackingProviders } from '@/core/trackingProviders';
 import { iconAtlas } from '@/render/IconAtlas';
 import { flightAtlasSpecs, flightIconId } from '@/render/flightIcons';
 import { fadeAlpha, primitiveId, type LayerRenderer } from '@/render/RendererBase';
@@ -105,6 +106,8 @@ export class FlightRenderer implements LayerRenderer {
         this.unsubscribes = [
             this.store.subscribe((delta) => this.onDelta(delta)),
             this.store.subscribePositions(() => this.onPositions()),
+            // Kamera-tracking («Følg»-knappen): id er icao24 uten prefiks
+            trackingProviders.register((entityId) => this.getPosition(entityId)),
         ];
         renderScheduler.requestFrame();
     }

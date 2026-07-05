@@ -80,9 +80,9 @@ const LAYER_IDS = LAYER_DEFAULTS.map((l) => l.id);
 
 function TooltipHandler({ selectedEntity }: { selectedEntity: Entity | null }) {
     const viewer = useViewer();
-    const { resolve } = useTooltipRegistry();
+    const { resolve, resolveById } = useTooltipRegistry();
     const { isDrawingRef } = useGates();
-    const hover = useHoverTooltip(viewer, resolve, isDrawingRef);
+    const hover = useHoverTooltip(viewer, resolve, isDrawingRef, resolveById);
     const selectedPos = useEntityScreenPos(viewer, selectedEntity);
     const hoverPos = hover ? { x: hover.entityX, y: hover.entityY } : null;
     return (

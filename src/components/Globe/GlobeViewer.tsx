@@ -20,6 +20,7 @@ import { renderScheduler } from '@/core/RenderScheduler';
 import { viewportService } from '@/core/ViewportService';
 import { lodGovernor } from '@/core/LODGovernor';
 import { pickRouter } from '@/core/pickRouter';
+import { trackingProviders } from '@/core/trackingProviders';
 import { applyTilesetPerformanceTuning } from '@/utils/tilesetPerformance';
 import { NIGHT_VISION_SHADER } from '@/shaders/nightVision';
 import { CRT_SHADER } from '@/shaders/crt';
@@ -314,10 +315,7 @@ export function GlobeViewer({ children, onSelect, onEntitySelect, onBackgroundCl
             }
 
             // Camera tracking: cached dataSource-lookup, kun lineær fallback når cache bommer.
-            const tryApply = (entity: import('cesium').Entity | undefined): boolean => {
-                if (!entity?.position) return false;
-                const pos = entity.position.getValue(JulianDate.now(julianDateScratch));
-                if (!pos) return false;
+            const applyLookAt = (pos: Cartesian3): void => {
                 if (orbitActiveRef.current) {
                     const now = performance.now();
                     const dt = orbitLastTimeMsRef.current === 0 ? 0 : Math.min((now - orbitLastTimeMsRef.current) / 16.67, 3);
@@ -332,6 +330,13 @@ export function GlobeViewer({ children, onSelect, onEntitySelect, onBackgroundCl
                     v.camera.lookAt(pos, trackHprScratch);
                 }
                 scene.requestRender();
+            };
+
+            const tryApply = (entity: import('cesium').Entity | undefined): boolean => {
+                if (!entity?.position) return false;
+                const pos = entity.position.getValue(JulianDate.now(julianDateScratch));
+                if (!pos) return false;
+                applyLookAt(pos);
                 return true;
             };
 
@@ -346,6 +351,13 @@ export function GlobeViewer({ children, onSelect, onEntitySelect, onBackgroundCl
                     trackedEntityCacheRef.current = { id: tracking, dsIndex: i };
                     return;
                 }
+            }
+            // Primitive-lag (renderplan): posisjon via registrerte providere
+            const providedPos = trackingProviders.getPosition(tracking);
+            if (providedPos) {
+                trackedEntityCacheRef.current = null;
+                applyLookAt(providedPos);
+                return;
             }
             trackedEntityCacheRef.current = null;
             setTrackedIdRef.current(null);
