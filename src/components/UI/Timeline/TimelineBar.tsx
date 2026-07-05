@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useTimelineMode, useCursor } from '@/context/TimelineModeContext';
+import { useTimelineMode, getCursorSnapshot } from '@/context/TimelineModeContext';
 import { addToast } from '@/components/UI/Toast';
 import { ModePill } from './ModePill';
 import { PlaybackControls } from './PlaybackControls';
@@ -9,8 +9,11 @@ import { TimelineTrack } from './TimelineTrack';
 const FLIGHT_BUCKET_MS = 10 * 60 * 1000;
 
 export function TimelineBar() {
+    // Merk: ingen useCursor()-abonnering her — den ville re-rendret hele
+    // baren (alle barna) på hver cursor-tick under avspilling. Barna som
+    // trenger cursor (TimelineTrack, DatePicker) abonnerer selv; keyboard-
+    // handleren leser et snapshot ved behov.
     const { mode, speed, setCursor, setSpeed, setMode, jumpToNow } = useTimelineMode();
-    const cursor = useCursor();
     const [now, setNow] = useState(() => Date.now());
     const nowRef = useRef(now);
     nowRef.current = now;
@@ -68,18 +71,18 @@ export function TimelineBar() {
             }
             if (e.key === 'ArrowLeft') {
                 e.preventDefault();
-                setCursor(cursor - FLIGHT_BUCKET_MS);
+                setCursor(getCursorSnapshot() - FLIGHT_BUCKET_MS);
                 return;
             }
             if (e.key === 'ArrowRight') {
                 e.preventDefault();
-                setCursor(cursor + FLIGHT_BUCKET_MS);
+                setCursor(getCursorSnapshot() + FLIGHT_BUCKET_MS);
                 return;
             }
         };
         window.addEventListener('keydown', handler);
         return () => window.removeEventListener('keydown', handler);
-    }, [mode, cursor, speed, setCursor, setSpeed, setMode, jumpToNow]);
+    }, [mode, speed, setCursor, setSpeed, setMode, jumpToNow]);
 
     const isReplay = mode === 'replay';
     return (

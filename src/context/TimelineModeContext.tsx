@@ -91,21 +91,23 @@ export function TimelineModeProvider({ children }: { children: ReactNode }) {
         return () => clearInterval(id);
     }, [mode]);
 
-    // Replay + speed>0: cursor beveger seg fremover via RAF.
+    // Replay + speed>0: cursor beveger seg fremover i 10Hz-steg.
+    // Bevisst IKKE requestAnimationFrame: hver cursor-oppdatering trigger
+    // re-interpolering + full entity-resync i FlightLayer/ShipLayer (opptil
+    // 1000 skip). Ved 60fps dominerte den kjeden hele avspillingskostnaden;
+    // 10Hz er visuelt likeverdig (live-modus oppdaterer posisjoner på 4Hz).
     useEffect(() => {
         if (mode !== 'replay' || speed === 0) return;
-        let rafId: number;
         let lastTick = performance.now();
-        const tick = (now: number) => {
+        const id = setInterval(() => {
+            const now = performance.now();
             const dt = (now - lastTick) / 1000;
             lastTick = now;
             const next = cursorStore.get() + dt * speed * 1000;
             const ceiling = Date.now() - 10_000;
             cursorStore.set(next > ceiling ? ceiling : next);
-            rafId = requestAnimationFrame(tick);
-        };
-        rafId = requestAnimationFrame(tick);
-        return () => cancelAnimationFrame(rafId);
+        }, 100);
+        return () => clearInterval(id);
     }, [mode, speed]);
 
     const setMode = useCallback((next: TimelineMode) => {
