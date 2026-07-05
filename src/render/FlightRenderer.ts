@@ -1,26 +1,41 @@
-// Primitive-renderer for flights-kanalen: én BillboardCollection i stedet for
-// Entity-per-fly (10–100× billigere per objekt, én draw-batch). Abonnerer
-// direkte på EntityStore('flights') — posisjoner @ 4 Hz kommer som
+// Primitive-renderer for flights-kanalen: én BillboardCollection + én
+// PolylineCollection (trails) + én LabelCollection (callsigns) i stedet for
+// Entity-per-fly (10–100× billigere per objekt, én draw-batch per collection).
+// Abonnerer direkte på EntityStore('flights') — posisjoner @ 4 Hz kommer som
 // Float64Array fra channel-workerens dead-reckoning.
+//
+// LOD-profil (jf. docs/ARCHITECTURE-VISION.md):
+//   GLOBAL → kun ikoner (tetthetsmodus kommer i B7)
+//   REGION → kun ikoner
+//   LOKAL  → ikoner + trails + label-kvote
+//   NÆR    → ikoner + trails + label-kvote (3D-modeller er valgfri B8)
 
 import {
     BillboardCollection,
     BoundingRectangle,
+    Cartesian2,
     Cartesian3,
     Color,
     HorizontalOrigin,
+    LabelCollection,
+    LabelStyle,
+    Material,
     NearFarScalar,
+    PolylineCollection,
     VerticalOrigin,
     type Billboard,
+    type Label,
+    type Polyline,
     type Scene,
 } from 'cesium';
 import type { EntityStore, EntityDelta } from '@/core/EntityStore';
-import { LODTier } from '@/core/LODGovernor';
+import { LODTier, lodGovernor } from '@/core/LODGovernor';
 import { renderScheduler } from '@/core/RenderScheduler';
 import { iconAtlas } from '@/render/IconAtlas';
 import { flightAtlasSpecs, flightIconId } from '@/render/flightIcons';
 import { fadeAlpha, primitiveId, type LayerRenderer } from '@/render/RendererBase';
 import { headingToBillboardRotation } from '@/utils/flightKinematics';
+import { TrailBuffer } from '@/utils/trailBuffer';
 import type { FlightEntity } from '@/data/channels/flightProtocol';
 
 /** Samme skala-kurve som legacy-laget: 40px ved 500 km → 10px ved 2000 km. */
@@ -29,9 +44,16 @@ const ICON_PX = 40;
 const ATLAS_IMAGE_ID = 'worldview-atlas';
 const FADE_IN_MS = 500;
 const FADE_OUT_MS = 350;
+const MAX_FLIGHT_TRAIL = 40;
+const TRAIL_COLOR = Color.fromCssColorString('#ffa500').withAlpha(0.6);
+const TRAIL_MILITARY_COLOR = Color.fromCssColorString('#ff2244').withAlpha(0.6);
+const LABEL_FONT = '12px "JetBrains Mono", monospace';
+const LABEL_OFFSET = new Cartesian2(0, -26);
+const LABEL_FILL = Color.fromCssColorString('#ffd9a0');
 
 const scratchPosition = new Cartesian3();
 const scratchAxis = new Cartesian3();
+const scratchCamera = new Cartesian3();
 
 export class FlightRenderer implements LayerRenderer {
     readonly id = 'flights';
@@ -39,11 +61,19 @@ export class FlightRenderer implements LayerRenderer {
     private readonly store: EntityStore<FlightEntity>;
     private scene: Scene | null = null;
     private collection: BillboardCollection | null = null;
+    private trailCollection: PolylineCollection | null = null;
+    private labelCollection: LabelCollection | null = null;
+
     private billboards = new Map<string, Billboard>();
+    private trails = new Map<string, Polyline>();
+    private labels = new Map<string, Label>();
+    private trailHistory = new Map<string, TrailBuffer<Cartesian3>>();
     private fadingOut = new Set<string>();
     private unsubscribes: (() => void)[] = [];
-    /** LOD-profil kobles på i fase B4 (trails/labels/punktmodus per tier). */
-    protected tier: LODTier = LODTier.REGION;
+    private tier: LODTier = LODTier.REGION;
+
+    private trailMaterial: Material | null = null;
+    private trailMaterialMilitary: Material | null = null;
 
     constructor(store: EntityStore<FlightEntity>) {
         this.store = store;
@@ -54,10 +84,24 @@ export class FlightRenderer implements LayerRenderer {
         if (!iconAtlas.isBuilt) iconAtlas.build(flightAtlasSpecs());
         this.scene = scene;
         this.collection = new BillboardCollection({ scene });
+        this.trailCollection = new PolylineCollection();
+        this.labelCollection = new LabelCollection({ scene });
         scene.primitives.add(this.collection);
+        scene.primitives.add(this.trailCollection);
+        scene.primitives.add(this.labelCollection);
+
+        this.trailMaterial = Material.fromType('PolylineGlow', {
+            glowPower: 0.15,
+            color: TRAIL_COLOR,
+        });
+        this.trailMaterialMilitary = Material.fromType('PolylineGlow', {
+            glowPower: 0.15,
+            color: TRAIL_MILITARY_COLOR,
+        });
 
         // Full resync mot storens nåværende innhold, deretter deltaer
         for (const flight of this.store.getAll().values()) this.upsert(flight, false);
+        this.refreshDetailAssignments();
         this.unsubscribes = [
             this.store.subscribe((delta) => this.onDelta(delta)),
             this.store.subscribePositions(() => this.onPositions()),
@@ -68,18 +112,30 @@ export class FlightRenderer implements LayerRenderer {
     detach(): void {
         for (const unsub of this.unsubscribes) unsub();
         this.unsubscribes = [];
-        if (this.scene && this.collection && !this.scene.isDestroyed()) {
-            this.scene.primitives.remove(this.collection); // destroyer collection + billboards
+        lodGovernor.releaseQuota('labels', this.id);
+        lodGovernor.releaseQuota('polylines', this.id);
+        if (this.scene && !this.scene.isDestroyed()) {
+            if (this.collection) this.scene.primitives.remove(this.collection);
+            if (this.trailCollection) this.scene.primitives.remove(this.trailCollection);
+            if (this.labelCollection) this.scene.primitives.remove(this.labelCollection);
         }
         this.collection = null;
+        this.trailCollection = null;
+        this.labelCollection = null;
         this.scene = null;
         this.billboards.clear();
+        this.trails.clear();
+        this.labels.clear();
+        this.trailHistory.clear();
         this.fadingOut.clear();
         renderScheduler.requestFrame();
     }
 
     setLOD(tier: LODTier): void {
+        if (tier === this.tier) return;
         this.tier = tier;
+        this.refreshDetailAssignments();
+        renderScheduler.requestFrame();
     }
 
     /** Posisjonsoppslag for kamera-tracking (GlobeViewer trackingProviders). */
@@ -93,10 +149,15 @@ export class FlightRenderer implements LayerRenderer {
         return this.billboards.size;
     }
 
+    private get detailVisible(): boolean {
+        return this.tier === LODTier.LOKAL || this.tier === LODTier.NAER;
+    }
+
     private onDelta(delta: EntityDelta<FlightEntity>): void {
         if (!this.collection) return;
         for (const flight of delta.upserts) this.upsert(flight, true);
         for (const id of delta.removes) this.removeWithFade(id);
+        this.refreshDetailAssignments();
         renderScheduler.requestFrame();
     }
 
@@ -138,6 +199,16 @@ export class FlightRenderer implements LayerRenderer {
             billboard.alignedAxis = Cartesian3.normalize(position, scratchAxis);
             this.setIcon(billboard, flight);
         }
+
+        // Trail-historikk per poll (som legacy: DR flytter ikonet, ikke sporet)
+        let history = this.trailHistory.get(flight.id);
+        if (!history) {
+            history = new TrailBuffer<Cartesian3>(MAX_FLIGHT_TRAIL);
+            this.trailHistory.set(flight.id, history);
+        }
+        history.push(Cartesian3.fromDegrees(flight.lon, flight.lat, flight.altitude));
+        const polyline = this.trails.get(flight.id);
+        if (polyline) polyline.positions = history.tail(MAX_FLIGHT_TRAIL);
     }
 
     private setIcon(billboard: Billboard, flight: FlightEntity): void {
@@ -150,6 +221,9 @@ export class FlightRenderer implements LayerRenderer {
 
     private removeWithFade(id: string): void {
         const billboard = this.billboards.get(id);
+        this.trailHistory.delete(id);
+        this.dropTrail(id);
+        this.dropLabel(id);
         if (!billboard || this.fadingOut.has(id)) return;
         this.fadingOut.add(id);
         fadeAlpha(
@@ -181,8 +255,107 @@ export class FlightRenderer implements LayerRenderer {
             );
             billboard.position = position;
             billboard.rotation = headingToBillboardRotation(buffer[base + 3]);
+            const label = this.labels.get(ids[i]);
+            if (label) label.position = position;
             wrote = true;
         }
         if (wrote) renderScheduler.requestFrame();
+    }
+
+    // ---- Detalj-tildeling (trails + labels) ----
+
+    /**
+     * LOKAL/NÆR: nærmest-kamera-fly får trail + label innenfor LODGovernors
+     * kvoter. Kalles ved tier-skifte og per delta (poll-kadens) — aldri per
+     * frame. GLOBAL/REGION: alle trails/labels fjernes.
+     */
+    private refreshDetailAssignments(): void {
+        if (!this.trailCollection || !this.labelCollection) return;
+
+        if (!this.detailVisible || this.billboards.size === 0) {
+            if (this.trails.size > 0 || this.labels.size > 0) {
+                for (const id of [...this.trails.keys()]) this.dropTrail(id);
+                for (const id of [...this.labels.keys()]) this.dropLabel(id);
+            }
+            return;
+        }
+
+        const scene = this.scene;
+        if (!scene) return;
+        const cameraPos = Cartesian3.clone(scene.camera.positionWC, scratchCamera);
+
+        const byDistance: { id: string; dist: number }[] = [];
+        for (const [id, billboard] of this.billboards) {
+            if (this.fadingOut.has(id)) continue;
+            byDistance.push({ id, dist: Cartesian3.distanceSquared(billboard.position, cameraPos) });
+        }
+        byDistance.sort((a, b) => a.dist - b.dist);
+
+        const trailQuota = lodGovernor.requestQuota('polylines', this.id, byDistance.length);
+        const labelQuota = lodGovernor.requestQuota('labels', this.id, byDistance.length);
+
+        const wantTrails = new Set(byDistance.slice(0, trailQuota).map((e) => e.id));
+        const wantLabels = new Set(byDistance.slice(0, labelQuota).map((e) => e.id));
+
+        for (const id of [...this.trails.keys()]) {
+            if (!wantTrails.has(id)) this.dropTrail(id);
+        }
+        for (const id of [...this.labels.keys()]) {
+            if (!wantLabels.has(id)) this.dropLabel(id);
+        }
+        for (const id of wantTrails) this.ensureTrail(id);
+        for (const id of wantLabels) this.ensureLabel(id);
+    }
+
+    private ensureTrail(id: string): void {
+        if (this.trails.has(id) || !this.trailCollection) return;
+        const history = this.trailHistory.get(id);
+        const flight = this.store.get(id);
+        if (!history || !flight || history.size < 2) return;
+        const polyline = this.trailCollection.add({
+            id: `${primitiveId(this.id, id)}:trail`,
+            positions: history.tail(MAX_FLIGHT_TRAIL),
+            width: 2,
+            material: flight.isMilitary ? this.trailMaterialMilitary! : this.trailMaterial!,
+        });
+        this.trails.set(id, polyline);
+    }
+
+    private dropTrail(id: string): void {
+        const polyline = this.trails.get(id);
+        if (polyline) {
+            this.trailCollection?.remove(polyline);
+            this.trails.delete(id);
+        }
+    }
+
+    private ensureLabel(id: string): void {
+        if (this.labels.has(id) || !this.labelCollection) return;
+        const flight = this.store.get(id);
+        const billboard = this.billboards.get(id);
+        if (!flight || !billboard) return;
+        const label = this.labelCollection.add({
+            id: `${primitiveId(this.id, id)}:label`,
+            position: billboard.position,
+            text: flight.callsign || flight.icao24,
+            font: LABEL_FONT,
+            fillColor: LABEL_FILL,
+            outlineColor: Color.BLACK,
+            outlineWidth: 2,
+            style: LabelStyle.FILL_AND_OUTLINE,
+            pixelOffset: LABEL_OFFSET,
+            horizontalOrigin: HorizontalOrigin.CENTER,
+            verticalOrigin: VerticalOrigin.BOTTOM,
+            scaleByDistance: SCALE_BY_DISTANCE,
+        });
+        this.labels.set(id, label);
+    }
+
+    private dropLabel(id: string): void {
+        const label = this.labels.get(id);
+        if (label) {
+            this.labelCollection?.remove(label);
+            this.labels.delete(id);
+        }
     }
 }
