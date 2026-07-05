@@ -92,6 +92,20 @@ function aisProxy(): Plugin {
 export default defineConfig({
     base: '/',
     plugins: [react(), tailwindcss(), cesium(), aisProxy(), lightningProxy()],
+    build: {
+        // Vendor-splitting: firebase og react i egne chunks — bedre caching
+        // (app-endringer invaliderer ikke vendor-chunks) og parallell
+        // nedlasting. Cesium eksternaliseres allerede av vite-plugin-cesium.
+        rollupOptions: {
+            output: {
+                manualChunks: {
+                    firebase: ['firebase/app', 'firebase/auth', 'firebase/firestore'],
+                    react: ['react', 'react-dom'],
+                },
+            },
+        },
+        chunkSizeWarningLimit: 1500,
+    },
     resolve: {
         alias: {
             '@': path.resolve(__dirname, 'src'),

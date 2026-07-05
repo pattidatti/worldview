@@ -16,7 +16,7 @@ import {
 import { fetchEntityBucket } from '@/services/historyReplay';
 import { cacheGet, cacheHas, cachePut } from '@/utils/historyCache';
 import { interpolateFlights, interpolateShips } from '@/utils/entityInterpolation';
-import { useTimelineEvents } from '@/context/TimelineEventContext';
+import { useTimelineEventActions } from '@/context/TimelineEventContext';
 import type { DataGapEvent } from '@/types/timeline-event';
 
 const TRAIL_BUCKET_COUNT = 6; // 60 min ved 10-min fly-buckets, 30 min ved 5-min skip.
@@ -65,7 +65,7 @@ export function useReplayEntities(
     const [trails, setTrails] = useState<TypedBucket[]>([]);
     const [loading, setLoading] = useState(false);
 
-    const { append } = useTimelineEvents();
+    const { append } = useTimelineEventActions();
     const lastGapKeyRef = useRef<string | null>(null);
 
     const interval = bucketIntervalMs(type);

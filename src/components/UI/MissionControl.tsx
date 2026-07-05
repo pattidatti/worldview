@@ -82,7 +82,6 @@ export function MissionControl() {
     const buttonStyle: React.CSSProperties = {
         fontFamily: 'var(--font-mono)',
         background: open ? 'rgba(0, 255, 136, 0.12)' : 'rgba(10, 10, 20, 0.65)',
-        backdropFilter: 'blur(8px)',
         border: open ? '1px solid rgba(0, 255, 136, 0.5)' : '1px solid rgba(255,255,255,0.08)',
         borderLeft: open ? '2px solid rgba(0, 255, 136, 0.8)' : '2px solid rgba(255,255,255,0.12)',
         borderRadius: '6px',
@@ -141,7 +140,6 @@ export function MissionControl() {
                             flexDirection: 'column',
                             fontFamily: 'var(--font-mono)',
                             background: 'rgba(6, 8, 18, 0.95)',
-                            backdropFilter: 'blur(16px)',
                             border: '1px solid rgba(0, 255, 136, 0.2)',
                             borderTop: '2px solid rgba(0, 255, 136, 0.6)',
                             borderRadius: '8px',

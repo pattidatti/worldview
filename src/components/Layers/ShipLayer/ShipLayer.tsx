@@ -30,7 +30,7 @@ import { usePopupRegistry } from '@/context/PopupRegistry';
 import { useTooltipRegistry } from '@/context/TooltipRegistry';
 import { useGeointRegistry } from '@/context/GeointContext';
 import { useGates } from '@/context/GateContext';
-import { useTimelineEvents } from '@/context/TimelineEventContext';
+import { useTimelineEventActions } from '@/context/TimelineEventContext';
 import { writeCrossings } from '@/services/crossingSync';
 import { useTimelineMode, useReplayCursor, CURSOR_JUMP_THRESHOLD_MS } from '@/context/TimelineModeContext';
 import { useReplayEntities } from '@/hooks/useReplayEntities';
@@ -200,7 +200,7 @@ export function ShipLayer() {
     const { register: tooltipRegister, unregister: tooltipUnregister } = useTooltipRegistry();
     const { register: geointRegister, unregister: geointUnregister } = useGeointRegistry();
     const { gates } = useGates();
-    const { append: appendTimelineEvents } = useTimelineEvents();
+    const { append: appendTimelineEvents } = useTimelineEventActions();
     const { setDarkShips } = useDarkShips();
     const setDarkShipsRef = useRef(setDarkShips);
     setDarkShipsRef.current = setDarkShips;

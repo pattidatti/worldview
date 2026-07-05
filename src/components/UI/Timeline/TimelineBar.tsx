@@ -91,8 +91,7 @@ export function TimelineBar() {
             style={{
                 bottom: 0,
                 height: 44,
-                background: 'rgba(10,10,20,0.82)',
-                backdropFilter: 'blur(10px)',
+                background: 'rgba(12,12,22,0.92)',
                 borderTop: isReplay
                     ? '1px solid rgba(255,107,53,0.35)'
                     : '1px solid rgba(255,255,255,0.08)',
