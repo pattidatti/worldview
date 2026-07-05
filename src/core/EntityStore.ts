@@ -136,10 +136,10 @@ export class EntityStore<T extends { id: string }> {
 }
 
 /** Oppslag for popups/tracking: kanal-id → store. */
-const registry = new Map<string, EntityStore<{ id: string }>>();
+const registry = new Map<string, unknown>();
 
 export const entityStores = {
-    register(store: EntityStore<{ id: string }>): void {
+    register<T extends { id: string }>(store: EntityStore<T>): void {
         registry.set(store.channelId, store);
     },
     unregister(channelId: string): void {

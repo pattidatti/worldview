@@ -105,7 +105,7 @@ describe('EntityStore', () => {
 
     it('registry: register/get/unregister', () => {
         const store = new EntityStore<TestEntity>('registry-test');
-        entityStores.register(store as EntityStore<{ id: string }>);
+        entityStores.register(store);
         expect(entityStores.get<TestEntity>('registry-test')).toBe(store);
         entityStores.unregister('registry-test');
         expect(entityStores.get('registry-test')).toBeUndefined();
