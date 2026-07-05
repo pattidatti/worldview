@@ -30,7 +30,7 @@ async function buildIndex(): Promise<Map<number, OfacVessel>> {
         }
     } catch { /* ignore */ }
 
-    const response = await fetch(OFAC_URL);
+    const response = await fetch(OFAC_URL, { signal: AbortSignal.timeout(20_000) });
     if (!response.ok) throw new Error(`OFAC ${response.status}`);
     const json = await response.json() as { sdnList?: { sdnEntry?: unknown[] } };
 

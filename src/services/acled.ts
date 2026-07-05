@@ -1,4 +1,5 @@
 import { type ConflictEvent, type ConflictEventType } from '@/types/conflict';
+import { combineSignals } from '@/utils/http';
 
 const API_KEY = import.meta.env.VITE_ACLED_API_KEY || '';
 const EMAIL = import.meta.env.VITE_ACLED_EMAIL || '';
@@ -8,7 +9,7 @@ function dateString(d: Date): string {
     return d.toISOString().slice(0, 10);
 }
 
-export async function fetchConflicts(): Promise<ConflictEvent[]> {
+export async function fetchConflicts(signal?: AbortSignal): Promise<ConflictEvent[]> {
     if (!API_KEY || !EMAIL) {
         if (import.meta.env.DEV) console.warn('[ConflictLayer] VITE_ACLED_API_KEY og/eller VITE_ACLED_EMAIL mangler — konflikdatalaget er deaktivert.');
         return [];
@@ -25,7 +26,7 @@ export async function fetchConflicts(): Promise<ConflictEvent[]> {
         fields: 'data_id|event_date|event_type|sub_event_type|actor1|actor2|country|admin1|latitude|longitude|fatalities|notes|source',
     });
 
-    const response = await fetch(`${BASE_URL}?${params}`);
+    const response = await fetch(`${BASE_URL}?${params}`, { signal: combineSignals(20_000, signal) });
     if (!response.ok) throw new Error(`ACLED feil: ${response.status}`);
 
     const json = await response.json();

@@ -18,7 +18,7 @@ interface PollingOptions {
 }
 
 export function usePollingData<T>(
-    fetchFn: () => Promise<T>,
+    fetchFn: (signal?: AbortSignal) => Promise<T>,
     intervalMs: number,
     enabled: boolean = true,
     options: PollingOptions = {}
@@ -30,6 +30,13 @@ export function usePollingData<T>(
     const fetchRef = useRef(fetchFn);
     fetchRef.current = fetchFn;
     const { cinematicActiveRef } = useCinematic();
+    // In-flight-vern: uten dette starter intervallet en ny fetch oppå en treg
+    // pågående en, og requests stables ved nettverkstrøbbel.
+    const inFlightRef = useRef(false);
+    // Abort ved unmount/disable — hindrer at svar setter state etter opprydding
+    // og at forlatte requests fortsetter å bruke båndbredde.
+    const abortRef = useRef<AbortController | null>(null);
+    const disposedRef = useRef(false);
     // Default ~1.5s jitter sprer første fetch for 11 polling-lag så de ikke alle
     // treffer nettverket i samme tick når appen lastes. Konsumenter kan overstyre.
     const { startupJitterMs = 1500 } = options;
@@ -38,21 +45,29 @@ export function usePollingData<T>(
         // Skip nettverk + entity-sync når cinematic-tour kjører.
         // Manuell refresh-kall (etter unmount) går igjennom som vanlig.
         if (cinematicActiveRef.current) return;
+        if (inFlightRef.current) return;
+        inFlightRef.current = true;
+        const controller = new AbortController();
+        abortRef.current = controller;
         setLoading(true);
         setError(null);
         try {
-            const result = await fetchRef.current();
+            const result = await fetchRef.current(controller.signal);
+            if (disposedRef.current || controller.signal.aborted) return;
             setData(result);
             setLastUpdated(Date.now());
         } catch (e) {
+            if (disposedRef.current || controller.signal.aborted) return;
             setError(e instanceof Error ? e.message : 'Ukjent feil');
         } finally {
-            setLoading(false);
+            inFlightRef.current = false;
+            if (!disposedRef.current && !controller.signal.aborted) setLoading(false);
         }
     }, [cinematicActiveRef]);
 
     useEffect(() => {
         if (!enabled) return;
+        disposedRef.current = false;
         let intervalId: ReturnType<typeof setInterval> | null = null;
         const jitter = startupJitterMs > 0 ? Math.random() * startupJitterMs : 0;
         const startTimeout = setTimeout(() => {
@@ -60,8 +75,11 @@ export function usePollingData<T>(
             intervalId = setInterval(doFetch, intervalMs);
         }, jitter);
         return () => {
+            disposedRef.current = true;
             clearTimeout(startTimeout);
             if (intervalId !== null) clearInterval(intervalId);
+            abortRef.current?.abort();
+            inFlightRef.current = false;
         };
     }, [enabled, intervalMs, doFetch, startupJitterMs]);
 

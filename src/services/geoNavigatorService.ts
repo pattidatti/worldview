@@ -123,6 +123,7 @@ export async function getPlacesForCity(
     try {
         const res = await fetch(`${NOMINATIM_URL}?${params}`, {
             headers: { 'User-Agent': 'WorldView/0.1' },
+            signal: AbortSignal.timeout(10_000),
         });
         if (!res.ok) return [];
 

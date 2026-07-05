@@ -4,7 +4,20 @@ import { isValidLatLon } from '@/utils/coords';
 
 type ShipCallback = (ships: Map<number, Ship>) => void;
 
-const SUBSCRIPTION_BUFFER = 1.5; // grader padding på hver kant av kamera-viewporten
+// Grader padding på hver kant av kamera-viewporten. Romslig buffer reduserer
+// reconnect-thrash: AISStream har ingen in-band re-subscribe, så hver gang
+// kameraet forlater det buffrete området må hele WebSocketen rives og gjenopprettes.
+const SUBSCRIPTION_BUFFER = 3.0;
+
+// Skip som ikke har rapportert på 60 min prunes fra den interne Map-en.
+// Uten pruning vokser den ubegrenset så lenge tilkoblingen lever (den
+// overlever bevisst re-subscribes) — en flertimers økt i et travelt
+// område lekker minne kontinuerlig.
+const INTERNAL_STALE_MS = 60 * 60 * 1000;
+
+// Emit-heartbeat: uendret flåte emittes likevel hvert N-te tick slik at
+// konsumenter får re-evaluert tidsbaserte tilstander (dark ships etc.).
+const HEARTBEAT_TICKS = 6; // 6 × 5s = 30s
 
 function expandViewport(vp: Viewport): Viewport {
     return {
@@ -27,6 +40,8 @@ export class AISStreamConnection {
     private connectTimeout: ReturnType<typeof setTimeout> | null = null;
     private stopped = false;
     private reconnectCount = 0;
+    private dirty = false;
+    private ticksSinceEmit = 0;
 
     constructor(apiKey: string, viewport: Viewport, onUpdate: ShipCallback, onError?: (msg: string) => void) {
         this.apiKey = apiKey;
@@ -70,6 +85,20 @@ export class AISStreamConnection {
 
             // Start batch timer AFTER connection is established
             this.updateTimer = setInterval(() => {
+                // Prune stale skip fra kilden — ShipLayer pruner bare sin kopi.
+                const cutoff = Date.now() - INTERNAL_STALE_MS;
+                for (const [mmsi, ship] of this.ships) {
+                    if (ship.lastSeen < cutoff) {
+                        this.ships.delete(mmsi);
+                        this.dirty = true;
+                    }
+                }
+                // Ikke kopiér + emit en uendret flåte hvert 5s — kun ved endring
+                // eller som 30s-heartbeat for tidsbaserte re-evalueringer.
+                this.ticksSinceEmit++;
+                if (!this.dirty && this.ticksSinceEmit < HEARTBEAT_TICKS) return;
+                this.dirty = false;
+                this.ticksSinceEmit = 0;
                 this.onUpdate(new Map(this.ships));
             }, 5000);
         };
@@ -108,6 +137,7 @@ export class AISStreamConnection {
                         navStatus: pos.NavigationalStatus ?? 15,
                         lastSeen: Date.now(),
                     });
+                    this.dirty = true;
                 } else if (msg.MessageType === 'ShipStaticData') {
                     const sd = msg.Message?.ShipStaticData;
                     if (!sd) return;
@@ -123,6 +153,7 @@ export class AISStreamConnection {
                         existing.width = dim ? dim.C + dim.D : 0;
                         existing.draught = sd.MaximumStaticDraught ?? 0;
                         existing.destination = (sd.Destination ?? '').trim();
+                        this.dirty = true;
                     } else {
                         // Uten gyldige meta-koordinater har vi ingen posisjon å vise skipet på.
                         // AIS re-broadcaster static data ~hvert 6. min — vent til da, eller til en
@@ -146,6 +177,7 @@ export class AISStreamConnection {
                             destination: (sd.Destination ?? '').trim(),
                             lastSeen: Date.now(),
                         });
+                        this.dirty = true;
                     }
                 }
             } catch {
@@ -165,13 +197,15 @@ export class AISStreamConnection {
             }
             this.ws = null;
 
-            // Auto-reconnect after 3s unless stopped
+            // Auto-reconnect med eksponentiell backoff (3s → 6s → 12s … maks 60s).
+            // Fast 3s-retry mot en nede-endepunkt/ugyldig nøkkel hamret evig.
             if (!this.stopped) {
                 this.reconnectCount++;
                 if (this.reconnectCount >= 3) {
                     this.onError?.('AISStream utilgjengelig – sjekk API-nøkkel eller nettverkstilgang');
                 }
-                this.reconnectTimer = setTimeout(() => this.connect(), 3000);
+                const backoff = Math.min(3000 * 2 ** (this.reconnectCount - 1), 60_000);
+                this.reconnectTimer = setTimeout(() => this.connect(), backoff);
             }
         };
     }

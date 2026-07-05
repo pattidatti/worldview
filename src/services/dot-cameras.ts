@@ -77,7 +77,7 @@ function parseEntry(d: unknown): RoadCamera | null {
 }
 
 export async function fetchDotCameras(): Promise<RoadCamera[]> {
-    const res = await fetch(proxied(CALTRANS_URL));
+    const res = await fetch(proxied(CALTRANS_URL), { signal: AbortSignal.timeout(15_000) });
     if (!res.ok) throw new Error(`Caltrans DOT kamera-feil: ${res.status}`);
     const json = await res.json();
 

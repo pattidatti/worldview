@@ -16,7 +16,7 @@ interface LaunchEntry {
 }
 
 export async function fetchLaunches(): Promise<RocketLaunch[]> {
-    const res = await fetch(URL);
+    const res = await fetch(URL, { signal: AbortSignal.timeout(15_000) });
     if (!res.ok) throw new Error(`Launch Library: ${res.status}`);
     const data = await res.json() as { results: LaunchEntry[] };
     return data.results

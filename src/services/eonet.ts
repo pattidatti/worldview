@@ -1,4 +1,5 @@
 import { type Disaster } from '@/types/disaster';
+import { combineSignals } from '@/utils/http';
 
 const EONET_URL = 'https://eonet.gsfc.nasa.gov/api/v3/events?status=open&limit=200';
 
@@ -16,8 +17,8 @@ interface EonetEvent {
     geometry: EonetGeometry[];
 }
 
-export async function fetchDisasters(): Promise<Disaster[]> {
-    const response = await fetch(EONET_URL);
+export async function fetchDisasters(signal?: AbortSignal): Promise<Disaster[]> {
+    const response = await fetch(EONET_URL, { signal: combineSignals(15_000, signal) });
     if (!response.ok) throw new Error(`EONET feil: ${response.status}`);
     const data = await response.json() as { events: EonetEvent[] };
 

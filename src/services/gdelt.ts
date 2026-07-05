@@ -1,13 +1,14 @@
 import { type NewsEvent } from '@/types/news';
 import { proxied } from '@/utils/corsProxy';
+import { combineSignals } from '@/utils/http';
 
 const GDELT_URL =
     'https://api.gdeltproject.org/api/v2/geo/geo?query=*&mode=PointData&format=GeoJSON&timespan=60min';
 
 const MAX_RESULTS = 2000;
 
-export async function fetchNewsEvents(): Promise<NewsEvent[]> {
-    const response = await fetch(proxied(GDELT_URL));
+export async function fetchNewsEvents(signal?: AbortSignal): Promise<NewsEvent[]> {
+    const response = await fetch(proxied(GDELT_URL), { signal: combineSignals(20_000, signal) });
     if (!response.ok) throw new Error(`GDELT feil: ${response.status}`);
 
     const json = await response.json();

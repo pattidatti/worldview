@@ -55,6 +55,7 @@ function parseEntry(d: unknown): RoadCamera | null {
 export async function fetchVegvesenCameras(): Promise<RoadCamera[]> {
     const res = await fetch(API_URL, {
         headers: { 'User-Agent': 'WorldView/1.0 (vegvesen-cameras)' },
+        signal: AbortSignal.timeout(15_000),
     });
     if (!res.ok) throw new Error(`Vegvesen-kamera feil: ${res.status}`);
     const json = await res.json();

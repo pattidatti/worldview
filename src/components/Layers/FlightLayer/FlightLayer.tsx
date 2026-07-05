@@ -288,11 +288,12 @@ export function FlightLayer() {
         if (isReplay) return;
         let cancelled = false;
         let timerId: ReturnType<typeof setTimeout>;
+        const controller = new AbortController();
 
         const doFetch = async () => {
             setLayerLoading('flights', true);
             try {
-                const data = await fetchFlights(viewportRef.current);
+                const data = await fetchFlights(viewportRef.current, controller.signal);
                 if (!cancelled) {
                     setFlights(data.slice(0, MAX_FLIGHTS));
                     setLayerError('flights', null);
@@ -311,7 +312,7 @@ export function FlightLayer() {
         };
 
         doFetch();
-        return () => { cancelled = true; clearTimeout(timerId); };
+        return () => { cancelled = true; clearTimeout(timerId); controller.abort(); };
     }, [visible, isReplay, setLayerLoading, setLayerError, setLayerLastUpdated]);
 
     // Replay-drevet state: når i replay-modus, driv `flights` fra useReplayEntities.

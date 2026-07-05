@@ -4,7 +4,7 @@ import { type Earthquake } from '@/types/earthquake';
 const USGS_URL = 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_day.geojson';
 
 export async function fetchEarthquakes(): Promise<Earthquake[]> {
-    const response = await fetch(USGS_URL);
+    const response = await fetch(USGS_URL, { signal: AbortSignal.timeout(15_000) });
     if (!response.ok) throw new Error(`USGS feil: ${response.status}`);
     const data = await response.json();
     return data.features.map((f: { id: string; properties: { title: string; mag: number; place: string; time: number; url: string }; geometry: { coordinates: [number, number, number] } }): Earthquake => ({
