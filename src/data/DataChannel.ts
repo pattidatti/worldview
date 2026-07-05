@@ -28,26 +28,35 @@ export interface DataChannel<T extends { id: string }> {
 }
 
 /**
- * Diff en ny datamengde mot storens innhold: upsert kun nye/endrede objekter
+ * Diff en ny datamengde mot forrige tilstand: upsert kun nye/endrede objekter
  * (shallow-equal), remove alt som ikke lenger finnes. Holder delta-varslinger
- * små når kilden returnerer overveiende uendrede objekter.
+ * små når kilden returnerer overveiende uendrede objekter. DOM-fri — brukes
+ * også av channel-worker-sesjoner.
  */
-export function diffItems<T extends { id: string }>(
-    store: EntityStore<T>,
+export function diffMap<T extends { id: string }>(
+    prev: ReadonlyMap<string, T>,
     items: T[],
 ): EntityDelta<T> {
     const upserts: T[] = [];
     const seen = new Set<string>();
     for (const item of items) {
         seen.add(item.id);
-        const existing = store.get(item.id);
+        const existing = prev.get(item.id);
         if (!existing || !shallowEqual(existing, item)) upserts.push(item);
     }
     const removes: string[] = [];
-    for (const id of store.getAll().keys()) {
+    for (const id of prev.keys()) {
         if (!seen.has(id)) removes.push(id);
     }
     return { upserts, removes };
+}
+
+/** Som diffMap, mot en EntityStores innhold. */
+export function diffItems<T extends { id: string }>(
+    store: EntityStore<T>,
+    items: T[],
+): EntityDelta<T> {
+    return diffMap(store.getAll(), items);
 }
 
 function shallowEqual(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
