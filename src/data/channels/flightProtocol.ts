@@ -1,7 +1,8 @@
 // Delt protokoll for flights-kanalen: meldingstyper mellom main thread og
 // channel-workeren, posisjonsbuffer-layout og flagg-bits. DOM-/Cesium-fri.
 
-import type { Flight } from '@/types/flight';
+import type { Flight, PositionSource } from '@/types/flight';
+import type { ReplayFlight } from '@/types/replay';
 import type { PositionBufferLayout } from '@/core/EntityStore';
 import type { Viewport } from '@/core/ViewportService';
 
@@ -10,6 +11,23 @@ export type FlightEntity = Flight & { id: string };
 
 export function toFlightEntity(flight: Flight): FlightEntity {
     return { ...flight, id: flight.icao24 };
+}
+
+/**
+ * ReplayFlight → FlightEntity. Sentraliserer avstemmingen som tidligere lå
+ * ad hoc i FlightLayers replay-effekt: ReplayFlight mangler originCountry og
+ * har positionSource som løst tall.
+ */
+export function replayFlightToFlightEntity(replay: ReplayFlight): FlightEntity {
+    const source = replay.positionSource;
+    return {
+        ...replay,
+        id: replay.icao24,
+        originCountry: '',
+        positionSource: (source === 0 || source === 1 || source === 2 || source === 3
+            ? source
+            : 0) as PositionSource,
+    };
 }
 
 /** Posisjonsbuffer: 6 Float64 per fly. */
