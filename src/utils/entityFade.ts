@@ -5,10 +5,47 @@ function smoothstep(t: number): number {
 }
 
 // Fast 30fps animasjons-cadence — tilstrekkelig for fade/bounce-effekter, halverer
-// requestRender-trafikk vs 60fps. Bruk setInterval + ConstantProperty i stedet for
-// CallbackProperty: unngår per-frame eval-overhead og gjør animasjonen uavhengig av
-// hvor ofte Cesium trigger CallbackProperty.getValue().
+// requestRender-trafikk vs 60fps.
 const FRAME_MS = 33;
+
+interface FadeJob {
+    viewer: Viewer;
+    start: number;
+    durationMs: number;
+    onTick: (t: number) => void;
+    onDone?: () => void;
+}
+
+// Delt animasjonsdriver: én enkelt setInterval driver ALLE aktive fade/bounce-jobber,
+// uansett hvor mange entiteter som animerer samtidig. Uten denne ville en poll som
+// legger til 2000 fly spawne 2000 uavhengige timere som hver kalte requestRender —
+// nå blir det maks én requestRender per viewer per tick.
+const jobs = new Set<FadeJob>();
+let driverId: number | null = null;
+const scratchViewers = new Set<Viewer>();
+
+function tickDriver(): void {
+    const now = performance.now();
+    scratchViewers.clear();
+    for (const job of jobs) {
+        if (job.viewer.isDestroyed()) {
+            jobs.delete(job);
+            continue;
+        }
+        const t = Math.min((now - job.start) / job.durationMs, 1);
+        job.onTick(t);
+        scratchViewers.add(job.viewer);
+        if (t >= 1) {
+            jobs.delete(job);
+            job.onDone?.();
+        }
+    }
+    for (const v of scratchViewers) v.scene.requestRender();
+    if (jobs.size === 0 && driverId !== null) {
+        clearInterval(driverId);
+        driverId = null;
+    }
+}
 
 function animate(
     durationMs: number,
@@ -16,42 +53,35 @@ function animate(
     onTick: (t: number) => void,
     onDone?: () => void,
 ): void {
-    const start = performance.now();
-    const id = window.setInterval(() => {
-        if (viewer.isDestroyed()) {
-            clearInterval(id);
-            return;
-        }
-        const t = Math.min((performance.now() - start) / durationMs, 1);
-        onTick(t);
-        viewer.scene.requestRender();
-        if (t >= 1) {
-            clearInterval(id);
-            onDone?.();
-        }
-    }, FRAME_MS);
+    jobs.add({ viewer, start: performance.now(), durationMs, onTick, onDone });
+    if (driverId === null) {
+        driverId = window.setInterval(tickDriver, FRAME_MS);
+    }
 }
 
 /**
  * Fader inn billboard.color og/eller point.color fra alpha 0 → full alpha.
- * Bruker setInterval (30fps) + ConstantProperty for å unngå per-frame
- * CallbackProperty-eval. Kall ETTER at entity er lagt til DataSource.
+ * Alle fades deler én timer (se driver over). Kall ETTER at entity er lagt til DataSource.
  */
 export function fadeInEntity(entity: Entity, viewer: Viewer, durationMs = 600): void {
     const jd = JulianDate.fromDate(new Date());
     let target: Color | null = null;
     let pointTarget: Color | null = null;
+    let billboardProp: ConstantProperty | null = null;
+    let pointProp: ConstantProperty | null = null;
 
     if (entity.billboard) {
         const existing = entity.billboard.color;
         target = existing
             ? Color.clone((existing as ConstantProperty).getValue(jd) as Color ?? Color.WHITE)
             : Color.WHITE.clone();
-        (entity.billboard as unknown as Record<string, unknown>).color = new ConstantProperty(target.withAlpha(0));
+        billboardProp = new ConstantProperty(target.withAlpha(0));
+        (entity.billboard as unknown as Record<string, unknown>).color = billboardProp;
     }
     if (entity.point?.color) {
         pointTarget = Color.clone((entity.point.color as ConstantProperty).getValue(jd) as Color ?? Color.WHITE);
-        (entity.point as unknown as Record<string, unknown>).color = new ConstantProperty(pointTarget.withAlpha(0));
+        pointProp = new ConstantProperty(pointTarget.withAlpha(0));
+        (entity.point as unknown as Record<string, unknown>).color = pointProp;
     }
 
     animate(
@@ -59,20 +89,16 @@ export function fadeInEntity(entity: Entity, viewer: Viewer, durationMs = 600): 
         viewer,
         (t) => {
             const a = smoothstep(t);
-            if (target && entity.billboard) {
-                (entity.billboard as unknown as Record<string, unknown>).color = new ConstantProperty(target.withAlpha(a * target.alpha));
+            if (target && billboardProp) {
+                billboardProp.setValue(target.withAlpha(a * target.alpha));
             }
-            if (pointTarget && entity.point) {
-                (entity.point as unknown as Record<string, unknown>).color = new ConstantProperty(pointTarget.withAlpha(a * pointTarget.alpha));
+            if (pointTarget && pointProp) {
+                pointProp.setValue(pointTarget.withAlpha(a * pointTarget.alpha));
             }
         },
         () => {
-            if (target && entity.billboard) {
-                (entity.billboard as unknown as Record<string, unknown>).color = new ConstantProperty(target);
-            }
-            if (pointTarget && entity.point) {
-                (entity.point as unknown as Record<string, unknown>).color = new ConstantProperty(pointTarget);
-            }
+            if (target && billboardProp) billboardProp.setValue(target);
+            if (pointTarget && pointProp) pointProp.setValue(pointTarget);
         },
     );
 }
@@ -90,15 +116,21 @@ export function fadeOutEntity(
     const jd = JulianDate.fromDate(new Date());
     let base: Color | null = null;
     let pointBase: Color | null = null;
+    let billboardProp: ConstantProperty | null = null;
+    let pointProp: ConstantProperty | null = null;
 
     if (entity.billboard) {
         const existing = entity.billboard.color;
         base = existing
             ? Color.clone((existing as ConstantProperty).getValue(jd) as Color ?? Color.WHITE)
             : Color.WHITE.clone();
+        billboardProp = new ConstantProperty(base);
+        (entity.billboard as unknown as Record<string, unknown>).color = billboardProp;
     }
     if (entity.point?.color) {
         pointBase = Color.clone((entity.point.color as ConstantProperty).getValue(jd) as Color ?? Color.WHITE);
+        pointProp = new ConstantProperty(pointBase);
+        (entity.point as unknown as Record<string, unknown>).color = pointProp;
     }
 
     animate(
@@ -106,11 +138,11 @@ export function fadeOutEntity(
         viewer,
         (t) => {
             const a = 1 - smoothstep(t);
-            if (base && entity.billboard) {
-                (entity.billboard as unknown as Record<string, unknown>).color = new ConstantProperty(base.withAlpha(a * base.alpha));
+            if (base && billboardProp) {
+                billboardProp.setValue(base.withAlpha(a * base.alpha));
             }
-            if (pointBase && entity.point) {
-                (entity.point as unknown as Record<string, unknown>).color = new ConstantProperty(pointBase.withAlpha(a * pointBase.alpha));
+            if (pointBase && pointProp) {
+                pointProp.setValue(pointBase.withAlpha(a * pointBase.alpha));
             }
         },
         () => onComplete?.(),
@@ -124,6 +156,9 @@ export function fadeOutEntity(
 export function bounceInEntity(entity: Entity, viewer: Viewer, durationMs = 450): void {
     if (!entity.billboard) return;
 
+    const scaleProp = new ConstantProperty(0.5);
+    (entity.billboard as unknown as Record<string, unknown>).scale = scaleProp;
+
     animate(
         durationMs,
         viewer,
@@ -136,14 +171,8 @@ export function bounceInEntity(entity: Entity, viewer: Viewer, durationMs = 450)
                 const p = (t - 0.7) / 0.3;
                 scale = 1.15 - smoothstep(p) * 0.15;
             }
-            if (entity.billboard) {
-                (entity.billboard as unknown as Record<string, unknown>).scale = new ConstantProperty(scale);
-            }
+            scaleProp.setValue(scale);
         },
-        () => {
-            if (entity.billboard) {
-                (entity.billboard as unknown as Record<string, unknown>).scale = new ConstantProperty(1.0);
-            }
-        },
+        () => scaleProp.setValue(1.0),
     );
 }

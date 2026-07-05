@@ -3,7 +3,6 @@ import {
     CustomDataSource,
     Entity,
     Cartesian3,
-    Cartographic,
     Color,
     ConstantPositionProperty,
     ConstantProperty,
@@ -59,6 +58,7 @@ import {
     GHOST_MAX_RING_M,
 } from '@/utils/ship-utils';
 import { useDarkShips, shipToDarkRecord } from '@/context/DarkShipsContext';
+import { cachedGlobeHeight } from '@/utils/globeHeightCache';
 import { checkSanctions } from '@/services/sanctions';
 import { isSpringAnimating } from '@/utils/springEntities';
 
@@ -177,6 +177,20 @@ const SMOKE_CB = (particle: CesiumParticle, dt: number) => {
 // Avstandsgrense — nav-lys og radar kun synlig < 25 km
 const NAV_RANGE = new DistanceDisplayCondition(0, 25_000);
 const NAV_SCALE = new NearFarScalar(200, 2.0, 25_000, 0.0);
+
+// Røyk-partikler og radar-oppdatering er kun verdt kostnaden nær kamera.
+// ParticleSystem er dyrt per instans — uten gating kunne 1000 skip få hvert
+// sitt system selv om de var usynlige på avstand.
+const DETAIL_RANGE_M = 25_000;
+const MAX_SMOKE_SYSTEMS = 60;
+
+/** Grov horisontal-distansesjekk i grader — allokeringstfri gate før dyre operasjoner */
+function withinDetailRange(camLat: number, camLon: number, camCosLat: number, lat: number, lon: number): boolean {
+    const dLatM = Math.abs(lat - camLat) * 111_000;
+    if (dLatM > DETAIL_RANGE_M) return false;
+    const dLonM = Math.abs(lon - camLon) * 111_000 * camCosLat;
+    return (dLatM * dLatM + dLonM * dLonM) <= DETAIL_RANGE_M * DETAIL_RANGE_M;
+}
 
 export function ShipLayer() {
     const viewer = useViewer();
@@ -549,6 +563,14 @@ export function ShipLayer() {
         const detectOptions = { maxStalenessMs: SHIP_CROSSING_STALENESS_MS };
         const nowMs = Date.now();
 
+        // Kamera-posisjon én gang per sync — brukes til avstandsgating av dyre
+        // detaljer (røykpartikler). Over DETAIL_RANGE_M høyde er ingenting av det synlig.
+        const camCarto = viewer && !viewer.isDestroyed() ? viewer.camera.positionCartographic : null;
+        const camLat = camCarto ? CesiumMath.toDegrees(camCarto.latitude) : 0;
+        const camLon = camCarto ? CesiumMath.toDegrees(camCarto.longitude) : 0;
+        const camCosLat = Math.cos(camCarto?.latitude ?? 0);
+        const detailsVisible = camCarto !== null && camCarto.height < DETAIL_RANGE_M;
+
         for (const [mmsi, ship] of ships) {
             const id = String(mmsi);
             seen.add(id);
@@ -584,8 +606,9 @@ export function ShipLayer() {
 
             // Bruk globens faktiske terreng-høyde som base for å kompensere for ikke-uniform ellipsoide
             const SEA_OFFSET = 1;
-            const _carto = Cartographic.fromDegrees(ship.lon, ship.lat);
-            const terrainH = viewer?.scene.globe.getHeight(_carto) ?? 50;
+            const terrainH = viewer && !viewer.isDestroyed()
+                ? cachedGlobeHeight(viewer.scene, ship.lon, ship.lat, 50)
+                : 50;
             const baseAlt = Math.max(0, terrainH) + SEA_OFFSET;
             const seaPos = Cartesian3.fromDegrees(ship.lon, ship.lat, baseAlt);
             const hullPos = Cartesian3.fromDegrees(ship.lon, ship.lat, baseAlt + dims.height / 2);
@@ -905,9 +928,19 @@ export function ShipLayer() {
             }
 
             // --- RØYKPARTIKLER ---
+            // Kun for skip nær kamera: ParticleSystem er dyrt per instans, og røyken
+            // er uansett usynlig utenfor DETAIL_RANGE_M. Cap på antall samtidige
+            // systemer beskytter mot tette havner.
             const smokeColl = smokeCollRef.current;
             const smokeImg = smokeSpriteRef.current;
-            if (smokeColl && smokeImg) {
+            const smokeInRange = detailsVisible && withinDetailRange(camLat, camLon, camCosLat, ship.lat, ship.lon);
+            if (smokeColl && smokeImg && !smokeInRange) {
+                const staleSmoke = smokeMapRef.current.get(mmsi);
+                if (staleSmoke) {
+                    smokeColl.remove(staleSmoke);
+                    smokeMapRef.current.delete(mmsi);
+                }
+            } else if (smokeColl && smokeImg) {
                 const fwdFrac = ship.shipType >= 60 && ship.shipType <= 69 ? -0.14
                     : ship.shipType >= 40 && ship.shipType <= 49 ? -0.05
                     : -0.35;
@@ -917,7 +950,7 @@ export function ShipLayer() {
                 if (existingSmoke) {
                     existingSmoke.modelMatrix = smokeMatrix;
                     existingSmoke.emissionRate = Math.max(1, Math.min(6, ship.speed * 0.8 + 1));
-                } else {
+                } else if (smokeMapRef.current.size < MAX_SMOKE_SYSTEMS) {
                     const ps = new ParticleSystem({
                         image: smokeImg,
                         emitter: new ConeEmitter(0.25),
@@ -1063,14 +1096,24 @@ export function ShipLayer() {
 
     useEffect(() => { updateEntities(); }, [updateEntities]);
 
-    // Radar-sweep roterer 6° per 250ms → ~15s per omdreing
+    // Radar-sweep roterer 6° per 250ms → ~15s per omdreing.
+    // Sveipet er kun synlig < 25 km (NAV_RANGE), så oppdateringen gates på
+    // kamerahøyde og per-skip-avstand — uten gating ville 1000 skip gitt
+    // ~4000 terrengoppslag/sekund for polyliner ingen kan se.
     useEffect(() => {
         if (!visible || !viewer) return;
         const intervalId = setInterval(() => {
             if (cinematicActiveRef.current) return;
             const navDs = navlightDsRef.current;
             if (!navDs || viewer.isDestroyed()) return;
+            const camCarto = viewer.camera.positionCartographic;
+            if (camCarto.height >= DETAIL_RANGE_M) return;
+            const camLat = CesiumMath.toDegrees(camCarto.latitude);
+            const camLon = CesiumMath.toDegrees(camCarto.longitude);
+            const camCosLat = Math.cos(camCarto.latitude);
+            let updated = false;
             for (const [mmsi, ship] of shipsRef.current) {
+                if (!withinDetailRange(camLat, camLon, camCosLat, ship.lat, ship.lon)) continue;
                 const shipId = String(mmsi);
                 const prev = sweepAnglesRef.current.get(mmsi) ?? 0;
                 const next = (prev + 6) % 360;
@@ -1079,8 +1122,7 @@ export function ShipLayer() {
                 if (!radarEntity?.polyline?.positions) continue;
                 const dims = getShipDimensions(ship.shipType, ship.length, ship.width);
                 const effH = ship.heading >= 0 && ship.heading <= 360 ? ship.heading : ship.course;
-                const _c = Cartographic.fromDegrees(ship.lon, ship.lat);
-                const terrH = viewer.scene.globe.getHeight(_c) ?? 50;
+                const terrH = cachedGlobeHeight(viewer.scene, ship.lon, ship.lat, 50);
                 const baseAlt = Math.max(0, terrH) + 1;
                 const seaP = Cartesian3.fromDegrees(ship.lon, ship.lat, baseAlt);
                 const comps = getShipComponents(ship.shipType, dims);
@@ -1088,17 +1130,25 @@ export function ShipLayer() {
                 const sweepH = (effH + next) % 360;
                 const radarEnd = computeShipOffset(seaP, sweepH, 3500, maxTop + 15);
                 (radarEntity.polyline.positions as ConstantProperty).setValue([seaP, radarEnd]);
+                updated = true;
             }
+            if (updated) viewer.scene.requestRender();
         }, 250);
         return () => clearInterval(intervalId);
     }, [visible, viewer]);
 
     // Render-løkke for partikkelanimasjon (4fps). Ikke nødvendig i 2D.
+    // Kjører kun når det faktisk finnes aktive røyk-systemer og kameraet er
+    // nær nok til å se dem — ellers ville intervallet tvunget scenen til å
+    // re-rendre kontinuerlig og nullet ut requestRenderMode.
     useEffect(() => {
         if (!viewer || !visible || is2D) return;
         const renderId = setInterval(() => {
             if (cinematicActiveRef.current) return;
-            if (!viewer.isDestroyed()) viewer.scene.requestRender();
+            if (viewer.isDestroyed()) return;
+            if (smokeMapRef.current.size === 0) return;
+            if (viewer.camera.positionCartographic.height >= DETAIL_RANGE_M) return;
+            viewer.scene.requestRender();
         }, 250);
         return () => clearInterval(renderId);
     }, [viewer, visible, is2D]);
