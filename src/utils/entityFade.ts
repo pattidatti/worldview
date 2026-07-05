@@ -1,62 +1,21 @@
 import { type Entity, type Viewer, ConstantProperty, JulianDate, Color } from 'cesium';
+import { renderScheduler } from '@/core/RenderScheduler';
 
 function smoothstep(t: number): number {
     return t * t * (3 - 2 * t);
 }
 
-// Fast 30fps animasjons-cadence — tilstrekkelig for fade/bounce-effekter, halverer
-// requestRender-trafikk vs 60fps.
-const FRAME_MS = 33;
-
-interface FadeJob {
-    viewer: Viewer;
-    start: number;
-    durationMs: number;
-    onTick: (t: number) => void;
-    onDone?: () => void;
-}
-
-// Delt animasjonsdriver: én enkelt setInterval driver ALLE aktive fade/bounce-jobber,
-// uansett hvor mange entiteter som animerer samtidig. Uten denne ville en poll som
-// legger til 2000 fly spawne 2000 uavhengige timere som hver kalte requestRender —
-// nå blir det maks én requestRender per viewer per tick.
-const jobs = new Set<FadeJob>();
-let driverId: number | null = null;
-const scratchViewers = new Set<Viewer>();
-
-function tickDriver(): void {
-    const now = performance.now();
-    scratchViewers.clear();
-    for (const job of jobs) {
-        if (job.viewer.isDestroyed()) {
-            jobs.delete(job);
-            continue;
-        }
-        const t = Math.min((now - job.start) / job.durationMs, 1);
-        job.onTick(t);
-        scratchViewers.add(job.viewer);
-        if (t >= 1) {
-            jobs.delete(job);
-            job.onDone?.();
-        }
-    }
-    for (const v of scratchViewers) v.scene.requestRender();
-    if (jobs.size === 0 && driverId !== null) {
-        clearInterval(driverId);
-        driverId = null;
-    }
-}
-
+// Delt animasjonsdriver: RenderScheduler kjører ALLE aktive fade/bounce-jobber på
+// én 30fps-timer, uansett hvor mange entiteter som animerer samtidig. Uten denne
+// ville en poll som legger til 2000 fly spawne 2000 uavhengige timere som hver
+// kalte requestRender — nå blir det maks én requestRender per viewer per tick.
 function animate(
     durationMs: number,
     viewer: Viewer,
     onTick: (t: number) => void,
     onDone?: () => void,
 ): void {
-    jobs.add({ viewer, start: performance.now(), durationMs, onTick, onDone });
-    if (driverId === null) {
-        driverId = window.setInterval(tickDriver, FRAME_MS);
-    }
+    renderScheduler.animate({ durationMs, onTick, onDone }, viewer);
 }
 
 /**

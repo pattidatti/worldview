@@ -16,6 +16,7 @@ import { useTracking } from '@/context/TrackingContext';
 import { useOrbit } from '@/context/OrbitContext';
 import { useShaderOverlay } from '@/context/ShaderOverlayContext';
 import { springInEntity, isSpringAnimating } from '@/utils/springEntities';
+import { renderScheduler } from '@/core/RenderScheduler';
 import { applyTilesetPerformanceTuning } from '@/utils/tilesetPerformance';
 import { NIGHT_VISION_SHADER } from '@/shaders/nightVision';
 import { CRT_SHADER } from '@/shaders/crt';
@@ -458,9 +459,11 @@ export function GlobeViewer({ children, onSelect, onEntitySelect, onBackgroundCl
         );
 
         v.scene.globe.show = false;
+        renderScheduler.attach(v);
         setViewer(v);
 
         return () => {
+            renderScheduler.detach();
             removeClickHandler();
             if (!clickHandler.isDestroyed()) clickHandler.destroy();
             if (!v.isDestroyed()) {
