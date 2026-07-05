@@ -18,6 +18,7 @@ import { useShaderOverlay } from '@/context/ShaderOverlayContext';
 import { springInEntity, isSpringAnimating } from '@/utils/springEntities';
 import { renderScheduler } from '@/core/RenderScheduler';
 import { viewportService } from '@/core/ViewportService';
+import { lodGovernor } from '@/core/LODGovernor';
 import { applyTilesetPerformanceTuning } from '@/utils/tilesetPerformance';
 import { NIGHT_VISION_SHADER } from '@/shaders/nightVision';
 import { CRT_SHADER } from '@/shaders/crt';
@@ -462,9 +463,11 @@ export function GlobeViewer({ children, onSelect, onEntitySelect, onBackgroundCl
         v.scene.globe.show = false;
         renderScheduler.attach(v);
         viewportService.attach(v);
+        lodGovernor.attach(v);
         setViewer(v);
 
         return () => {
+            lodGovernor.detach();
             viewportService.detach();
             renderScheduler.detach();
             removeClickHandler();
