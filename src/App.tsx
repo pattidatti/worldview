@@ -70,6 +70,7 @@ import { useIntelligence } from './context/IntelligenceContext';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useHoverTooltip } from './hooks/useHoverTooltip';
 import { useEntityScreenPos } from './hooks/useEntityScreenPos';
+import { usePrimitiveScreenPos } from './hooks/usePrimitiveScreenPos';
 import { EntitySelector } from './components/UI/EntitySelector';
 import { useViewer } from './context/ViewerContext';
 import { LAYER_DEFAULTS } from './types/layers';
@@ -78,12 +79,14 @@ import { type SearchBarHandle } from './components/UI/SearchBar';
 
 const LAYER_IDS = LAYER_DEFAULTS.map((l) => l.id);
 
-function TooltipHandler({ selectedEntity }: { selectedEntity: Entity | null }) {
+function TooltipHandler({ selectedEntity, selectedPrimitiveId }: { selectedEntity: Entity | null; selectedPrimitiveId: string | null }) {
     const viewer = useViewer();
     const { resolve, resolveById } = useTooltipRegistry();
     const { isDrawingRef } = useGates();
     const hover = useHoverTooltip(viewer, resolve, isDrawingRef, resolveById);
-    const selectedPos = useEntityScreenPos(viewer, selectedEntity);
+    const entityPos = useEntityScreenPos(viewer, selectedEntity);
+    const primitivePos = usePrimitiveScreenPos(viewer, selectedPrimitiveId);
+    const selectedPos = entityPos ?? primitivePos;
     const hoverPos = hover ? { x: hover.entityX, y: hover.entityY } : null;
     return (
         <>
@@ -96,18 +99,22 @@ function TooltipHandler({ selectedEntity }: { selectedEntity: Entity | null }) {
 function InfoPopupController({
     popup,
     selectedEntity,
+    selectedPrimitiveId,
     onClose,
     onFollow,
     trackedEntityId,
 }: {
     popup: PopupContent;
     selectedEntity: Entity | null;
+    selectedPrimitiveId: string | null;
     onClose: () => void;
     onFollow: (id: string | null) => void;
     trackedEntityId: string | null;
 }) {
     const viewer = useViewer();
-    const livePos = useEntityScreenPos(viewer, selectedEntity);
+    const entityPos = useEntityScreenPos(viewer, selectedEntity);
+    const primitivePos = usePrimitiveScreenPos(viewer, selectedPrimitiveId);
+    const livePos = entityPos ?? primitivePos;
     const livePosRef = useRef(livePos);
     livePosRef.current = livePos;
     const [originPos, setOriginPos] = useState<{ x: number; y: number } | null>(null);
@@ -150,6 +157,7 @@ function AppContent({
     setShowHelp: (v: boolean) => void;
 }) {
     const [selectedEntity, setSelectedEntity] = useState<Entity | null>(null);
+    const [selectedPrimitiveId, setSelectedPrimitiveId] = useState<string | null>(null);
     const { toggleLayer } = useLayerActions();
     const gatesVisible = useLayerVisibility('gates');
     const { trackedEntityId, setTrackedEntityId } = useTracking();
@@ -171,7 +179,14 @@ function AppContent({
         setPopup(null);
         setTrackedEntityId(null);
         setSelectedEntity(null);
+        setSelectedPrimitiveId(null);
     }, [setPopup, setTrackedEntityId]);
+
+    // Primitive-valg (V2-lag uten Cesium Entity) speiler popup-livssyklusen:
+    // nullstill når popup lukkes (bakgrunnsklikk, Esc, X) uansett close-sti.
+    useEffect(() => {
+        if (!popup) setSelectedPrimitiveId(null);
+    }, [popup]);
     const focusSearch = useCallback(() => searchRef.current?.focus(), [searchRef]);
     const toggleHelp = useCallback(() => setShowHelp(!showHelp), [showHelp, setShowHelp]);
     const openCommandPalette = useCallback(() => setShowCommandPalette(true), []);
@@ -231,7 +246,7 @@ function AppContent({
 
     return (
         <div className="h-full w-full relative">
-            <GlobeViewer onSelect={onSelect} onEntitySelect={(e) => setSelectedEntity(e ?? null)} onBackgroundClick={handleBackgroundClick}>
+            <GlobeViewer onSelect={onSelect} onEntitySelect={(e) => { setSelectedEntity(e ?? null); if (e) setSelectedPrimitiveId(null); }} onPrimitiveSelect={setSelectedPrimitiveId} onBackgroundClick={handleBackgroundClick}>
                 <SatelliteLayer />
                 <FlightLayer />
                 <ShipLayer />
@@ -289,12 +304,13 @@ function AppContent({
                     <InfoPopupController
                         popup={popup}
                         selectedEntity={selectedEntity}
+                        selectedPrimitiveId={selectedPrimitiveId}
                         onClose={closePopup}
                         onFollow={setTrackedEntityId}
                         trackedEntityId={trackedEntityId}
                     />
                 )}
-                <TooltipHandler selectedEntity={selectedEntity} />
+                <TooltipHandler selectedEntity={selectedEntity} selectedPrimitiveId={selectedPrimitiveId} />
             </GlobeViewer>
             <IntelligencePanel />
             {showHelp && <KeyboardHelpModal onClose={() => setShowHelp(false)} />}
