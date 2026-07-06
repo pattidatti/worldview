@@ -38,7 +38,8 @@ import { LODTier, lodGovernor } from '@/core/LODGovernor';
 import { renderScheduler } from '@/core/RenderScheduler';
 import { trackingProviders } from '@/core/trackingProviders';
 import { iconAtlas } from '@/render/IconAtlas';
-import { flightAtlasSpecs, flightIconId } from '@/render/flightIcons';
+import { ensureSharedAtlas } from '@/render/atlasSpecs';
+import { flightIconId } from '@/render/flightIcons';
 import { fadeAlpha, primitiveId, type LayerRenderer } from '@/render/RendererBase';
 import { headingToBillboardRotation } from '@/utils/flightKinematics';
 import { TrailBuffer } from '@/utils/trailBuffer';
@@ -92,7 +93,7 @@ export class FlightRenderer implements LayerRenderer {
 
     attach(scene: Scene): void {
         if (this.scene) return;
-        if (!iconAtlas.isBuilt) iconAtlas.build(flightAtlasSpecs());
+        ensureSharedAtlas();
         this.scene = scene;
         this.collection = new BillboardCollection({ scene });
         this.trailCollection = new PolylineCollection();

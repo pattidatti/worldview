@@ -97,7 +97,17 @@ Fase 3 introduserer tidslinje-scrubber + playback. Entity-snapshots skrives av C
 
 `@/` maps to `src/` (configured in both `vite.config.ts` and `tsconfig.app.json`).
 
-### Core pattern: Layers as side-effect components
+### Renderplan-arkitektur (fase A–F, `docs/ARCHITECTURE-VISION.md`)
+
+Tunge datalag er migrert fra «React-komponent + Entity-API» til tre adskilte plan:
+
+- **Dataplan** (`src/data/`): `EntityStore` (normalisert state utenfor React) + `DataChannel`-er som eier fetch/WS/poll. `FlightChannel` (worker + dead-reckoning), `ShipChannel` (AIS-WebSocket, ingen DR), `PointChannel<T>` (generisk poll → punkt-entiteter).
+- **Renderplan** (`src/render/`): imperative renderere som abonnerer på `EntityStore` og eier primitive-collections (`BillboardCollection`, `PointPrimitiveCollection`, `PolylineCollection`, `LabelCollection`) — 10–100× billigere per objekt enn Entity-API-et. `FlightRenderer`, `ShipRenderer`, `PointRenderer<T>`. LOD via `LODGovernor` (kamerahøyde-tiers + kvoter); GLOBAL-tier viser tetthetsceller i stedet for klustring. Ett delt ikon-atlas (`render/atlasSpecs.ts`), én delt `RenderScheduler` og animasjonsdriver.
+- **UI-plan**: tynne React-shims (`FlightLayerV2`, `ShipLayerV2`, `PointLayer`) kobler kun synlighet/status/popup. Picking via `pickRouter` + `registerById` (primitives har ingen Entity).
+
+Migrert: flights (fase B), ships (fase C), punktlag earthquakes/news/conflicts/disasters/volcanoes/launches (fase D → `data/channels/pointConfigs/`, ett konfig-objekt per lag). Parity-noter: `docs/FLIGHT-PARITY.md`, `docs/SHIP-PARITY.md`, `docs/POINT-PARITY.md`. **Lette/avvikende lag forblir bevisst på Entity-mønsteret under.**
+
+### Core pattern: Layers as side-effect components (Entity-mønsteret)
 
 Each data layer (`src/components/Layers/*/`) is a React component that **returns `null`** and operates entirely through side effects:
 
@@ -136,7 +146,7 @@ Manuelt mønster (brukes kun i komplekse lag som FlightLayer der dead-reckoning 
 - **Tracking-lookup**: `GlobeViewer` cacher `(trackedId, dsIndex)` mellom frames. Lineært søk gjennom alle dataSources gjøres kun på cache-miss.
 - **Polling-jitter**: `usePollingData` har default 1.5s startup-jitter som sprer nettverkskallene til ~11 polling-lag så de ikke alle fyrer i samme tick ved oppstart.
 - **Zustand over context for høy-frekvens-state**: Lag-status oppdateres hver 5–30s per synlige lag. Context-arkitektur ville forårsaket cascade-renders av 28 lag-komponenter. Zustand med granulære selektorer subscriber per lag-id slik at kun de komponentene som faktisk leser endrede felt re-renders.
-- **Multi-datasource-mønster**: Komplekse lag bruker 2–5 separate `CustomDataSource`-instanser for z-ordering og synlighetskontroll. ShipLayer: 5 (hull, superstructure, trails, labels, wakes). FlightLayer: 3 (entities, trails, pulses). InfrastructureLayer: 5 (facilities, pipelines, fields, osm-installations, osm-pipelines). Separate datasources gir riktig z-rekkefølge uten at entity-properties kolliderer.
+- **Multi-datasource-mønster**: Gjenværende Entity-baserte lag bruker 2–5 separate `CustomDataSource`-instanser for z-ordering. InfrastructureLayer: 5 (facilities, pipelines, fields, osm-installations, osm-pipelines). Flights og ships er migrert til renderplan (primitive-collections + LOD — se under).
 - **Overpass serial queue**: `overpass.ts` serialiserer alle Overpass-kall med 400ms gap for å unngå 429-feil. Backoff til 30s ved 429, reset til 400ms ved suksess. Samtidige identiske spørringer dedupes til én in-flight promise.
 
 ### Clustering pattern
@@ -152,7 +162,8 @@ ConflictLayer and NewsLayer use clustering via `configureCluster(ds, { pixelRang
 - Normalisert state: `visibility: Record<LayerId, boolean>` + `status: Record<LayerId, { loading, count, error, lastUpdated }>` + `meta: Record<LayerId, { name, color }>` (statisk fra `LAYER_DEFAULTS`).
 - Granulære selektorer: `useLayerVisibility(id)`, `useLayerStatus(id)`, `useLayerActions()`, `useActiveLayerIds()`, `useVisibleLayerIds()`, `useLayerConfig(id)`. Hver selektor subscriber kun til det den leser → ingen cascading re-renders.
 - Actions (fra `useLayerActions()`): `toggleLayer`, `toggleCategory`, `setLayerLoading`, `setLayerCount`, `setLayerError`, `setLayerLastUpdated`. Stabile referanser, trygge i useEffect-deps.
-- `LayerContext.tsx` beholder en `useLayers()`-shim for bakoverkompatibilitet — brukes KUN av `TopBar`, `EventLog`, `LayerErrorWatcher` som legitimt trenger hele lag-arrayet. Alle andre komponenter (alle 28 lag, `StatusTicker`, `LayerPanel`, `SearchBar`, `AnalysisMenu`, `DeltaPanel`, `GatePanel`, `WeatherRadarControls`, `App.tsx`) bruker granulære selektorer direkte.
+- `LayerContext.tsx`-shimen er FJERNET (fase F). Alle komponenter bruker granulære selektorer direkte (`useLayerVisibility(id)`, `useLayerStatus(id)`, `useLayerActions()`). `EventLog` og `LayerErrorWatcher` abonnerer på `useLayerStore.getState()`/`.subscribe()` utenfor React-render.
+- `setVisibleLayers(ids)` (fase E) setter nøyaktig ett scene-lagsett synlig (alt annet av, unntatt `gates`) — brukes av scene-presets.
 - Synlighet persisteres til localStorage-nøkkel `worldview-layer-visibility`.
 - For engangslesing utenfor komponenter (f.eks. i intervallet i `HistoryContext`): bruk `useLayerStore.getState().status` — ingen subscription, ingen re-render-trigger.
 
@@ -210,7 +221,7 @@ Services are pure async functions (except `AISStreamConnection` which is a state
 | Layer | Service | Polling | API key | Display |
 |-------|---------|---------|---------|---------|
 | Flights | airplaneslive.ts | 15s | None | SVG plane icons + trails, clustering (3 datasources) |
-| Ships | aisstream.ts | WS/5s | Required | 3D boxes + labels + trails + wakes (5 datasources) |
+| Ships | shipChannel.ts (AIS) | WS/5s | Required | Renderplan: LOD (tetthet→billboard→trails/labels→3D-skrog nær). Se docs/SHIP-PARITY.md |
 | Asteroids | nasa-neo.ts | 24h | Optional | Point ring above globe (altitude ∝ miss dist) |
 | Conflicts | acled.ts | 30m | Required | Ground points, clustering, size ∝ fatalities |
 | Disasters | eonet.ts | 30m | None | Billboard SVG emoji icons, pulse rings (2 datasources) |
@@ -228,7 +239,7 @@ Services are pure async functions (except `AISStreamConnection` which is a state
 - **TimelineBar** (`src/components/UI/Timeline/TimelineBar.tsx`) — fixed bottom bar med `ModePill` (LIVE↔REPLAY tab), timeline-track, datovalg og playback-kontroller. Oransje glow rundt baren når replay er aktiv.
 - **ShaderOverlayPicker** (`src/components/UI/ShaderOverlayPicker.tsx`) — switches between 5 visual effects: `none`, `nightvision`, `crt`, `thermal`, `anime`. Clicking active mode turns it off.
 - **HudOverlay** (`src/components/UI/HudOverlay.tsx`) — decorative HUD corner brackets always visible; tactical scope/crosshair overlay appears when any shader is active (color matches shader mode)
-- **StatusTicker** (`src/components/UI/StatusTicker.tsx`) — fixed bottom bar showing visible layers + entity counts (`◈ FLIGHTS 427 · SHIPS 156`). Hver oppføring subscriber via `useLayerStatus(id)` individuelt — ingen cascade-renders.
+- **ScenePicker** (`src/components/UI/ScenePicker.tsx`) — frosted-glass pill-rad øverst-midt (fase E). Kuraterte scener (`src/types/scenes.ts`) anvender lagkombinasjon + kamerastart + shader via `useApplyScene`. `useOpeningScene` kjører en åpningsscene ved aller første besøk. LayerPanel består som «avansert» modus.
 - **EventLog** (`src/components/UI/EventLog.tsx`) — collapsible live event stream (top-right), shows data changes per layer as they occur (max 12 events, LIFO). Starter kollapset.
 - **GateDrawHud** (`src/components/UI/GateDrawHud.tsx`) — banner på toppen under port-tegning med vertex-teller og kbd-hints (Klikk/↵/⌫/Esc).
 - **InfoPopup** (`src/components/UI/InfoPopup.tsx`) — entity-detaljer plassert ved venstre side (`left-52 top-20`) for å unngå kollisjon med GatePanel/EventLog i top-right. Støtter `enrichAsync()` (valgfri async-enrichment med shimmer-indikator), lightbox for store bilder, og "Følg"-knapp som skriver til TrackingContext.

@@ -52,9 +52,15 @@ WorldView er en interaktiv 3D-globus som viser sanntidsdata fra verden via åpne
 - **Lag-kontroller:** Toggle av/på individuelle datalag
 
 ### Ytelseshåndtering
-- **Clustering:** Gruppering av objekter når zoomet ut
+- **Renderplan-arkitektur (2.0):** Tunge lag (flights, ships, punktlag) er migrert til
+  dataplan (`EntityStore` + `DataChannel` utenfor React) + renderplan (primitive-collections
+  i stedet for Entity-API-et, 10–100× billigere per objekt) + LOD-tiers (`LODGovernor`). Se
+  `docs/ARCHITECTURE-VISION.md` og parity-notene (`docs/{FLIGHT,SHIP,POINT}-PARITY.md`).
+- **LOD / «Detail Governor»:** Kamerahøyde-tiers (GLOBAL→REGION→LOKAL→NÆR) med render-kvoter;
+  GLOBAL viser tetthetsceller i stedet for klustring.
+- **Scener/presets:** Kuraterte utgangspunkt (`src/types/scenes.ts`) i stedet for 35 rå-toggles.
 - **Viewport-filtrering:** Bare last data for synlig område
-- **Nær-sanntid polling:** Oppdatering hvert 30-60 sekund (ikke ekte WebSocket)
+- **Nær-sanntid polling / WebSocket:** Poll hvert 15–90 s (fly, punktlag) eller ekte WS (AIS-skip)
 
 ---
 

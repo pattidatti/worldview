@@ -21,10 +21,9 @@ function useEventLog(): LogEvent[] {
     const prevUpdatedRef = useRef<Partial<Record<LayerId, number | null>>>({});
     const prevErrorRef = useRef<Partial<Record<LayerId, string | null>>>({});
 
-    // Abonnerer på Zustand-storen utenfor React-render: tidligere gikk dette
-    // via useLayers()-shimen, som re-rendret komponenten (og re-bygde et
-    // 28-elements array) ved ENHVER statusendring i ETHVERT lag. Nå trigges
-    // React-state kun når det faktisk finnes nye logg-hendelser.
+    // Abonnerer på Zustand-storen utenfor React-render, så React-state kun
+    // trigges når det faktisk finnes nye logg-hendelser — ikke ved enhver
+    // statusendring i ethvert lag.
     useEffect(() => {
         const process = (state: ReturnType<typeof useLayerStore.getState>) => {
             const newEvents: LogEvent[] = [];

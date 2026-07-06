@@ -15,6 +15,8 @@ import { useLayerActions, useLayerVisibility } from './store/layerStore';
 import { useTooltipRegistry } from './context/TooltipRegistry';
 import { TopBar } from './components/UI/TopBar';
 import { LayerPanel } from './components/UI/LayerPanel';
+import { ScenePicker } from './components/UI/ScenePicker';
+import { useOpeningScene } from './hooks/useScenes';
 import { InfoPopup } from './components/UI/InfoPopup';
 import { HoloBeam } from './components/UI/HoloBeam';
 import { EntityTooltip } from './components/UI/EntityTooltip';
@@ -22,7 +24,7 @@ import { ToastContainer } from './components/UI/Toast';
 import { LayerErrorWatcher } from './components/UI/LayerErrorWatcher';
 import { SatelliteLayer } from './components/Layers/SatelliteLayer/SatelliteLayer';
 import { FlightLayer } from './components/Layers/FlightLayer';
-import { ShipLayer } from './components/Layers/ShipLayer/ShipLayer';
+import { ShipLayerV2 as ShipLayer } from './components/Layers/ShipLayer/ShipLayerV2';
 import { WeatherLayer } from './components/Layers/WeatherLayer/WeatherLayer';
 import { WebcamLayer } from './components/Layers/WebcamLayer/WebcamLayer';
 import { TrafficLayer } from './components/Layers/TrafficLayer/TrafficLayer';
@@ -37,12 +39,9 @@ import { TelecomLayer } from './components/Layers/TelecomLayer/TelecomLayer';
 import { MineLayer } from './components/Layers/MineLayer/MineLayer';
 import { BuildingsLayer } from './components/Layers/BuildingsLayer/BuildingsLayer';
 import { SubmarineCableLayer } from './components/Layers/SubmarineCableLayer/SubmarineCableLayer';
-import { EarthquakeLayer } from './components/Layers/EarthquakeLayer/EarthquakeLayer';
-import { DisasterLayer } from './components/Layers/DisasterLayer/DisasterLayer';
 import { AsteroidLayer } from './components/Layers/AsteroidLayer/AsteroidLayer';
-import { NewsLayer } from './components/Layers/NewsLayer/NewsLayer';
-import { ConflictLayer } from './components/Layers/ConflictLayer/ConflictLayer';
 import { TensionLayer } from './components/Layers/TensionLayer/TensionLayer';
+import { PointLayers } from './components/Layers/PointLayer';
 import { WeatherRadarLayer } from './components/Layers/WeatherRadarLayer/WeatherRadarLayer';
 import { WeatherRadarControls } from './components/UI/WeatherRadarControls';
 import { SigmetLayer } from './components/Layers/SigmetLayer/SigmetLayer';
@@ -50,8 +49,6 @@ import { RoadCameraLayer } from './components/Layers/RoadCameraLayer/RoadCameraL
 import { GPSJamLayer } from './components/Layers/GPSJamLayer/GPSJamLayer';
 import { ChokepointLayer } from './components/Layers/ChokepointLayer/ChokepointLayer';
 import { ISSLayer } from './components/Layers/ISSLayer/ISSLayer';
-import { LaunchesLayer } from './components/Layers/LaunchesLayer/LaunchesLayer';
-import { VolcanoLayer } from './components/Layers/VolcanoLayer/VolcanoLayer';
 import { LightningLayer } from './components/Layers/LightningLayer/LightningLayer';
 import { HeritageLayer } from './components/Heritage/HeritageLayer';
 import { PlaceLabels } from './components/Globe/PlaceLabels';
@@ -78,6 +75,12 @@ import { type PopupContent } from './types/popup';
 import { type SearchBarHandle } from './components/UI/SearchBar';
 
 const LAYER_IDS = LAYER_DEFAULTS.map((l) => l.id);
+
+// Kjører åpningsscenen ved første besøk (må ligge inne i ViewerContext).
+function SceneController() {
+    useOpeningScene();
+    return null;
+}
 
 function TooltipHandler({ selectedEntity, selectedPrimitiveId }: { selectedEntity: Entity | null; selectedPrimitiveId: string | null }) {
     const viewer = useViewer();
@@ -264,11 +267,8 @@ function AppContent({
                 <MineLayer />
                 <BuildingsLayer />
                 <SubmarineCableLayer />
-                <EarthquakeLayer />
-                <DisasterLayer />
                 <AsteroidLayer />
-                <NewsLayer />
-                <ConflictLayer />
+                <PointLayers />
                 <TensionLayer />
                 <WeatherRadarLayer />
                 <WeatherRadarControls />
@@ -277,14 +277,14 @@ function AppContent({
                 <GPSJamLayer />
                 <ChokepointLayer />
                 <ISSLayer />
-                <LaunchesLayer />
-                <VolcanoLayer />
                 <LightningLayer />
                 <GateLayer onRequestName={handleRequestName} />
                 <HeritageLayer />
                 <PlaceLabels />
                 <TopBar searchRef={searchRef} onToggleHelp={toggleHelp} onToggleMobileLayers={() => setMobileLayersOpen((v) => !v)} mobileLayersOpen={mobileLayersOpen} onToggleIntelligence={openSearch} intelligenceOpen={intelligenceOpen} />
                 <LayerPanel mobileOpen={mobileLayersOpen} />
+                <ScenePicker />
+                <SceneController />
                 {/* Top-right panel: GatePanel + DarkShipsPanel */}
                 <div className="absolute top-14 right-4 z-10 w-48">
                     <GatePanel />

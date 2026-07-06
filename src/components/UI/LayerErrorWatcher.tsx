@@ -6,9 +6,8 @@ import { addToast } from './Toast';
 const NAME_BY_ID = Object.fromEntries(LAYER_DEFAULTS.map((l) => [l.id, l.name])) as Record<string, string>;
 
 /**
- * Toaster nye lag-feil. Abonnerer på Zustand-storen utenfor React-render —
- * tidligere gikk dette via useLayers()-shimen som re-rendret ved enhver
- * statusendring i ethvert lag. Komponentet re-rendrer nå aldri.
+ * Toaster nye lag-feil. Abonnerer på Zustand-storen utenfor React-render, så
+ * komponentet re-rendrer aldri — uansett hvor mange statusendringer lag får.
  */
 export function LayerErrorWatcher() {
     const prevRef = useRef<Record<string, string | null>>({});
