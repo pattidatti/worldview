@@ -1,11 +1,6 @@
-// Flagg-dispatcher for FlightLayer-migreringen (fase B): flights2-flagget
-// velger mellom legacy Entity-laget og v2 (kanal + primitive-renderer).
-// Evalueres ved mount — bytte krever reload.
+// FlightLayer: kanal + primitive-renderer (renderplan-arkitektur, Fase B).
+// Det gamle Entity-baserte laget og flights2-migreringsflagget er fjernet —
+// V2 er nå den eneste fly-stien. Beholdt som re-export så App-importen
+// (`import { FlightLayer } from '.../FlightLayer'`) er uendret.
 
-import { FlightLayer as FlightLayerV1 } from './FlightLayer';
-import { FlightLayerV2 } from './FlightLayerV2';
-import { isFlightsV2Enabled } from '@/utils/featureFlags';
-
-export function FlightLayer() {
-    return isFlightsV2Enabled() ? <FlightLayerV2 /> : <FlightLayerV1 />;
-}
+export { FlightLayerV2 as FlightLayer } from './FlightLayerV2';
