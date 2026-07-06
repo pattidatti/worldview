@@ -22,7 +22,7 @@ import { ToastContainer } from './components/UI/Toast';
 import { LayerErrorWatcher } from './components/UI/LayerErrorWatcher';
 import { SatelliteLayer } from './components/Layers/SatelliteLayer/SatelliteLayer';
 import { FlightLayer } from './components/Layers/FlightLayer';
-import { ShipLayer } from './components/Layers/ShipLayer/ShipLayer';
+import { ShipLayerV2 as ShipLayer } from './components/Layers/ShipLayer/ShipLayerV2';
 import { WeatherLayer } from './components/Layers/WeatherLayer/WeatherLayer';
 import { WebcamLayer } from './components/Layers/WebcamLayer/WebcamLayer';
 import { TrafficLayer } from './components/Layers/TrafficLayer/TrafficLayer';
