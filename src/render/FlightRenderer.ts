@@ -5,10 +5,12 @@
 // Float64Array fra channel-workerens dead-reckoning.
 //
 // LOD-profil (jf. docs/ARCHITECTURE-VISION.md):
-//   GLOBAL → kun ikoner (tetthetsmodus kommer i B7)
+//   GLOBAL → tetthetsceller (PointPrimitiveCollection; erstatter Entity-klustring)
 //   REGION → kun ikoner
 //   LOKAL  → ikoner + trails + label-kvote
-//   NÆR    → ikoner + trails + label-kvote (3D-modeller er valgfri B8)
+//   NÆR    → ikoner + trails + label-kvote (3D-modeller er utsatt, se docs/FLIGHT-PARITY.md)
+//
+// Parkerte/taxiende fly (onGround) skjules — parity med legacy-laget.
 
 import {
     BillboardCollection,
@@ -185,6 +187,13 @@ export class FlightRenderer implements LayerRenderer {
     private upsert(flight: FlightEntity, fadeNew: boolean): void {
         const collection = this.collection;
         if (!collection) return;
+        // Parkerte/taxiende fly skjules (parity med legacy-laget): fjern evt.
+        // eksisterende billboard (fade-ut = «landing») og hopp over. Uten dette
+        // forurenser bakke-fly både luftbildet og gate-crossing-deteksjonen.
+        if (flight.onGround) {
+            this.removeWithFade(flight.id);
+            return;
+        }
         let billboard = this.billboards.get(flight.id);
         if (billboard && this.fadingOut.has(flight.id)) {
             // Gjenoppstått under fade-ut: fjern og lag på nytt med full alpha

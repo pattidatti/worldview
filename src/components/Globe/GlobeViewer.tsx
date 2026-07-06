@@ -87,10 +87,11 @@ interface GlobeViewerProps {
     children?: ReactNode;
     onSelect?: (popup: PopupContent | null) => void;
     onEntitySelect?: (entity: Entity | undefined) => void;
+    onPrimitiveSelect?: (id: string | null) => void;
     onBackgroundClick?: (lat: number, lon: number) => void;
 }
 
-export function GlobeViewer({ children, onSelect, onEntitySelect, onBackgroundClick }: GlobeViewerProps) {
+export function GlobeViewer({ children, onSelect, onEntitySelect, onPrimitiveSelect, onBackgroundClick }: GlobeViewerProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const initRef = useRef(false);
     const [viewer, setViewer] = useState<Viewer | null>(null);
@@ -115,6 +116,8 @@ export function GlobeViewer({ children, onSelect, onEntitySelect, onBackgroundCl
     onSelectRef.current = onSelect;
     const onEntitySelectRef = useRef(onEntitySelect);
     onEntitySelectRef.current = onEntitySelect;
+    const onPrimitiveSelectRef = useRef(onPrimitiveSelect);
+    onPrimitiveSelectRef.current = onPrimitiveSelect;
     const onBackgroundClickRef = useRef(onBackgroundClick);
     onBackgroundClickRef.current = onBackgroundClick;
     const resolveRef = useRef(resolve);
@@ -394,6 +397,9 @@ export function GlobeViewer({ children, onSelect, onEntitySelect, onBackgroundCl
                 const popup = resolveByIdRef.current(picked.id);
                 if (popup) {
                     onSelectRef.current?.(popup);
+                    // Primitive-lag har ingen Cesium Entity → gi App-en id-en så
+                    // EntitySelector-bracket + HoloBeam kan spore via trackingProviders.
+                    onPrimitiveSelectRef.current?.(popup.followEntityId ?? null);
                     return;
                 }
                 if (pickRouter.route(picked.id, click.position)) return;
