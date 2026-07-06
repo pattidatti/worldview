@@ -16,6 +16,12 @@ import { useTracking } from '@/context/TrackingContext';
 import { useOrbit } from '@/context/OrbitContext';
 import { useShaderOverlay } from '@/context/ShaderOverlayContext';
 import { springInEntity, isSpringAnimating } from '@/utils/springEntities';
+import { renderScheduler } from '@/core/RenderScheduler';
+import { viewportService } from '@/core/ViewportService';
+import { lodGovernor } from '@/core/LODGovernor';
+import { pickRouter } from '@/core/pickRouter';
+import { trackingProviders } from '@/core/trackingProviders';
+import { maybeInstallPerfHud } from '@/core/perfHud';
 import { applyTilesetPerformanceTuning } from '@/utils/tilesetPerformance';
 import { NIGHT_VISION_SHADER } from '@/shaders/nightVision';
 import { CRT_SHADER } from '@/shaders/crt';
@@ -88,7 +94,7 @@ export function GlobeViewer({ children, onSelect, onEntitySelect, onBackgroundCl
     const containerRef = useRef<HTMLDivElement>(null);
     const initRef = useRef(false);
     const [viewer, setViewer] = useState<Viewer | null>(null);
-    const { resolve } = usePopupRegistry();
+    const { resolve, resolveById } = usePopupRegistry();
     const { isDrawingRef } = useGates();
     const { activeMode, setMode } = useImagery();
     const { is2D } = useSceneProjection();
@@ -113,6 +119,8 @@ export function GlobeViewer({ children, onSelect, onEntitySelect, onBackgroundCl
     onBackgroundClickRef.current = onBackgroundClick;
     const resolveRef = useRef(resolve);
     resolveRef.current = resolve;
+    const resolveByIdRef = useRef(resolveById);
+    resolveByIdRef.current = resolveById;
     const trackedIdRef = useRef(trackedEntityId);
     trackedIdRef.current = trackedEntityId;
     const setTrackedIdRef = useRef(setTrackedEntityId);
@@ -308,10 +316,7 @@ export function GlobeViewer({ children, onSelect, onEntitySelect, onBackgroundCl
             }
 
             // Camera tracking: cached dataSource-lookup, kun lineær fallback når cache bommer.
-            const tryApply = (entity: import('cesium').Entity | undefined): boolean => {
-                if (!entity?.position) return false;
-                const pos = entity.position.getValue(JulianDate.now(julianDateScratch));
-                if (!pos) return false;
+            const applyLookAt = (pos: Cartesian3): void => {
                 if (orbitActiveRef.current) {
                     const now = performance.now();
                     const dt = orbitLastTimeMsRef.current === 0 ? 0 : Math.min((now - orbitLastTimeMsRef.current) / 16.67, 3);
@@ -326,6 +331,13 @@ export function GlobeViewer({ children, onSelect, onEntitySelect, onBackgroundCl
                     v.camera.lookAt(pos, trackHprScratch);
                 }
                 scene.requestRender();
+            };
+
+            const tryApply = (entity: import('cesium').Entity | undefined): boolean => {
+                if (!entity?.position) return false;
+                const pos = entity.position.getValue(JulianDate.now(julianDateScratch));
+                if (!pos) return false;
+                applyLookAt(pos);
                 return true;
             };
 
@@ -340,6 +352,13 @@ export function GlobeViewer({ children, onSelect, onEntitySelect, onBackgroundCl
                     trackedEntityCacheRef.current = { id: tracking, dsIndex: i };
                     return;
                 }
+            }
+            // Primitive-lag (renderplan): posisjon via registrerte providere
+            const providedPos = trackingProviders.getPosition(tracking);
+            if (providedPos) {
+                trackedEntityCacheRef.current = null;
+                applyLookAt(providedPos);
+                return;
             }
             trackedEntityCacheRef.current = null;
             setTrackedIdRef.current(null);
@@ -367,6 +386,18 @@ export function GlobeViewer({ children, onSelect, onEntitySelect, onBackgroundCl
 
             // Orbital shell picks (fra SatelliteLayer) — la SatelliteLayer håndtere disse
             if (defined(picked) && typeof picked.id === 'string' && picked.id.startsWith('orbital-shell-')) return;
+
+            // Primitive-picks (renderplan-lag): popup via id-oppslag i EntityStore,
+            // deretter pickRouter for ikke-popup-handlinger (tetthetsceller o.l.).
+            // Må stå FØR cluster-grenen: cluster-billboards pickes også som ikke-Entity.
+            if (defined(picked) && typeof picked.id === 'string') {
+                const popup = resolveByIdRef.current(picked.id);
+                if (popup) {
+                    onSelectRef.current?.(popup);
+                    return;
+                }
+                if (pickRouter.route(picked.id, click.position)) return;
+            }
 
             // Cluster billboard → zoom mot det, spring-eksplosjon etter zoom
             if (defined(picked)) {
@@ -458,9 +489,17 @@ export function GlobeViewer({ children, onSelect, onEntitySelect, onBackgroundCl
         );
 
         v.scene.globe.show = false;
+        renderScheduler.attach(v);
+        viewportService.attach(v);
+        lodGovernor.attach(v);
+        const removePerfHud = maybeInstallPerfHud(v);
         setViewer(v);
 
         return () => {
+            removePerfHud?.();
+            lodGovernor.detach();
+            viewportService.detach();
+            renderScheduler.detach();
             removeClickHandler();
             if (!clickHandler.isDestroyed()) clickHandler.destroy();
             if (!v.isDestroyed()) {

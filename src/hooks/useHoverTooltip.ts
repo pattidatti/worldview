@@ -15,7 +15,8 @@ export interface HoverState {
     content: TooltipContent;
     x: number;
     y: number;
-    entity: Entity;
+    /** Satt for Entity-lag; undefined for primitive-picks (renderplan). */
+    entity?: Entity;
     entityX: number;
     entityY: number;
 }
@@ -24,10 +25,13 @@ export function useHoverTooltip(
     viewer: Viewer | null,
     resolve: (entity: Entity) => TooltipContent | null,
     suspendedRef?: React.RefObject<boolean>,
+    resolveById?: (pickedId: string) => TooltipContent | null,
 ): HoverState | null {
     const [hover, setHover] = useState<HoverState | null>(null);
     const resolveRef = useRef(resolve);
     resolveRef.current = resolve;
+    const resolveByIdRef = useRef(resolveById);
+    resolveByIdRef.current = resolveById;
     const lastEntityIdRef = useRef<string | null>(null);
     const lastContentRef = useRef<TooltipContent | null>(null);
 
@@ -82,6 +86,36 @@ export function useHoverTooltip(
                     const entityY = win ? win.y : endPosition.y;
                     setHover({ content, x: endPosition.x, y: endPosition.y, entity, entityX, entityY });
                 } else {
+                    lastEntityIdRef.current = null;
+                    lastContentRef.current = null;
+                    viewer.canvas.style.cursor = 'default';
+                    setHover(null);
+                }
+            } else if (defined(picked) && typeof picked.id === 'string' && resolveByIdRef.current) {
+                // Primitive-picks (renderplan-lag): string-id → tooltip via
+                // EntityStore-oppslag. Verdensposisjon fra primitivet (Billboard
+                // og PointPrimitive har begge .position).
+                const pickedId = picked.id as string;
+                const primitive = picked.primitive as { position?: import('cesium').Cartesian3 } | undefined;
+                const content =
+                    pickedId === lastEntityIdRef.current && lastContentRef.current
+                        ? lastContentRef.current
+                        : resolveByIdRef.current(pickedId);
+                if (content) {
+                    lastEntityIdRef.current = pickedId;
+                    lastContentRef.current = content;
+                    viewer.canvas.style.cursor = 'pointer';
+                    const win = primitive?.position
+                        ? SceneTransforms.worldToWindowCoordinates(viewer.scene, primitive.position)
+                        : undefined;
+                    setHover({
+                        content,
+                        x: endPosition.x,
+                        y: endPosition.y,
+                        entityX: win ? win.x : endPosition.x,
+                        entityY: win ? win.y : endPosition.y,
+                    });
+                } else if (lastEntityIdRef.current !== null) {
                     lastEntityIdRef.current = null;
                     lastContentRef.current = null;
                     viewer.canvas.style.cursor = 'default';

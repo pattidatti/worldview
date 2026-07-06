@@ -42,14 +42,13 @@ import {
     type EntityPosition,
 } from '@/utils/crossingDetector';
 import { TrailBuffer } from '@/utils/trailBuffer';
+import { extrapolateGreatCircle, DR_MAX_AGE_MS, FLIGHT_POLL_MS } from '@/utils/flightKinematics';
 
 const FLIGHT_COLOR = Color.fromCssColorString('#ffa500');
-const POLL_MS = 10_000;
+const POLL_MS = FLIGHT_POLL_MS;
 const MAX_FLIGHT_TRAIL = 40;
 const MAX_FLIGHTS = 2000;
-const DR_MAX_AGE_MS = POLL_MS * 3;    // stopp ekstrapolering etter 3 missede polls (30s)
 const REMOVAL_TTL_MS = DR_MAX_AGE_MS; // fjern entitet når DR stopper
-const EARTH_RADIUS_M = 6_371_000;
 
 const MILITARY_COLOR = '#ff2244';
 
@@ -109,18 +108,10 @@ interface DrState {
     lastUpdateMs: number; // Date.now() at last real API update
 }
 
-// Great-circle dead-reckoning: project (lon,lat) forward by (velocity × elapsed)
+// Great-circle dead-reckoning — matten bor i utils/flightKinematics (delt med channel-workeren)
 function extrapolatePosition(s: DrState, elapsedS: number): Cartesian3 {
-    const headingRad = (s.heading * Math.PI) / 180;
-    const distM = s.velocity * elapsedS;
-    const latRad = (s.lat * Math.PI) / 180;
-    const dLatRad = (distM * Math.cos(headingRad)) / EARTH_RADIUS_M;
-    const dLonRad = (distM * Math.sin(headingRad)) / (EARTH_RADIUS_M * Math.cos(latRad));
-    return Cartesian3.fromDegrees(
-        s.lon + dLonRad * (180 / Math.PI),
-        s.lat + dLatRad * (180 / Math.PI),
-        s.altitude,
-    );
+    const pos = extrapolateGreatCircle(s.lon, s.lat, s.heading, s.velocity, elapsedS);
+    return Cartesian3.fromDegrees(pos.lon, pos.lat, s.altitude);
 }
 
 export function FlightLayer() {
