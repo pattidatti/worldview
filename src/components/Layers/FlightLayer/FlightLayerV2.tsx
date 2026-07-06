@@ -89,6 +89,12 @@ export function FlightLayerV2() {
             const nowMs = Date.now();
             const events = [];
             for (const flight of delta.upserts) {
+                // Parkerte/taxiende fly skjules i rendereren (parity med legacy) —
+                // hopp også over dem her så de ikke genererer spuriøse crossings.
+                if (flight.onGround) {
+                    state.delete(flight.id);
+                    continue;
+                }
                 const curr: EntityPosition = { pos: { lat: flight.lat, lon: flight.lon }, ts: nowMs };
                 const prev = state.get(flight.id);
                 if (prev && usableGates.length > 0) {
