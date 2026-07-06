@@ -18,6 +18,8 @@ interface LayerStoreState {
     actions: {
         toggleLayer: (id: LayerId) => void;
         toggleCategory: (ids: LayerId[]) => void;
+        /** Sett nøyaktig dette settet synlig, alt annet skjult (scene-preset). */
+        setVisibleLayers: (ids: LayerId[]) => void;
         setLayerLoading: (id: LayerId, loading: boolean) => void;
         setLayerCount: (id: LayerId, count: number) => void;
         setLayerError: (id: LayerId, error: string | null) => void;
@@ -80,6 +82,18 @@ export const useLayerStore = create<LayerStoreState>((set, get) => ({
                 const anyVisible = ids.some((id) => state.visibility[id]);
                 const next = { ...state.visibility };
                 for (const id of ids) next[id] = !anyVisible;
+                saveVisibility(next);
+                return { visibility: next };
+            }),
+        setVisibleLayers: (ids) =>
+            set((state) => {
+                const wanted = new Set(ids);
+                const next = { ...state.visibility };
+                // Behold alltid gates-synlighet (analyseverktøy, ikke en datascene).
+                for (const def of LAYER_DEFAULTS) {
+                    if (def.id === 'gates') continue;
+                    next[def.id] = wanted.has(def.id);
+                }
                 saveVisibility(next);
                 return { visibility: next };
             }),

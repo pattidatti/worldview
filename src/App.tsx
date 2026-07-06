@@ -15,6 +15,8 @@ import { useLayerActions, useLayerVisibility } from './store/layerStore';
 import { useTooltipRegistry } from './context/TooltipRegistry';
 import { TopBar } from './components/UI/TopBar';
 import { LayerPanel } from './components/UI/LayerPanel';
+import { ScenePicker } from './components/UI/ScenePicker';
+import { useOpeningScene } from './hooks/useScenes';
 import { InfoPopup } from './components/UI/InfoPopup';
 import { HoloBeam } from './components/UI/HoloBeam';
 import { EntityTooltip } from './components/UI/EntityTooltip';
@@ -73,6 +75,12 @@ import { type PopupContent } from './types/popup';
 import { type SearchBarHandle } from './components/UI/SearchBar';
 
 const LAYER_IDS = LAYER_DEFAULTS.map((l) => l.id);
+
+// Kjører åpningsscenen ved første besøk (må ligge inne i ViewerContext).
+function SceneController() {
+    useOpeningScene();
+    return null;
+}
 
 function TooltipHandler({ selectedEntity, selectedPrimitiveId }: { selectedEntity: Entity | null; selectedPrimitiveId: string | null }) {
     const viewer = useViewer();
@@ -275,6 +283,8 @@ function AppContent({
                 <PlaceLabels />
                 <TopBar searchRef={searchRef} onToggleHelp={toggleHelp} onToggleMobileLayers={() => setMobileLayersOpen((v) => !v)} mobileLayersOpen={mobileLayersOpen} onToggleIntelligence={openSearch} intelligenceOpen={intelligenceOpen} />
                 <LayerPanel mobileOpen={mobileLayersOpen} />
+                <ScenePicker />
+                <SceneController />
                 {/* Top-right panel: GatePanel + DarkShipsPanel */}
                 <div className="absolute top-14 right-4 z-10 w-48">
                     <GatePanel />
