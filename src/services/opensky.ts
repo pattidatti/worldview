@@ -1,59 +1,12 @@
-import { type Flight, type PositionSource } from '@/types/flight';
-import { type Viewport } from '@/hooks/useViewport';
-import { proxied } from '@/utils/corsProxy';
+// Flyrute-oppslag (avgangs-/ankomstflyplass) for popup-berikelse.
+//
+// Tidligere brukte vi OpenSky sitt udokumenterte /routes-endepunkt. OpenSky har
+// i 2024–2025 gått over til OAuth2 og strammet anonym tilgang kraftig
+// (400 credits/dag), og /routes var aldri en offisiell del av REST-API-et.
+// Vi bruker nå adsbdb (https://api.adsbdb.com) — gratis, ingen nøkkel,
+// dokumentert callsign→rute-oppslag, med CORS aktivert.
 
-const OPENSKY_BASE = 'https://opensky-network.org/api';
-
-export async function fetchFlights(viewport?: Viewport | null): Promise<Flight[]> {
-    let url = `${OPENSKY_BASE}/states/all`;
-
-    if (viewport) {
-        const params = new URLSearchParams({
-            lamin: String(Math.max(viewport.south, -90)),
-            lamax: String(Math.min(viewport.north, 90)),
-            lomin: String(Math.max(viewport.west, -180)),
-            lomax: String(Math.min(viewport.east, 180)),
-        });
-        url += `?${params}`;
-    }
-
-    const response = await fetch(url, { signal: AbortSignal.timeout(15_000) });
-
-    if (response.status === 429) {
-        throw new RateLimitError();
-    }
-
-    if (!response.ok) {
-        throw new Error(`OpenSky feil: ${response.status}`);
-    }
-
-    const data = await response.json();
-    if (!data.states) return [];
-
-    return data.states
-        .filter((s: unknown[]) => s[5] != null && s[6] != null)
-        .map((s: unknown[]): Flight => ({
-            icao24: s[0] as string,
-            callsign: ((s[1] as string) ?? '').trim(),
-            originCountry: s[2] as string,
-            lon: s[5] as number,
-            lat: s[6] as number,
-            altitude: (s[13] as number) ?? (s[7] as number) ?? 0,
-            velocity: (s[9] as number) ?? 0,
-            heading: (s[10] as number) ?? 0,
-            verticalRate: (s[11] as number) ?? 0,
-            onGround: s[8] as boolean,
-            positionSource: (s[16] as PositionSource) ?? 0,
-            isMilitary: false,
-        }));
-}
-
-export class RateLimitError extends Error {
-    constructor() {
-        super('OpenSky rate limit');
-        this.name = 'RateLimitError';
-    }
-}
+const ADSBDB_BASE = 'https://api.adsbdb.com/v0';
 
 // --- Route lookup with cache ---
 
@@ -105,32 +58,55 @@ export function getCachedRoute(callsign: string): FlightRoute | null | undefined
     return undefined;
 }
 
-export async function fetchFlightRoute(callsign: string): Promise<FlightRoute | null> {
-    if (!callsign) return null;
+// adsbdb-airport: kort, lesbar kode for UI (IATA foretrekkes, ellers ICAO/by).
+interface AdsbdbAirport {
+    iata_code?: string;
+    icao_code?: string;
+    municipality?: string;
+}
 
-    const cached = getCachedRoute(callsign);
+function airportLabel(a: AdsbdbAirport | undefined): string | null {
+    if (!a) return null;
+    return a.iata_code || a.icao_code || a.municipality || null;
+}
+
+export async function fetchFlightRoute(callsign: string): Promise<FlightRoute | null> {
+    const cs = callsign.trim();
+    if (!cs) return null;
+
+    const cached = getCachedRoute(cs);
     if (cached !== undefined) return cached;
 
     try {
-        const response = await fetch(proxied(`${OPENSKY_BASE}/routes?callsign=${encodeURIComponent(callsign)}`), { signal: AbortSignal.timeout(10_000) });
+        const response = await fetch(
+            `${ADSBDB_BASE}/callsign/${encodeURIComponent(cs)}`,
+            { signal: AbortSignal.timeout(10_000) },
+        );
+        // 404 = ukjent callsign (forventet); cache null for å unngå gjentatte kall.
         if (!response.ok) {
-            routeCache.set(callsign, null);
-            saveRouteToSession(callsign, null);
+            routeCache.set(cs, null);
+            saveRouteToSession(cs, null);
             return null;
         }
-        const data = await response.json();
-        const route = data.route;
-        if (!route || route.length < 2) {
-            routeCache.set(callsign, null);
-            saveRouteToSession(callsign, null);
+        const data = await response.json() as {
+            response?: { flightroute?: { origin?: AdsbdbAirport; destination?: AdsbdbAirport } } | string;
+        };
+        // Ved ukjent callsign returnerer adsbdb { response: "unknown callsign" }.
+        const flightroute = typeof data.response === 'object' ? data.response?.flightroute : undefined;
+        const origin = airportLabel(flightroute?.origin);
+        const destination = airportLabel(flightroute?.destination);
+        if (!origin || !destination) {
+            routeCache.set(cs, null);
+            saveRouteToSession(cs, null);
             return null;
         }
-        const result: FlightRoute = { origin: route[0], destination: route[1] };
-        routeCache.set(callsign, result);
-        saveRouteToSession(callsign, result);
+        const result: FlightRoute = { origin, destination };
+        routeCache.set(cs, result);
+        saveRouteToSession(cs, result);
         return result;
     } catch {
-        routeCache.set(callsign, null);
+        // Nettverksfeil/timeout: ikke persister (kan være forbigående).
+        routeCache.set(cs, null);
         return null;
     }
 }

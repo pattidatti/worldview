@@ -84,9 +84,6 @@ export class FlightRenderer implements LayerRenderer {
     private unsubscribes: (() => void)[] = [];
     private tier: LODTier = LODTier.REGION;
 
-    private trailMaterial: Material | null = null;
-    private trailMaterialMilitary: Material | null = null;
-
     constructor(store: EntityStore<FlightEntity>) {
         this.store = store;
     }
@@ -103,15 +100,6 @@ export class FlightRenderer implements LayerRenderer {
         scene.primitives.add(this.trailCollection);
         scene.primitives.add(this.labelCollection);
         scene.primitives.add(this.densityCollection);
-
-        this.trailMaterial = Material.fromType('PolylineGlow', {
-            glowPower: 0.15,
-            color: TRAIL_COLOR,
-        });
-        this.trailMaterialMilitary = Material.fromType('PolylineGlow', {
-            glowPower: 0.15,
-            color: TRAIL_MILITARY_COLOR,
-        });
 
         // Full resync mot storens nåværende innhold, deretter deltaer
         for (const flight of this.store.getAll().values()) this.upsert(flight, false);
@@ -343,11 +331,19 @@ export class FlightRenderer implements LayerRenderer {
         const history = this.trailHistory.get(id);
         const flight = this.store.get(id);
         if (!history || !flight || history.size < 2) return;
+        // Hver trail får SIN EGEN Material-instans. Cesium destruerer en
+        // polylinjes material når polylinjen fjernes (Polyline._destroy →
+        // material.destroy). En delt material ville derfor blitt destruert av
+        // den FØRSTE trailen som droppes, og etterlatt de øvrige med en
+        // destruert material → «This object was destroyed» ved neste render.
         const polyline = this.trailCollection.add({
             id: `${primitiveId(this.id, id)}:trail`,
             positions: history.tail(MAX_FLIGHT_TRAIL),
             width: 2,
-            material: flight.isMilitary ? this.trailMaterialMilitary! : this.trailMaterial!,
+            material: Material.fromType('PolylineGlow', {
+                glowPower: 0.15,
+                color: flight.isMilitary ? TRAIL_MILITARY_COLOR : TRAIL_COLOR,
+            }),
         });
         this.trails.set(id, polyline);
     }

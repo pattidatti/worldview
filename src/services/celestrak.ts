@@ -1,5 +1,13 @@
 import { type SatelliteRecord } from '@/types/satellite';
+import { getJsonCache, setJsonCache } from './firestoreCache';
 
+// MERK (fremtidig arbeid): CelesTrak passerer det 5-sifrede katalog-taket
+// (69999) rundt juli 2026. Nye objekter får 6-sifrede numre som TLE-formatet
+// IKKE kan representere; CelesTrak anbefaler migrering til OMM (FORMAT=json).
+// Vi beholder FORMAT=tle inntil videre fordi satellite.js v5 kun eksporterer
+// twoline2satrec (ingen json2satrec/OMM→satrec). `stations`-gruppen vi bruker
+// (inkl. ISS 25544) består av eldre objekter og virker fint med TLE i dag.
+// OMM-migrering krever oppgradering/erstatning av SGP4-parsingen — eget punkt.
 const CELESTRAK_BASE = 'https://celestrak.org/NORAD/elements/gp.php';
 const LS_PREFIX = 'wv_tle:';
 const CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12 timer
@@ -34,6 +42,15 @@ export async function fetchTLEData(group: string = 'stations'): Promise<Satellit
     const cached = lsGet(group);
     if (cached) return cached;
 
+    // L2.5: delt Firestore-cache — TLE er identisk for alle brukere. CelesTrak
+    // oppdaterer GP-data kun hver 2. time og blokkerer aggressivt ved overforbruk.
+    const fsKey = `tle:${group}`;
+    const fs = await getJsonCache<SatelliteRecord[]>(fsKey, CACHE_TTL_MS);
+    if (fs && fs.length) {
+        lsSet(group, fs);
+        return fs;
+    }
+
     const url = `${CELESTRAK_BASE}?GROUP=${group}&FORMAT=tle`;
     const response = await fetch(url, { signal: AbortSignal.timeout(20_000) });
 
@@ -44,6 +61,7 @@ export async function fetchTLEData(group: string = 'stations'): Promise<Satellit
     const text = await response.text();
     const records = parseTLE(text);
     lsSet(group, records);
+    setJsonCache(fsKey, CACHE_TTL_MS, records);
     return records;
 }
 

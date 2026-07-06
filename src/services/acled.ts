@@ -2,23 +2,30 @@ import { type ConflictEvent } from '@/types/conflict';
 import { combineSignals } from '@/utils/http';
 import { parseAcled } from '@/utils/feedParsers';
 import { fetchAndParseInWorker } from '@/utils/feedWorkerClient';
+import { cachedFetch } from './firestoreCache';
 
 const API_KEY = import.meta.env.VITE_ACLED_API_KEY || '';
 const EMAIL = import.meta.env.VITE_ACLED_EMAIL || '';
 const BASE_URL = 'https://api.acleddata.com/acled/read';
 
 const TIMEOUT_MS = 20_000;
+const CACHE_TTL_MS = 30 * 60 * 1000; // 30 min — matcher pollekadensen
 
 function dateString(d: Date): string {
     return d.toISOString().slice(0, 10);
 }
 
-export async function fetchConflicts(signal?: AbortSignal): Promise<ConflictEvent[]> {
+export function fetchConflicts(signal?: AbortSignal): Promise<ConflictEvent[]> {
     if (!API_KEY || !EMAIL) {
         if (import.meta.env.DEV) console.warn('[ConflictLayer] VITE_ACLED_API_KEY og/eller VITE_ACLED_EMAIL mangler — konflikdatalaget er deaktivert.');
-        return [];
+        return Promise.resolve([]);
     }
+    // Globalt-identisk (siste 7 dager) → delt cache. Reduserer ACLED-kvoteforbruk
+    // kraftig (N brukere → én fetch per 30-min-vindu).
+    return cachedFetch('conflicts:v1', CACHE_TTL_MS, () => fetchConflictsLive(signal));
+}
 
+async function fetchConflictsLive(signal?: AbortSignal): Promise<ConflictEvent[]> {
     const now = new Date();
     const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const params = new URLSearchParams({

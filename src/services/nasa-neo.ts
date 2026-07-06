@@ -1,4 +1,5 @@
 import { type Asteroid } from '@/types/asteroid';
+import { throwIfRateLimited } from '@/utils/http';
 import { getJsonCache, setJsonCache } from './firestoreCache';
 
 const API_KEY = import.meta.env.VITE_NASA_API_KEY ?? 'DEMO_KEY';
@@ -59,6 +60,8 @@ export async function fetchAsteroids(): Promise<Asteroid[]> {
     const end = plusDays(7);
     const url = `https://api.nasa.gov/neo/rest/v1/feed?start_date=${start}&end_date=${end}&api_key=${API_KEY}`;
     const response = await fetch(url, { signal: AbortSignal.timeout(20_000) });
+    // DEMO_KEY har lav kvote (50/døgn/IP); egen nøkkel gir 1000/time.
+    throwIfRateLimited(response, 'NASA NeoWs');
     if (!response.ok) throw new Error(`NASA NeoWs feil: ${response.status}`);
     const data = await response.json();
 

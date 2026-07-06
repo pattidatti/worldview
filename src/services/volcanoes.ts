@@ -1,6 +1,8 @@
 import { type VolcanoEvent, type VolcanoAlertLevel } from '@/types/volcano';
+import { cachedFetch } from './firestoreCache';
 
 const USGS_RSS = 'https://volcanoes.usgs.gov/vsc/rss/voanotice.xml';
+const CACHE_TTL_MS = 60 * 60 * 1000; // 1 time — vulkanvarsler endrer seg sakte
 
 // Statisk koordinat-lookup for de vanligste USGS-vulkanene
 // Brukes som fallback hvis RSS-feeden ikke inneholder geo-tags
@@ -47,7 +49,12 @@ function findCoords(title: string): [number, number] | null {
     return null;
 }
 
-export async function fetchVolcanoes(): Promise<VolcanoEvent[]> {
+export function fetchVolcanoes(): Promise<VolcanoEvent[]> {
+    // Globalt-identisk feed → delt cache (alle brukere deler én fetch/time).
+    return cachedFetch('volcanoes:v1', CACHE_TTL_MS, fetchVolcanoesLive);
+}
+
+async function fetchVolcanoesLive(): Promise<VolcanoEvent[]> {
     const res = await fetch(USGS_RSS, { signal: AbortSignal.timeout(15_000) });
     if (!res.ok) throw new Error(`USGS vulkaner: ${res.status}`);
     const xml = await res.text();

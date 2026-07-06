@@ -1,6 +1,6 @@
 import { type NewsEvent } from '@/types/news';
 import { proxied } from '@/utils/corsProxy';
-import { combineSignals } from '@/utils/http';
+import { combineSignals, throwIfRateLimited } from '@/utils/http';
 import { parseGdelt } from '@/utils/feedParsers';
 import { fetchAndParseInWorker } from '@/utils/feedWorkerClient';
 
@@ -18,6 +18,9 @@ export async function fetchNewsEvents(signal?: AbortSignal): Promise<NewsEvent[]
     if (viaWorker) return viaWorker;
 
     const response = await fetch(url, { signal: combineSignals(TIMEOUT_MS, signal) });
+    // GDELT deler kvote på tvers av alle API-er og svarer 429 m/ Retry-After.
+    // (Gjelder main-thread-grenen; worker-grenen har egen feilhåndtering.)
+    throwIfRateLimited(response, 'GDELT');
     if (!response.ok) throw new Error(`GDELT feil: ${response.status}`);
     return parseGdelt(await response.json());
 }

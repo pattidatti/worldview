@@ -95,7 +95,6 @@ export class ShipRenderer {
     private densityCells = new Map<string, { lon: number; lat: number }>();
     private unsubscribes: (() => void)[] = [];
     private tier: LODTier = LODTier.REGION;
-    private trailMaterial: Material | null = null;
 
     constructor(store: EntityStore<ShipEntity>, getGhosts: () => ReadonlyMap<number, Ghost>) {
         this.store = store;
@@ -119,7 +118,6 @@ export class ShipRenderer {
         scene.primitives.add(this.densityColl);
         this.hullDs = new CustomDataSource('ships-hulls');
         viewer.dataSources.add(this.hullDs);
-        this.trailMaterial = Material.fromType('PolylineGlow', { glowPower: 0.4, color: TRAIL_COLOR });
 
         for (const ship of this.store.getAll().values()) this.upsert(ship);
         this.refreshDetail();
@@ -285,11 +283,14 @@ export class ShipRenderer {
         if (this.trails.has(id) || !this.trailColl) return;
         const history = this.trailHistory.get(id);
         if (!history || history.size < 2) return;
+        // Egen Material-instans per trail: Cesium destruerer materialet når
+        // polylinjen fjernes, så en delt material ville blitt revet vekk under
+        // de øvrige trailene ved første drop → «This object was destroyed».
         const polyline = this.trailColl.add({
             id: `ships:${id}:trail`,
             positions: history.tail(MAX_SHIP_TRAIL),
             width: 2,
-            material: this.trailMaterial!,
+            material: Material.fromType('PolylineGlow', { glowPower: 0.4, color: TRAIL_COLOR }),
         });
         this.trails.set(id, polyline);
     }

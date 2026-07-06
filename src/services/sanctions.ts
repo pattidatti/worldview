@@ -1,7 +1,10 @@
 /** Sjekker US Treasury OFAC SDN-lista for sanksjonerte skip via IMO-nummer. */
 
+import { getJsonCache, setJsonCache } from './firestoreCache';
+
 const OFAC_URL = 'https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/SDN.JSON';
 const CACHE_KEY = 'worldview-ofac-vessels';
+const FS_KEY = 'ofac:sdn';
 const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 timer
 
 interface OfacVessel {
@@ -29,6 +32,16 @@ async function buildIndex(): Promise<Map<number, OfacVessel>> {
             }
         }
     } catch { /* ignore */ }
+
+    // L2.5: delt Firestore-cache — SDN-lista (parset til skip) er identisk for
+    // alle brukere. Sparer nedlasting av hele SDN.JSON (stor fil) per bruker.
+    const fsVessels = await getJsonCache<OfacVessel[]>(FS_KEY, CACHE_TTL);
+    if (fsVessels) {
+        try {
+            sessionStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), vessels: fsVessels }));
+        } catch { /* kvote full — hopp over */ }
+        return new Map(fsVessels.map(v => [v.imo, v]));
+    }
 
     const response = await fetch(OFAC_URL, { signal: AbortSignal.timeout(20_000) });
     if (!response.ok) throw new Error(`OFAC ${response.status}`);
@@ -58,9 +71,11 @@ async function buildIndex(): Promise<Map<number, OfacVessel>> {
         });
     }
 
+    const vesselList = [...vessels.values()];
     try {
-        sessionStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), vessels: [...vessels.values()] }));
+        sessionStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), vessels: vesselList }));
     } catch { /* kvotar full — hopp over cache */ }
+    setJsonCache(FS_KEY, CACHE_TTL, vesselList);
 
     return vessels;
 }

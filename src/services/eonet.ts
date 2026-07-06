@@ -1,7 +1,9 @@
 import { type Disaster } from '@/types/disaster';
 import { combineSignals } from '@/utils/http';
+import { cachedFetch } from './firestoreCache';
 
 const EONET_URL = 'https://eonet.gsfc.nasa.gov/api/v3/events?status=open&limit=200';
+const CACHE_TTL_MS = 30 * 60 * 1000; // 30 min — matcher pollekadensen
 
 interface EonetGeometry {
     date: string;
@@ -17,7 +19,12 @@ interface EonetEvent {
     geometry: EonetGeometry[];
 }
 
-export async function fetchDisasters(signal?: AbortSignal): Promise<Disaster[]> {
+export function fetchDisasters(signal?: AbortSignal): Promise<Disaster[]> {
+    // Globalt-identisk feed → delt cache (alle brukere deler én fetch per vindu).
+    return cachedFetch('eonet:v1', CACHE_TTL_MS, () => fetchDisastersLive(signal));
+}
+
+async function fetchDisastersLive(signal?: AbortSignal): Promise<Disaster[]> {
     const response = await fetch(EONET_URL, { signal: combineSignals(15_000, signal) });
     if (!response.ok) throw new Error(`EONET feil: ${response.status}`);
     const data = await response.json() as { events: EonetEvent[] };

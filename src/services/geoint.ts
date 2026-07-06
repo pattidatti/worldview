@@ -1,6 +1,11 @@
 import { type Viewport } from '@/hooks/useViewport';
 import { type GeointLayerData } from '@/types/geoint';
 
+// Gemini-modell for GEOINT-brief. gemini-2.5-flash hadde annonsert shutdown
+// 16. okt 2026 → byttet til 3.5-flash (samme flash-nivå, nyere/billigere).
+// v1beta-endepunktet beholdes — det er nødvendig for Gemini 3.x-modellene.
+const GEOINT_MODEL = 'gemini-3.5-flash';
+
 function buildPrompt(
     centerLat: number,
     centerLon: number,
@@ -54,7 +59,7 @@ export async function streamGeointBrief(
     const prompt = buildPrompt(centerLat, centerLon, cameraAlt / 1000, viewport, layerData);
 
     const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?key=${apiKey}&alt=sse`,
+        `https://generativelanguage.googleapis.com/v1beta/models/${GEOINT_MODEL}:streamGenerateContent?key=${apiKey}&alt=sse`,
         {
             method: 'POST',
             headers: { 'content-type': 'application/json' },

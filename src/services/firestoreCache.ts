@@ -80,6 +80,40 @@ export function setJsonCache<T>(docId: string, ttlMs: number, data: T): void {
     }).catch(() => {});
 }
 
+// ── cachedFetch: L1 in-memory + L2 delt Firestore-cache ──────────────────────
+// For trege, globalt-identiske endepunkter (samme svar for alle brukere innen
+// TTL). Mønster fra nasa-neo.ts, generalisert. Alle innloggede brukere deler
+// ÉN fetch per TTL-vindu; gjeste-/utlogget-modus faller pent tilbake til nett
+// (getJsonCache/setJsonCache er no-ops uten db+auth).
+
+interface MemEntry { data: unknown; expires: number }
+const _memCache = new Map<string, MemEntry>();
+
+export async function cachedFetch<T>(
+    docId: string,
+    ttlMs: number,
+    fetchFn: () => Promise<T>,
+): Promise<T> {
+    const now = Date.now();
+
+    // L1: in-memory (per økt)
+    const mem = _memCache.get(docId);
+    if (mem && mem.expires > now) return mem.data as T;
+
+    // L2: delt Firestore-cache
+    const fs = await getJsonCache<T>(docId, ttlMs);
+    if (fs !== null) {
+        _memCache.set(docId, { data: fs, expires: now + ttlMs });
+        return fs;
+    }
+
+    // L3: nett
+    const data = await fetchFn();
+    _memCache.set(docId, { data, expires: now + ttlMs });
+    setJsonCache(docId, ttlMs, data);
+    return data;
+}
+
 // ── SODIR cache ──────────────────────────────────────────────────────────────
 // InfrastructureData contains number[][][] (nested arrays) which Firestore
 // doesn't support directly, so we store as a JSON string field.
