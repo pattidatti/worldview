@@ -37,12 +37,9 @@ import { TelecomLayer } from './components/Layers/TelecomLayer/TelecomLayer';
 import { MineLayer } from './components/Layers/MineLayer/MineLayer';
 import { BuildingsLayer } from './components/Layers/BuildingsLayer/BuildingsLayer';
 import { SubmarineCableLayer } from './components/Layers/SubmarineCableLayer/SubmarineCableLayer';
-import { EarthquakeLayer } from './components/Layers/EarthquakeLayer/EarthquakeLayer';
-import { DisasterLayer } from './components/Layers/DisasterLayer/DisasterLayer';
 import { AsteroidLayer } from './components/Layers/AsteroidLayer/AsteroidLayer';
-import { NewsLayer } from './components/Layers/NewsLayer/NewsLayer';
-import { ConflictLayer } from './components/Layers/ConflictLayer/ConflictLayer';
 import { TensionLayer } from './components/Layers/TensionLayer/TensionLayer';
+import { PointLayers } from './components/Layers/PointLayer';
 import { WeatherRadarLayer } from './components/Layers/WeatherRadarLayer/WeatherRadarLayer';
 import { WeatherRadarControls } from './components/UI/WeatherRadarControls';
 import { SigmetLayer } from './components/Layers/SigmetLayer/SigmetLayer';
@@ -50,8 +47,6 @@ import { RoadCameraLayer } from './components/Layers/RoadCameraLayer/RoadCameraL
 import { GPSJamLayer } from './components/Layers/GPSJamLayer/GPSJamLayer';
 import { ChokepointLayer } from './components/Layers/ChokepointLayer/ChokepointLayer';
 import { ISSLayer } from './components/Layers/ISSLayer/ISSLayer';
-import { LaunchesLayer } from './components/Layers/LaunchesLayer/LaunchesLayer';
-import { VolcanoLayer } from './components/Layers/VolcanoLayer/VolcanoLayer';
 import { LightningLayer } from './components/Layers/LightningLayer/LightningLayer';
 import { HeritageLayer } from './components/Heritage/HeritageLayer';
 import { PlaceLabels } from './components/Globe/PlaceLabels';
@@ -264,11 +259,8 @@ function AppContent({
                 <MineLayer />
                 <BuildingsLayer />
                 <SubmarineCableLayer />
-                <EarthquakeLayer />
-                <DisasterLayer />
                 <AsteroidLayer />
-                <NewsLayer />
-                <ConflictLayer />
+                <PointLayers />
                 <TensionLayer />
                 <WeatherRadarLayer />
                 <WeatherRadarControls />
@@ -277,8 +269,6 @@ function AppContent({
                 <GPSJamLayer />
                 <ChokepointLayer />
                 <ISSLayer />
-                <LaunchesLayer />
-                <VolcanoLayer />
                 <LightningLayer />
                 <GateLayer onRequestName={handleRequestName} />
                 <HeritageLayer />
