@@ -22,7 +22,7 @@ import { lodGovernor } from '@/core/LODGovernor';
 import { pickRouter } from '@/core/pickRouter';
 import { trackingProviders } from '@/core/trackingProviders';
 import { maybeInstallPerfHud } from '@/core/perfHud';
-import { applyTilesetPerformanceTuning } from '@/utils/tilesetPerformance';
+import { createPhotorealTileset, PhotorealUnavailableError } from '@/utils/photorealTileset';
 import { NIGHT_VISION_SHADER } from '@/shaders/nightVision';
 import { CRT_SHADER } from '@/shaders/crt';
 import { THERMAL_SHADER } from '@/shaders/thermal';
@@ -97,10 +97,14 @@ export function GlobeViewer({ children, onSelect, onEntitySelect, onPrimitiveSel
     const [viewer, setViewer] = useState<Viewer | null>(null);
     const { resolve, resolveById } = usePopupRegistry();
     const { isDrawingRef } = useGates();
-    const { activeMode, setMode } = useImagery();
+    const { activeMode, setMode, setPhotorealStatus } = useImagery();
     const { is2D } = useSceneProjection();
     const activeModeRef = useRef(activeMode);
     activeModeRef.current = activeMode;
+    const setModeRef = useRef(setMode);
+    setModeRef.current = setMode;
+    const setPhotorealStatusRef = useRef(setPhotorealStatus);
+    setPhotorealStatusRef.current = setPhotorealStatus;
     const is2DRef = useRef(is2D);
     is2DRef.current = is2D;
     const { activeOverlay } = useShaderOverlay();
@@ -109,6 +113,7 @@ export function GlobeViewer({ children, onSelect, onEntitySelect, onPrimitiveSel
     useWASDNavigation(viewer, orbitActive);
     const tilesetRef = useRef<Cesium3DTileset | null>(null);
     const baseLayersRef = useRef<ImageryLayer[]>([]);
+    const creditContainerRef = useRef<HTMLDivElement | null>(null);
     // Cache én stage per shader-type — toggle enabled i stedet for destroy/recreate
     const shaderStageMapRef = useRef<Map<string, PostProcessStage>>(new Map());
     const activeShaderKeyRef = useRef<string>('none');
@@ -149,7 +154,17 @@ export function GlobeViewer({ children, onSelect, onEntitySelect, onPrimitiveSel
 
         Ion.defaultAccessToken = import.meta.env.VITE_CESIUM_ION_TOKEN || '';
 
+        // Egen credit-container. Cesium plasserer default-krediteringen nederst til
+        // venstre INNE i widgeten, der TimelineBar (z-11, 44px høy) legger seg over
+        // den. Google Maps Platform krever at «Google»-krediteringen er synlig så
+        // lenge Photorealistic 3D Tiles vises, så vi løfter linjen over baren.
+        const creditEl = document.createElement('div');
+        creditEl.id = 'worldview-cesium-credits';
+        document.body.appendChild(creditEl);
+        creditContainerRef.current = creditEl;
+
         const v = new Viewer(containerRef.current, {
+            creditContainer: creditEl,
             timeline: false,
             animation: false,
             baseLayerPicker: false,
@@ -511,6 +526,8 @@ export function GlobeViewer({ children, onSelect, onEntitySelect, onPrimitiveSel
             if (!v.isDestroyed()) {
                 v.destroy();
             }
+            creditContainerRef.current?.remove();
+            creditContainerRef.current = null;
             setViewer(null);
             initRef.current = false;
         };
@@ -599,20 +616,27 @@ export function GlobeViewer({ children, onSelect, onEntitySelect, onPrimitiveSel
 
                 if (!tilesetRef.current) {
                     try {
-                        const tileset = await Cesium3DTileset.fromIonAssetId(2275207);
-                        if (cancelled) return;
-                        applyTilesetPerformanceTuning(tileset);
+                        const { tileset, source } = await createPhotorealTileset();
+                        if (cancelled) {
+                            tileset.destroy();
+                            return;
+                        }
                         tilesetRef.current = tileset;
                         scene.primitives.add(tileset);
+                        setPhotorealStatusRef.current({ source, error: null });
                     } catch (e) {
+                        const reason = e instanceof PhotorealUnavailableError
+                            ? e.causes.join('\n')
+                            : String(e);
                         if (import.meta.env.DEV) console.warn(
-                            '[WorldView] Google Photorealistic 3D Tiles utilgjengelig.\n' +
-                            'Legg til asset ID 2275207 i Cesium Ion-kontoen din på ion.cesium.com/assetdepot\n',
-                            e
+                            '[WorldView] Google Photorealistic 3D Tiles utilgjengelig:\n' + reason
                         );
                         if (!cancelled) {
+                            setPhotorealStatusRef.current({ source: null, error: reason });
+                            // Bytt faktisk modus i stedet for å bare tegne satellitt under
+                            // en «3D»-pill som lyver. Effekten kjører på nytt som satellitt.
                             scene.globe.show = true;
-                            applySatelliteImagery(viewer!, baseLayersRef.current);
+                            setModeRef.current('satellite');
                         }
                     }
                 } else {

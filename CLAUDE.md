@@ -31,6 +31,7 @@ Copy `.env.example` to `.env`. Required:
 - `VITE_API_BASE_URL` — Base URL for Firebase Functions proxy (unused in current layers)
 
 Optional (layers degrade gracefully without them):
+- `VITE_GOOGLE_MAPS_API_KEY` — Google Cloud → Map Tiles API. Foretrukket rute for Photorealistic 3D Tiles (egen kvote/fakturering). Uten den brukes Cesium Ion asset 2275207
 - `VITE_NASA_API_KEY` — NASA NeoWs asteroid API; falls back to DEMO_KEY (public, rate-limited)
 - `VITE_ACLED_API_KEY` — ACLED conflict data (requires account at acleddata.com)
 - `VITE_ACLED_EMAIL` — Email tied to ACLED account registration (required alongside API key)
@@ -42,6 +43,9 @@ All env vars use Vite's `import.meta.env.VITE_*` convention.
 
 ## Critical Gotchas
 
+- **Photorealistic 3D Tiles har to ruter** — `src/utils/photorealTileset.ts` prøver først Google Map Tiles API direkte (`VITE_GOOGLE_MAPS_API_KEY` → `GoogleMaps.defaultApiKey` + `createGooglePhotorealistic3DTileset()`), deretter Cesium Ion asset 2275207. Feiler begge kastes `PhotorealUnavailableError` med norske årsaker; GlobeViewer bytter da faktisk `activeMode` til `satellite` (ikke bare tegner satellitt under en «3D»-pill som lyver) og skriver årsaken til `ImageryContext.photoreal.error`, som `ImageryPicker` viser som rød prikk + tooltip.
+- **Google-attribusjon må være synlig** — Google Maps Platform krever det så lenge tiles vises. Cesium-krediteringen ville ellers ligget under `TimelineBar` (z-11, 44px), så `GlobeViewer` monterer en egen `creditContainer` (`#worldview-cesium-credits`) på `<body>` med z-12, stylet i `src/index.css`. Ikke skjul eller flytt den under baren igjen.
+- **Photoreal + geokoder er en åpen ToS-sak** — Googles vilkår sier at Photorealistic 3D Tiles kun skal brukes med Googles egen geokoder. WorldView bruker OSM Nominatim (`services/geocoding.ts`), så vi sender bevisst IKKE `onlyUsingWithGoogleGeocoder: true`. Cesium logger én engangsadvarsel. Riktig fiks er å bytte SearchBar til Google Geocoding når `VITE_GOOGLE_MAPS_API_KEY` finnes.
 - **IKKE bruk resium** — har CJS `require("react")` bug med Vite. Vi bruker CesiumJS direkte.
 - **satellite.js: bruk v5** — v7 har WASM/top-level-await som krasjer Vite build.
 - **TomTom Traffic API** — krever gratis API-nøkkel (2500 req/dag). Trafikk-laget er viewport-avhengig; returnerer tomt array hvis viewport > 10 000 km².

@@ -165,3 +165,55 @@ body {
 }
 
 
+
+/* Cesium-kreditering (Google Maps / Ion / per-lag-lisenser).
+   Egen container montert på <body> av GlobeViewer, løftet over TimelineBar
+   (z-11, 44px) fordi Google Maps Platform krever synlig attribusjon så lenge
+   Photorealistic 3D Tiles vises. Se src/utils/photorealTileset.ts. */
+#worldview-cesium-credits {
+    position: fixed;
+    /* Klar av LayerPanel (venstre, ~240px) og over TimelineBar (44px). */
+    left: 15.5rem;
+    bottom: 3rem;
+    z-index: 12;
+    max-width: min(70ch, 50vw);
+    pointer-events: auto;
+    font-family: var(--font-sans);
+    font-size: 10px;
+    line-height: 1.4;
+    color: rgba(255, 255, 255, 0.55);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
+}
+
+/* Cesium sin `.cesium-viewer .cesium-widget-credits`-regel treffer ikke når
+   containeren står på <body>, så basisregelen (absolute/bottom:0/left:0)
+   kollapser linjen til en smal kolonne. Legg den flat igjen. */
+#worldview-cesium-credits .cesium-widget-credits {
+    position: static;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px 8px;
+    bottom: auto;
+    left: auto;
+    padding-right: 0;
+    color: inherit;
+    font-size: inherit;
+    text-shadow: inherit;
+}
+
+#worldview-cesium-credits a {
+    color: rgba(255, 255, 255, 0.75);
+    text-decoration: none;
+}
+
+#worldview-cesium-credits a:hover {
+    color: #fff;
+    text-decoration: underline;
+}
+
+#worldview-cesium-credits img {
+    max-height: 14px;
+    width: auto;
+    vertical-align: middle;
+}
